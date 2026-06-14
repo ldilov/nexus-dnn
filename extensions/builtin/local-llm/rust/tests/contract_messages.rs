@@ -24,10 +24,8 @@ async fn setup() -> (axum::Router, String) {
         )
         .await
         .unwrap();
-    let thread: ChatThread = serde_json::from_slice(
-        &create.into_body().collect().await.unwrap().to_bytes(),
-    )
-    .unwrap();
+    let thread: ChatThread =
+        serde_json::from_slice(&create.into_body().collect().await.unwrap().to_bytes()).unwrap();
     (app, thread.thread_id.into_string())
 }
 
@@ -106,7 +104,9 @@ async fn append_assistant_with_sampler_succeeds_and_roundtrips() {
         .oneshot(
             Request::post(format!("/chat/threads/{tid}/messages"))
                 .header("content-type", "application/json")
-                .body(Body::from(json!({"role":"user","content":"ask"}).to_string()))
+                .body(Body::from(
+                    json!({"role":"user","content":"ask"}).to_string(),
+                ))
                 .unwrap(),
         )
         .await

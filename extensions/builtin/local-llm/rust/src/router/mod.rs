@@ -1,7 +1,7 @@
 pub mod messages;
 pub mod threads;
 
-use crate::chat::{ChatHandlerResources, build_chat_router};
+use crate::chat::{build_chat_router, ChatHandlerResources};
 use crate::chat_history::ChatHistoryStore;
 use axum::{
     routing::{get, MethodRouter},

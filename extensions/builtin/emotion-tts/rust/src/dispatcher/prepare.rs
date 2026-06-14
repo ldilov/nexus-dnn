@@ -239,8 +239,11 @@ pub(crate) async fn prepare(
         // audio_ref is resolved by `parse_global_emotion`. The original
         // map is left untouched; only the value passed to
         // `InlineOverrides::from_map` is normalised.
-        let inline =
-            build_inline_overrides(&r.utterance.inline_overrides, cfg, &preset_vectors_by_name_ci);
+        let inline = build_inline_overrides(
+            &r.utterance.inline_overrides,
+            cfg,
+            &preset_vectors_by_name_ci,
+        );
         let utterance_emotion =
             resolve_emotion(&inline, None, mapping_defaults.as_ref(), &global_emotion).payload;
 
@@ -550,7 +553,8 @@ fn build_inline_overrides(
         return InlineOverrides::default();
     }
 
-    let needs_preset_lower = raw.contains_key(INLINE_PRESET_KEY) && !raw.contains_key(INLINE_VECTOR_KEY);
+    let needs_preset_lower =
+        raw.contains_key(INLINE_PRESET_KEY) && !raw.contains_key(INLINE_VECTOR_KEY);
     let needs_audio_ref_resolve = raw.contains_key(INLINE_AUDIO_REF_KEY);
 
     if !needs_preset_lower && !needs_audio_ref_resolve {
@@ -673,27 +677,27 @@ mod tests {
     fn build_inline_overrides_lowers_emotion_preset_to_emotion_vector() {
         let cfg = cfg_with_resolver_returning_path("/abs/x.wav");
         let mut presets = HashMap::new();
-        presets.insert("happy".to_string(), [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]);
+        presets.insert(
+            "happy".to_string(),
+            [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3],
+        );
         let mut raw = BTreeMap::new();
         raw.insert("emotion_preset".to_string(), "Happy".to_string());
         let inline = build_inline_overrides(&raw, &cfg, &presets);
-        assert_eq!(
-            inline.emotion_vector.as_deref(),
-            Some("happy=0.7,calm=0.3")
-        );
+        assert_eq!(inline.emotion_vector.as_deref(), Some("happy=0.7,calm=0.3"));
     }
 
     #[test]
     fn build_inline_overrides_preset_does_not_override_explicit_vector() {
         let cfg = cfg_with_resolver_returning_path("/abs/x.wav");
         let mut presets = HashMap::new();
-        presets.insert("happy".to_string(), [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]);
+        presets.insert(
+            "happy".to_string(),
+            [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3],
+        );
         let mut raw = BTreeMap::new();
         raw.insert("emotion_preset".to_string(), "Happy".to_string());
-        raw.insert(
-            "emotion_vector".to_string(),
-            "sad=0.5".to_string(),
-        );
+        raw.insert("emotion_vector".to_string(), "sad=0.5".to_string());
         let inline = build_inline_overrides(&raw, &cfg, &presets);
         assert_eq!(inline.emotion_vector.as_deref(), Some("sad=0.5"));
     }
@@ -747,10 +751,7 @@ mod tests {
             stringify_generation_value(&serde_json::json!("warm")),
             "warm"
         );
-        assert_eq!(
-            stringify_generation_value(&serde_json::Value::Null),
-            "null"
-        );
+        assert_eq!(stringify_generation_value(&serde_json::Value::Null), "null");
     }
 
     /// Mirrors the per-utterance seed math in `prepare()` — keep this

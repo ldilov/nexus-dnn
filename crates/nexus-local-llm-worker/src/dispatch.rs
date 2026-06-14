@@ -102,7 +102,11 @@ async fn dispatch_one(
         }
         "pool.restart" => match parse::<methods::RestartRequest>(&req) {
             Ok(body) => match methods::handle_pool_restart(&ctx.pool, body).await {
-                Ok(()) => transport.reply_ok(id, serde_json::json!({"state":"Spawning"})).await,
+                Ok(()) => {
+                    transport
+                        .reply_ok(id, serde_json::json!({"state":"Spawning"}))
+                        .await
+                }
                 Err(e) => reply_worker_error(transport, id, e).await,
             },
             Err(e) => reply_invalid_params(transport, id, e).await,
@@ -128,8 +132,7 @@ async fn dispatch_one(
             },
             Err(e) => reply_invalid_params(transport, id, e).await,
         },
-        "llm.set_active_model" => match parse::<methods::chat_types::SetActiveModelRequest>(&req)
-        {
+        "llm.set_active_model" => match parse::<methods::chat_types::SetActiveModelRequest>(&req) {
             Ok(body) => match methods::chat::handle_set_active_model(body).await {
                 Ok(resp) => transport.reply_ok(id, resp).await,
                 Err(e) => reply_worker_error(transport, id, e).await,
@@ -154,10 +157,12 @@ async fn dispatch_one(
                 Err(e) => reply_invalid_params(transport, id, e).await,
             }
         }
-        "llm.list_downloaded_models" => match methods::chat::handle_list_downloaded_models().await {
-            Ok(resp) => transport.reply_ok(id, resp).await,
-            Err(e) => reply_worker_error(transport, id, e).await,
-        },
+        "llm.list_downloaded_models" => {
+            match methods::chat::handle_list_downloaded_models().await {
+                Ok(resp) => transport.reply_ok(id, resp).await,
+                Err(e) => reply_worker_error(transport, id, e).await,
+            }
+        }
         "llm.open_model_browser" => match methods::chat::handle_open_model_browser().await {
             Ok(resp) => transport.reply_ok(id, resp).await,
             Err(e) => reply_worker_error(transport, id, e).await,
@@ -197,6 +202,11 @@ async fn reply_worker_error(
         "retry_safe": retry_safe,
     });
     transport
-        .reply_error_with_data(id, INTERNAL_ERROR, format!("{stable_code}: {message}"), data)
+        .reply_error_with_data(
+            id,
+            INTERNAL_ERROR,
+            format!("{stable_code}: {message}"),
+            data,
+        )
         .await
 }

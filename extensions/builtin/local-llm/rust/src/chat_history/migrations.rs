@@ -69,14 +69,13 @@ async fn add_column_if_missing(
     column: &str,
     ty: &str,
 ) -> Result<()> {
-    let existing: Vec<(i64, String)> =
-        sqlx::query_as(&format!("PRAGMA table_info({table})"))
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|r: (i64, String, String, i64, Option<String>, i64)| (r.0, r.1))
-            .collect();
+    let existing: Vec<(i64, String)> = sqlx::query_as(&format!("PRAGMA table_info({table})"))
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r: (i64, String, String, i64, Option<String>, i64)| (r.0, r.1))
+        .collect();
 
     if existing.iter().any(|(_, name)| name == column) {
         return Ok(());

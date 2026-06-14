@@ -417,7 +417,10 @@ mod tests {
             ParserMode::Dialogue,
         );
         let u = &plan.utterances[0];
-        assert_eq!(u.inline_overrides.get("emotion_alpha"), Some(&"0.5".to_string()));
+        assert_eq!(
+            u.inline_overrides.get("emotion_alpha"),
+            Some(&"0.5".to_string())
+        );
         assert!(plan.report.warnings.is_empty());
     }
 

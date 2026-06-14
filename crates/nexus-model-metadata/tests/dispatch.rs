@@ -12,8 +12,7 @@ use tempfile::tempdir;
 #[test]
 fn dispatch_prefers_gguf_over_safetensors() {
     let tmp = tempdir().unwrap();
-    common::write_synthetic_gguf(&tmp.path().join("model.gguf"), "llama", 32, 4096, 4096)
-        .unwrap();
+    common::write_synthetic_gguf(&tmp.path().join("model.gguf"), "llama", 32, 4096, 4096).unwrap();
     // A dummy safetensors sentinel is enough — dispatch decides by file
     // presence, not by content at the dispatch layer.
     std::fs::write(tmp.path().join("model.safetensors"), b"").unwrap();

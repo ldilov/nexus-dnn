@@ -8,11 +8,13 @@ use sqlx::SqlitePool;
 use support::MockHost;
 
 async fn set_stored_version(pool: &SqlitePool, v: &str) {
-    sqlx::query("INSERT OR REPLACE INTO ext_local_llm_meta (key, value) VALUES ('schema_version', ?)")
-        .bind(v)
-        .execute(pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT OR REPLACE INTO ext_local_llm_meta (key, value) VALUES ('schema_version', ?)",
+    )
+    .bind(v)
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -28,7 +30,10 @@ async fn newer_stored_version_enters_read_only_and_writes_fail() {
         .create_thread(CreateThreadInput::default())
         .await
         .unwrap_err();
-    assert!(matches!(err, ChatHistoryError::SchemaVersionMismatch { .. }));
+    assert!(matches!(
+        err,
+        ChatHistoryError::SchemaVersionMismatch { .. }
+    ));
 }
 
 #[tokio::test]

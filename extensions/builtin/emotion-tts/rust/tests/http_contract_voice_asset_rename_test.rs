@@ -150,9 +150,7 @@ async fn patch_rename(
 ) -> (StatusCode, Value) {
     let req = Request::builder()
         .method(Method::PATCH)
-        .uri(format!(
-            "/voice-assets/{voice_id}?deploymentId={dep_id}"
-        ))
+        .uri(format!("/voice-assets/{voice_id}?deploymentId={dep_id}"))
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();

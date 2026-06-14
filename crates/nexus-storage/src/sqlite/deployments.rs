@@ -551,10 +551,12 @@ impl DeploymentMappers {
 
         // Per-revision child tables.
         for rev_id in &revision_ids {
-            sqlx::query("DELETE FROM deployment_artifact_bindings WHERE deployment_revision_id = ?")
-                .bind(rev_id)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(
+                "DELETE FROM deployment_artifact_bindings WHERE deployment_revision_id = ?",
+            )
+            .bind(rev_id)
+            .execute(&self.pool)
+            .await?;
             sqlx::query("DELETE FROM deployment_model_bindings WHERE deployment_revision_id = ?")
                 .bind(rev_id)
                 .execute(&self.pool)

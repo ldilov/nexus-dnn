@@ -120,9 +120,7 @@ fn run_extractor(choice: FormatChoice, install_id: &str) -> ExtractedMetadata {
     let outcome = match format {
         ArtifactFormat::Gguf => GgufExtractor::new().extract(&target, install_id),
         ArtifactFormat::Safetensors => SafetensorsExtractor::new().extract(&target, install_id),
-        ArtifactFormat::PytorchIndex => {
-            PytorchIndexExtractor::new().extract(&target, install_id)
-        }
+        ArtifactFormat::PytorchIndex => PytorchIndexExtractor::new().extract(&target, install_id),
         ArtifactFormat::Unknown => return ExtractedMetadata::failed(install_id, format),
     };
     outcome.unwrap_or_else(|_| ExtractedMetadata::failed(install_id, format))

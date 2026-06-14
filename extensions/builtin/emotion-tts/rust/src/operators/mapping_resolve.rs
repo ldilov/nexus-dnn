@@ -178,13 +178,25 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.resolved.len(), 4);
-        assert_eq!(out.resolved[0].speaker_voice_asset_id.as_ref(), Some(&bob_voice));
+        assert_eq!(
+            out.resolved[0].speaker_voice_asset_id.as_ref(),
+            Some(&bob_voice)
+        );
         assert_eq!(out.resolved[0].character_index, 1);
-        assert_eq!(out.resolved[1].speaker_voice_asset_id.as_ref(), Some(&bob_voice));
+        assert_eq!(
+            out.resolved[1].speaker_voice_asset_id.as_ref(),
+            Some(&bob_voice)
+        );
         assert_eq!(out.resolved[1].character_index, 2);
-        assert_eq!(out.resolved[2].speaker_voice_asset_id.as_ref(), Some(&alice_voice));
+        assert_eq!(
+            out.resolved[2].speaker_voice_asset_id.as_ref(),
+            Some(&alice_voice)
+        );
         assert_eq!(out.resolved[2].character_index, 1);
-        assert_eq!(out.resolved[3].speaker_voice_asset_id.as_ref(), Some(&bob_voice));
+        assert_eq!(
+            out.resolved[3].speaker_voice_asset_id.as_ref(),
+            Some(&bob_voice)
+        );
         assert_eq!(out.resolved[3].character_index, 3);
         assert!(out.unresolved_characters.is_empty());
     }

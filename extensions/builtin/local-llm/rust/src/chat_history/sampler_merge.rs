@@ -1,25 +1,46 @@
 use super::model::{SamplerBlock, SamplerOverride};
 
-pub fn merge_sampler(per_model: &SamplerBlock, override_block: Option<&SamplerOverride>) -> SamplerBlock {
+pub fn merge_sampler(
+    per_model: &SamplerBlock,
+    override_block: Option<&SamplerOverride>,
+) -> SamplerBlock {
     let ov = override_block;
 
     SamplerBlock {
-        temperature: ov.and_then(|o| o.temperature).unwrap_or(per_model.temperature),
+        temperature: ov
+            .and_then(|o| o.temperature)
+            .unwrap_or(per_model.temperature),
         min_p: ov.and_then(|o| o.min_p).unwrap_or(per_model.min_p),
         top_k: ov.and_then(|o| o.top_k).unwrap_or(per_model.top_k),
         seed: ov.and_then(|o| o.seed).unwrap_or(per_model.seed),
         top_p: ov.and_then(|o| o.top_p).or(per_model.top_p),
-        repeat_penalty: ov.and_then(|o| o.repeat_penalty).or(per_model.repeat_penalty),
-        presence_penalty: ov.and_then(|o| o.presence_penalty).or(per_model.presence_penalty),
-        frequency_penalty: ov.and_then(|o| o.frequency_penalty).or(per_model.frequency_penalty),
+        repeat_penalty: ov
+            .and_then(|o| o.repeat_penalty)
+            .or(per_model.repeat_penalty),
+        presence_penalty: ov
+            .and_then(|o| o.presence_penalty)
+            .or(per_model.presence_penalty),
+        frequency_penalty: ov
+            .and_then(|o| o.frequency_penalty)
+            .or(per_model.frequency_penalty),
         typical_p: ov.and_then(|o| o.typical_p).or(per_model.typical_p),
-        dynatemp_range: ov.and_then(|o| o.dynatemp_range).or(per_model.dynatemp_range),
-        dynatemp_exponent: ov.and_then(|o| o.dynatemp_exponent).or(per_model.dynatemp_exponent),
+        dynatemp_range: ov
+            .and_then(|o| o.dynatemp_range)
+            .or(per_model.dynatemp_range),
+        dynatemp_exponent: ov
+            .and_then(|o| o.dynatemp_exponent)
+            .or(per_model.dynatemp_exponent),
         xtc_threshold: ov.and_then(|o| o.xtc_threshold).or(per_model.xtc_threshold),
-        xtc_probability: ov.and_then(|o| o.xtc_probability).or(per_model.xtc_probability),
-        dry_multiplier: ov.and_then(|o| o.dry_multiplier).or(per_model.dry_multiplier),
+        xtc_probability: ov
+            .and_then(|o| o.xtc_probability)
+            .or(per_model.xtc_probability),
+        dry_multiplier: ov
+            .and_then(|o| o.dry_multiplier)
+            .or(per_model.dry_multiplier),
         dry_base: ov.and_then(|o| o.dry_base).or(per_model.dry_base),
-        dry_allowed_length: ov.and_then(|o| o.dry_allowed_length).or(per_model.dry_allowed_length),
+        dry_allowed_length: ov
+            .and_then(|o| o.dry_allowed_length)
+            .or(per_model.dry_allowed_length),
     }
 }
 

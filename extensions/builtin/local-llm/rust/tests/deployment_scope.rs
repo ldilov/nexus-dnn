@@ -26,7 +26,10 @@ async fn list_scopes_to_deployment_plus_unbound() {
             .await
             .unwrap();
     }
-    store.create_thread(CreateThreadInput::default()).await.unwrap();
+    store
+        .create_thread(CreateThreadInput::default())
+        .await
+        .unwrap();
 
     let a = store
         .list_threads(ThreadListFilter {
@@ -72,8 +75,14 @@ async fn no_deployment_filter_returns_only_unbound() {
         })
         .await
         .unwrap();
-    store.create_thread(CreateThreadInput::default()).await.unwrap();
-    store.create_thread(CreateThreadInput::default()).await.unwrap();
+    store
+        .create_thread(CreateThreadInput::default())
+        .await
+        .unwrap();
+    store
+        .create_thread(CreateThreadInput::default())
+        .await
+        .unwrap();
 
     let page = store
         .list_threads(ThreadListFilter {

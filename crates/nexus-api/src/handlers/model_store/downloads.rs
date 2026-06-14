@@ -359,26 +359,24 @@ pub async fn create_download(
 
     let job = match store.create(params).await {
         Ok(job) => job,
-        Err(JobStoreError::Duplicate(existing)) => {
-            match store.get(&existing).await {
-                Ok(Some(persisted)) => {
-                    let dto = DownloadJobDto::from_persisted(persisted);
-                    let mut resp = ApiResponse::ok(dto).into_response();
-                    *resp.status_mut() = StatusCode::OK;
-                    return resp;
-                }
-                Ok(None) => {
-                    return ApiResponse::ok(serde_json::json!({
-                        "job_id": existing.to_string(),
-                        "existing": true,
-                    }))
-                    .into_response();
-                }
-                Err(e) => {
-                    return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
-                }
+        Err(JobStoreError::Duplicate(existing)) => match store.get(&existing).await {
+            Ok(Some(persisted)) => {
+                let dto = DownloadJobDto::from_persisted(persisted);
+                let mut resp = ApiResponse::ok(dto).into_response();
+                *resp.status_mut() = StatusCode::OK;
+                return resp;
             }
-        }
+            Ok(None) => {
+                return ApiResponse::ok(serde_json::json!({
+                    "job_id": existing.to_string(),
+                    "existing": true,
+                }))
+                .into_response();
+            }
+            Err(e) => {
+                return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
+            }
+        },
         Err(e) => {
             return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
         }

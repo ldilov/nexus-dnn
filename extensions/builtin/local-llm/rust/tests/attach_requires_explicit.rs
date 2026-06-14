@@ -9,7 +9,10 @@ use support::make_store;
 async fn open_unbound_thread_does_not_auto_attach_on_read() {
     let (store, host, _pool) = make_store().await;
     host.set_current(Some(DeploymentId::new("deploy-bound")));
-    let thread = store.create_thread(CreateThreadInput::default()).await.unwrap();
+    let thread = store
+        .create_thread(CreateThreadInput::default())
+        .await
+        .unwrap();
     assert!(thread.is_unbound);
 
     for _ in 0..10 {
@@ -23,7 +26,10 @@ async fn open_unbound_thread_does_not_auto_attach_on_read() {
 async fn send_on_unbound_thread_does_not_attach() {
     let (store, host, _pool) = make_store().await;
     host.set_current(Some(DeploymentId::new("deploy-bound")));
-    let thread = store.create_thread(CreateThreadInput::default()).await.unwrap();
+    let thread = store
+        .create_thread(CreateThreadInput::default())
+        .await
+        .unwrap();
 
     store
         .append_message(

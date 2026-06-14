@@ -49,7 +49,9 @@ pub async fn handle(
         model_id = %request.model_id,
         session_id = %request.session_id,
     );
-    handle_inner(ctx, transport, request_id, request).instrument(span).await
+    handle_inner(ctx, transport, request_id, request)
+        .instrument(span)
+        .await
 }
 
 async fn handle_inner(

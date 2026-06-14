@@ -20,9 +20,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use chrono::Utc;
 use emotion_tts_extension::domain::{DeploymentId, RunId, UtteranceId};
-use emotion_tts_extension::host_contract::{
-    ArtifactPut, HostArtifactStore, HostContractError,
-};
+use emotion_tts_extension::host_contract::{ArtifactPut, HostArtifactStore, HostContractError};
 use emotion_tts_extension::queue::RuntimeQueue;
 use emotion_tts_extension::router::build_router;
 use emotion_tts_extension::storage::repo_traits::{DeploymentRow, RunRow, UtteranceRow};

@@ -15,14 +15,14 @@
 
 use async_trait::async_trait;
 use nexus_local_llm_chat_history::chat_history::store_sqlx::ChatHistoryStoreSqlx;
-use nexus_local_llm_chat_history::{
-    AppendMessageInput, ChatHistoryStore, CreateThreadInput, MessageRole,
-    SamplerBlock, ThreadListFilter, migrations,
-};
 use nexus_local_llm_chat_history::host_client::HostDeploymentsClient;
 use nexus_local_llm_chat_history::ids::DeploymentId;
-use sqlx::SqlitePool;
+use nexus_local_llm_chat_history::{
+    migrations, AppendMessageInput, ChatHistoryStore, CreateThreadInput, MessageRole, SamplerBlock,
+    ThreadListFilter,
+};
 use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::SqlitePool;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -36,19 +36,22 @@ impl HostDeploymentsClient for StubHostClient {
     ) -> nexus_local_llm_chat_history::Result<Option<DeploymentId>> {
         Ok(None)
     }
-    async fn known_deployments(
-        &self,
-    ) -> nexus_local_llm_chat_history::Result<Vec<DeploymentId>> {
+    async fn known_deployments(&self) -> nexus_local_llm_chat_history::Result<Vec<DeploymentId>> {
         Ok(Vec::new())
     }
 }
 
 async fn open_pool(path: &std::path::Path) -> SqlitePool {
-    let url = format!("sqlite://{}?mode=rwc", path.to_string_lossy().replace('\\', "/"));
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        path.to_string_lossy().replace('\\', "/")
+    );
     let opts = SqliteConnectOptions::from_str(&url)
         .expect("parse opts")
         .create_if_missing(true);
-    let pool = SqlitePool::connect_with(opts).await.expect("connect file db");
+    let pool = SqlitePool::connect_with(opts)
+        .await
+        .expect("connect file db");
     migrations::apply_all(&pool).await.expect("migrations");
     pool
 }

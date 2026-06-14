@@ -94,9 +94,7 @@ impl WorkerTransport {
             )));
         }
 
-        let result = response
-            .result
-            .unwrap_or(serde_json::Value::Null);
+        let result = response.result.unwrap_or(serde_json::Value::Null);
         let decoded = serde_json::from_value(result)?;
         Ok(decoded)
     }
@@ -114,7 +112,12 @@ impl WorkerTransport {
             .await
     }
 
-    pub async fn reply_error(&self, id: u64, code: i32, message: impl Into<String>) -> WorkerResult<()> {
+    pub async fn reply_error(
+        &self,
+        id: u64,
+        code: i32,
+        message: impl Into<String>,
+    ) -> WorkerResult<()> {
         let response = new_error_response(id, code, message.into());
         self.write_message(&RpcMessage::Response(response)).await
     }

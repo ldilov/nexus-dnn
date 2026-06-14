@@ -136,11 +136,7 @@ fn build_partial(install_id: &str, layer_count: Option<u32>) -> ExtractedMetadat
     }
 }
 
-fn build_ok(
-    install_id: &str,
-    config: &Value,
-    layer_from_keys: Option<u32>,
-) -> ExtractedMetadata {
+fn build_ok(install_id: &str, config: &Value, layer_from_keys: Option<u32>) -> ExtractedMetadata {
     let layer_count = read_u32(config, "num_hidden_layers").or(layer_from_keys);
     let max_context = read_u32(config, "max_position_embeddings");
     let hidden_size = read_u32(config, "hidden_size");
@@ -235,9 +231,6 @@ mod tests {
 
     #[test]
     fn canonicalizes_unknown_architecture() {
-        assert_eq!(
-            canonicalize_architecture("MyNovelForCausalLM"),
-            "mynovel"
-        );
+        assert_eq!(canonicalize_architecture("MyNovelForCausalLM"), "mynovel");
     }
 }

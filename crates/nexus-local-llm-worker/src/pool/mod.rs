@@ -90,7 +90,14 @@ impl RuntimePool {
             debug!(%key, reason, "pool: evicting slot");
             slot.guard.initiate_release();
             let transport = self.host.transport();
-            let _ = emit_pool_evicted(transport, PoolEvictedEvent { pool_key: key, reason }).await;
+            let _ = emit_pool_evicted(
+                transport,
+                PoolEvictedEvent {
+                    pool_key: key,
+                    reason,
+                },
+            )
+            .await;
         }
         Ok(())
     }

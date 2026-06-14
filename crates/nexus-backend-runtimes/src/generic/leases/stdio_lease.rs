@@ -170,8 +170,8 @@ impl StdioLease {
 
             let (id, rx) = self.matchmaker.allocate();
             let request = RpcRequest::new(id, method, params);
-            let frame = serde_json::to_value(&request)
-                .map_err(|e| LeaseError::Internal(e.to_string()))?;
+            let frame =
+                serde_json::to_value(&request).map_err(|e| LeaseError::Internal(e.to_string()))?;
 
             tracing::debug!(rpc_id = %id, "rpc dispatched");
 

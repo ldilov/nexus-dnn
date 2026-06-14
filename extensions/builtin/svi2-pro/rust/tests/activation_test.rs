@@ -4,9 +4,7 @@ use nexus_extension::{ExtensionRegistry, InMemoryExtensionRegistry};
 use semver::Version;
 
 fn builtin_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
 #[tokio::test]

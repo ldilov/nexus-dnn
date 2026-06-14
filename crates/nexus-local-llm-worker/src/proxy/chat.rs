@@ -45,14 +45,11 @@ pub async fn stream_chat_completions(
     body: ChatCompletionRequest,
 ) -> WorkerResult<OperatorEventStream> {
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| WorkerError::BackendUnavailable {
+    let resp = client.post(&url).json(&body).send().await.map_err(|e| {
+        WorkerError::BackendUnavailable {
             reason: format!("{e}"),
-        })?;
+        }
+    })?;
 
     if !resp.status().is_success() {
         return Err(WorkerError::BackendUnavailable {

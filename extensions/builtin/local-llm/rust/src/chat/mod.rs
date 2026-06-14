@@ -15,8 +15,8 @@ pub use resources::ChatHandlerResources;
 
 use std::sync::Arc;
 
-use axum::Router;
 use axum::routing::{get, post};
+use axum::Router;
 
 /// Build the chat sub-router. Mounts only the routes that have no
 /// spec-029 equivalent: generation settings, active-model binding, and
@@ -53,9 +53,6 @@ pub fn build_chat_router(resources: Arc<ChatHandlerResources>) -> Router {
             "/chat/available_models",
             get(handlers::list_available_models),
         )
-        .route(
-            "/chat/runtime_status",
-            get(handlers::get_runtime_status),
-        )
+        .route("/chat/runtime_status", get(handlers::get_runtime_status))
         .with_state(resources)
 }

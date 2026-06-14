@@ -209,7 +209,11 @@ pub async fn get_workflow_current_version(
     .bind(id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.and_then(|r| r.try_get::<Option<String>, _>("current_version").ok().flatten()))
+    Ok(row.and_then(|r| {
+        r.try_get::<Option<String>, _>("current_version")
+            .ok()
+            .flatten()
+    }))
 }
 
 pub async fn set_workflow_current_version(

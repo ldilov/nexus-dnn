@@ -22,10 +22,7 @@ async fn threads_tied_to_gone_deployment_are_still_openable() {
 
     for tid in &tids {
         let t = store.get_thread(tid).await.unwrap();
-        assert_eq!(
-            t.deployment_id.as_ref().map(|d| d.as_str()),
-            Some("X")
-        );
+        assert_eq!(t.deployment_id.as_ref().map(|d| d.as_str()), Some("X"));
     }
 
     let unbound_view = store

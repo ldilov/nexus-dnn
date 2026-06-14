@@ -88,9 +88,15 @@ fn tokenise(script: &str) -> Vec<Token> {
                 flush(&mut buffer, buffer_start_line, &mut tokens);
                 buffer_start_line = current_line;
                 if ch == '@' {
-                    tokens.push(Token::Character { name: name_value, line: current_line });
+                    tokens.push(Token::Character {
+                        name: name_value,
+                        line: current_line,
+                    });
                 } else {
-                    tokens.push(Token::Emotion { name: name_value.into_inner(), line: current_line });
+                    tokens.push(Token::Emotion {
+                        name: name_value.into_inner(),
+                        line: current_line,
+                    });
                 }
                 i = j;
                 continue;
@@ -125,13 +131,25 @@ fn walk(tokens: Vec<Token>, script: &str) -> ParsePlan {
     for token in tokens {
         match token {
             Token::Character { name, line } => {
-                emit(&mut utterances, &mut buffer, buffer_line, current_character.as_ref(), &current_emotion);
+                emit(
+                    &mut utterances,
+                    &mut buffer,
+                    buffer_line,
+                    current_character.as_ref(),
+                    &current_emotion,
+                );
                 current_character = Some(name);
                 current_emotion = None;
                 buffer_line = line;
             }
             Token::Emotion { name, line } => {
-                emit(&mut utterances, &mut buffer, buffer_line, current_character.as_ref(), &current_emotion);
+                emit(
+                    &mut utterances,
+                    &mut buffer,
+                    buffer_line,
+                    current_character.as_ref(),
+                    &current_emotion,
+                );
                 current_emotion = Some(name);
                 buffer_line = line;
             }
@@ -144,7 +162,13 @@ fn walk(tokens: Vec<Token>, script: &str) -> ParsePlan {
         }
     }
 
-    emit(&mut utterances, &mut buffer, buffer_line, current_character.as_ref(), &current_emotion);
+    emit(
+        &mut utterances,
+        &mut buffer,
+        buffer_line,
+        current_character.as_ref(),
+        &current_emotion,
+    );
 
     report.tagged_count = utterances
         .iter()
@@ -235,7 +259,10 @@ mod tests {
         assert_eq!(plan.utterances.len(), 1);
         let u = &plan.utterances[0];
         assert_eq!(u.character_display, "bob");
-        assert_eq!(u.inline_overrides.get("emotion_preset"), Some(&"happy".to_string()));
+        assert_eq!(
+            u.inline_overrides.get("emotion_preset"),
+            Some(&"happy".to_string())
+        );
         assert_eq!(u.text, "hi there");
     }
 
@@ -253,9 +280,15 @@ mod tests {
         let plan = parse("@bob /happy hi @alice there");
         assert_eq!(plan.utterances.len(), 2);
         assert_eq!(plan.utterances[0].character_display, "bob");
-        assert_eq!(plan.utterances[0].inline_overrides.get("emotion_preset"), Some(&"happy".to_string()));
+        assert_eq!(
+            plan.utterances[0].inline_overrides.get("emotion_preset"),
+            Some(&"happy".to_string())
+        );
         assert_eq!(plan.utterances[1].character_display, "alice");
-        assert!(plan.utterances[1].inline_overrides.get("emotion_preset").is_none());
+        assert!(plan.utterances[1]
+            .inline_overrides
+            .get("emotion_preset")
+            .is_none());
     }
 
     #[test]
@@ -264,10 +297,16 @@ mod tests {
         assert_eq!(plan.utterances.len(), 2);
         assert_eq!(plan.utterances[0].character_display, "bob");
         assert_eq!(plan.utterances[0].text, "hi");
-        assert_eq!(plan.utterances[0].inline_overrides.get("emotion_preset"), Some(&"happy".to_string()));
+        assert_eq!(
+            plan.utterances[0].inline_overrides.get("emotion_preset"),
+            Some(&"happy".to_string())
+        );
         assert_eq!(plan.utterances[1].character_display, "bob");
         assert_eq!(plan.utterances[1].text, "oh no");
-        assert_eq!(plan.utterances[1].inline_overrides.get("emotion_preset"), Some(&"sad".to_string()));
+        assert_eq!(
+            plan.utterances[1].inline_overrides.get("emotion_preset"),
+            Some(&"sad".to_string())
+        );
     }
 
     #[test]
@@ -315,7 +354,10 @@ mod tests {
         let plan = parse("/happy nobody yet");
         assert_eq!(plan.utterances.len(), 1);
         assert_eq!(plan.utterances[0].character_display, NARRATOR);
-        assert_eq!(plan.utterances[0].inline_overrides.get("emotion_preset"), Some(&"happy".to_string()));
+        assert_eq!(
+            plan.utterances[0].inline_overrides.get("emotion_preset"),
+            Some(&"happy".to_string())
+        );
         assert_eq!(plan.utterances[0].text, "nobody yet");
     }
 
@@ -332,7 +374,10 @@ mod tests {
         let plan = parse("@bob-the-builder /very-happy can he fix it");
         assert_eq!(plan.utterances.len(), 1);
         assert_eq!(plan.utterances[0].character_display, "bob-the-builder");
-        assert_eq!(plan.utterances[0].inline_overrides.get("emotion_preset"), Some(&"very-happy".to_string()));
+        assert_eq!(
+            plan.utterances[0].inline_overrides.get("emotion_preset"),
+            Some(&"very-happy".to_string())
+        );
     }
 
     #[test]
@@ -378,10 +423,16 @@ mod tests {
         assert_eq!(plan.utterances.len(), 2);
         assert_eq!(plan.utterances[0].character_display, NARRATOR);
         assert_eq!(plan.utterances[0].text, "first");
-        assert_eq!(plan.utterances[0].inline_overrides.get("emotion_preset"), Some(&"happy".to_string()));
+        assert_eq!(
+            plan.utterances[0].inline_overrides.get("emotion_preset"),
+            Some(&"happy".to_string())
+        );
         assert_eq!(plan.utterances[1].character_display, NARRATOR);
         assert_eq!(plan.utterances[1].text, "second");
-        assert_eq!(plan.utterances[1].inline_overrides.get("emotion_preset"), Some(&"sad".to_string()));
+        assert_eq!(
+            plan.utterances[1].inline_overrides.get("emotion_preset"),
+            Some(&"sad".to_string())
+        );
     }
 
     #[test]
@@ -421,13 +472,25 @@ mod tests {
         assert_eq!(plan.utterances[0].character_display, "narrator");
         assert_eq!(plan.utterances[0].text, "Once there were three friends.");
         assert_eq!(plan.utterances[1].character_display, "bob");
-        assert_eq!(plan.utterances[1].inline_overrides.get("emotion_preset"), Some(&"happy".to_string()));
+        assert_eq!(
+            plan.utterances[1].inline_overrides.get("emotion_preset"),
+            Some(&"happy".to_string())
+        );
         assert_eq!(plan.utterances[2].character_display, "alice");
-        assert_eq!(plan.utterances[2].inline_overrides.get("emotion_preset"), Some(&"melancholic".to_string()));
+        assert_eq!(
+            plan.utterances[2].inline_overrides.get("emotion_preset"),
+            Some(&"melancholic".to_string())
+        );
         assert_eq!(plan.utterances[3].character_display, "bob");
-        assert_eq!(plan.utterances[3].inline_overrides.get("emotion_preset"), Some(&"sad".to_string()));
+        assert_eq!(
+            plan.utterances[3].inline_overrides.get("emotion_preset"),
+            Some(&"sad".to_string())
+        );
         assert_eq!(plan.utterances[4].character_display, "alice");
-        assert!(plan.utterances[4].inline_overrides.get("emotion_preset").is_none());
+        assert!(plan.utterances[4]
+            .inline_overrides
+            .get("emotion_preset")
+            .is_none());
         assert_eq!(plan.utterances[5].character_display, "narrator");
         assert_eq!(plan.utterances[5].text, "the end");
     }

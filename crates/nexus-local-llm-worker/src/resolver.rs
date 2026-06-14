@@ -54,7 +54,11 @@ impl Resolver {
         let candidates: Vec<BackendRuntime> = candidates
             .into_iter()
             .filter(|r| r.health == RuntimeHealth::Installed)
-            .filter(|r| model.compatible_backends.contains(&r.codename.as_str().to_string()))
+            .filter(|r| {
+                model
+                    .compatible_backends
+                    .contains(&r.codename.as_str().to_string())
+            })
             .collect();
 
         if candidates.is_empty() {

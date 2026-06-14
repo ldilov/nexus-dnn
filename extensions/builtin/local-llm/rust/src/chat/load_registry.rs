@@ -128,7 +128,10 @@ mod tests {
         registry.set("thread-loading", loading_state("alpha")).await;
         registry.set("thread-ready", ready_state("beta")).await;
 
-        let found = registry.find_ready().await.expect("should find a ready entry");
+        let found = registry
+            .find_ready()
+            .await
+            .expect("should find a ready entry");
         match found {
             LoadState::Ready { binding, .. } => {
                 assert_eq!(binding.family_id, "beta");

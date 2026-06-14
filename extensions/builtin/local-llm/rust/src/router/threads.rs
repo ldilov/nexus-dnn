@@ -116,7 +116,10 @@ pub async fn patch_thread_handler(
         clear_sampler_override: req.clear_sampler_override,
         attach_to_current_deployment: req.attach_to_current_deployment,
     };
-    let thread = state.store.patch_thread(&ThreadId::new(thread_id), patch).await?;
+    let thread = state
+        .store
+        .patch_thread(&ThreadId::new(thread_id), patch)
+        .await?;
     Ok(Json(thread))
 }
 

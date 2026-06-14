@@ -101,10 +101,7 @@ impl Database for SqliteDatabase {
         workflows::clear_workflow_user_edit(&self.pool, id).await
     }
 
-    async fn insert_workflow_version(
-        &self,
-        r: &WorkflowVersionRecord,
-    ) -> Result<(), StorageError> {
+    async fn insert_workflow_version(&self, r: &WorkflowVersionRecord) -> Result<(), StorageError> {
         workflows::insert_workflow_version(&self.pool, r).await
     }
 
@@ -123,10 +120,7 @@ impl Database for SqliteDatabase {
         workflows::list_workflow_versions(&self.pool, workflow_id).await
     }
 
-    async fn get_workflow_current_version(
-        &self,
-        id: &str,
-    ) -> Result<Option<String>, StorageError> {
+    async fn get_workflow_current_version(&self, id: &str) -> Result<Option<String>, StorageError> {
         workflows::get_workflow_current_version(&self.pool, id).await
     }
 

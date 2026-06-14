@@ -182,7 +182,9 @@ pub fn spawn_render(task: RenderTask) {
             }
         });
 
-        let outcome = client.call_long_running(methods::RENDER_START, params).await;
+        let outcome = client
+            .call_long_running(methods::RENDER_START, params)
+            .await;
 
         relay.abort();
 
@@ -190,9 +192,7 @@ pub fn spawn_render(task: RenderTask) {
             // A cooperative cancel resolves the long-running call with a
             // `cancelled` reply instead of an error. Honour it as terminal —
             // never overwrite the cancelled row with a completed one.
-            Ok(result)
-                if result.get("status").and_then(JsonValue::as_str) == Some("cancelled") =>
-            {
+            Ok(result) if result.get("status").and_then(JsonValue::as_str) == Some("cancelled") => {
                 let _ = store.mark_cancelled(&job_id).await;
                 if let Some(em) = &emitter {
                     let transitions = { tracker.lock().await.on_failure() };
@@ -298,7 +298,10 @@ mod tests {
         emit_transition(&emitter, &Transition::Completed(node::MUX));
         emit_transition(&emitter, &Transition::Failed(node::DIFFUSION));
         let ev = bus.replay_after(None);
-        assert!(matches!(ev[0].event, NexusEvent::NodeProgress { percent: 42, .. }));
+        assert!(matches!(
+            ev[0].event,
+            NexusEvent::NodeProgress { percent: 42, .. }
+        ));
         assert!(matches!(ev[1].event, NexusEvent::NodeCompleted { .. }));
         assert!(matches!(ev[2].event, NexusEvent::NodeFailed { .. }));
     }

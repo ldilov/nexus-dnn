@@ -74,10 +74,8 @@ async fn attach_without_bound_deployment_returns_409() {
         )
         .await
         .unwrap();
-    let thread: ChatThread = serde_json::from_slice(
-        &create.into_body().collect().await.unwrap().to_bytes(),
-    )
-    .unwrap();
+    let thread: ChatThread =
+        serde_json::from_slice(&create.into_body().collect().await.unwrap().to_bytes()).unwrap();
     let patch = app
         .oneshot(
             Request::patch(format!("/chat/threads/{}", thread.thread_id))
@@ -107,10 +105,8 @@ async fn attach_with_bound_deployment_succeeds() {
         )
         .await
         .unwrap();
-    let thread: ChatThread = serde_json::from_slice(
-        &create.into_body().collect().await.unwrap().to_bytes(),
-    )
-    .unwrap();
+    let thread: ChatThread =
+        serde_json::from_slice(&create.into_body().collect().await.unwrap().to_bytes()).unwrap();
 
     let patch = app
         .oneshot(
@@ -146,10 +142,8 @@ async fn delete_cascade_and_404_after() {
         )
         .await
         .unwrap();
-    let thread: ChatThread = serde_json::from_slice(
-        &create.into_body().collect().await.unwrap().to_bytes(),
-    )
-    .unwrap();
+    let thread: ChatThread =
+        serde_json::from_slice(&create.into_body().collect().await.unwrap().to_bytes()).unwrap();
     let del = app
         .clone()
         .oneshot(

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use nexus_extension::{ExtensionManifest, parse_manifest, validate_manifest_schema};
+use nexus_extension::{parse_manifest, validate_manifest_schema, ExtensionManifest};
 
 fn manifest_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -37,9 +37,18 @@ fn manifest_has_dependency_steps_block() {
     let deps = m.dependencies.expect("dependencies block present");
     let ids: Vec<&str> = deps.steps.iter().map(|s| s.id.as_str()).collect();
     for required in [
-        "python", "pkgs", "ffmpeg", "sdcli", "model_wan_base", "model_svi_lora", "validate",
+        "python",
+        "pkgs",
+        "ffmpeg",
+        "sdcli",
+        "model_wan_base",
+        "model_svi_lora",
+        "validate",
     ] {
-        assert!(ids.contains(&required), "missing dependency step: {required}");
+        assert!(
+            ids.contains(&required),
+            "missing dependency step: {required}"
+        );
     }
     let validate = deps
         .steps

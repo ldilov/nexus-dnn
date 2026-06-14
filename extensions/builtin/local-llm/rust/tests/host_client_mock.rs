@@ -39,11 +39,21 @@ impl Default for MockHostDeploymentsClient {
 #[async_trait]
 impl HostDeploymentsClient for MockHostDeploymentsClient {
     async fn current_deployment(&self) -> Result<Option<DeploymentId>> {
-        Ok(self.state.lock().expect("mock state poisoned").current.clone())
+        Ok(self
+            .state
+            .lock()
+            .expect("mock state poisoned")
+            .current
+            .clone())
     }
 
     async fn known_deployments(&self) -> Result<Vec<DeploymentId>> {
-        Ok(self.state.lock().expect("mock state poisoned").known.clone())
+        Ok(self
+            .state
+            .lock()
+            .expect("mock state poisoned")
+            .known
+            .clone())
     }
 }
 

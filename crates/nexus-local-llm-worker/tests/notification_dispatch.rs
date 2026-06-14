@@ -55,7 +55,10 @@ async fn malformed_notification_payload_is_logged_and_skipped() {
     let handle = NotificationConsumer::spawn(Arc::clone(&h.worker_transport), pool, tx);
 
     h.fake_host
-        .push_notification("backend.state", json!({ "this_is_not_the_right_shape": true }))
+        .push_notification(
+            "backend.state",
+            json!({ "this_is_not_the_right_shape": true }),
+        )
         .await;
 
     let slept = tokio::time::timeout(Duration::from_millis(150), rx).await;

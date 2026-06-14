@@ -99,8 +99,13 @@ impl StageTracker {
         }
 
         let clip_index = || {
-            u32::try_from(params.get("clip_index").and_then(Value::as_u64).unwrap_or(0))
-                .unwrap_or(0)
+            u32::try_from(
+                params
+                    .get("clip_index")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            )
+            .unwrap_or(0)
         };
 
         match method {
@@ -113,15 +118,24 @@ impl StageTracker {
                     self.diffusion_started = true;
                     out.push(Transition::Started(node::DIFFUSION));
                 }
-                out.push(Transition::Progress(node::DIFFUSION, self.percent_for(clip_index(), 0)));
+                out.push(Transition::Progress(
+                    node::DIFFUSION,
+                    self.percent_for(clip_index(), 0),
+                ));
             }
             method::CLIP_STEP | method::PROGRESS => {
                 if self.diffusion_started && !self.diffusion_done {
-                    out.push(Transition::Progress(node::DIFFUSION, self.percent_for(clip_index(), 1)));
+                    out.push(Transition::Progress(
+                        node::DIFFUSION,
+                        self.percent_for(clip_index(), 1),
+                    ));
                 }
             }
             method::CLIP_COMPLETED => {
-                out.push(Transition::Progress(node::DIFFUSION, self.percent_for(clip_index(), 2)));
+                out.push(Transition::Progress(
+                    node::DIFFUSION,
+                    self.percent_for(clip_index(), 2),
+                ));
             }
             _ => {}
         }

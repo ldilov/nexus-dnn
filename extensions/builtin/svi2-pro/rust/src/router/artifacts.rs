@@ -229,9 +229,7 @@ async fn delete_artifact(
 ) -> Response {
     match remove_artifact(&state, &job_id).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => {
-            Svi2Error::not_found(format!("job {job_id} has no artifact")).into_response()
-        }
+        Ok(false) => Svi2Error::not_found(format!("job {job_id} has no artifact")).into_response(),
         Err(err) => err.into_response(),
     }
 }
@@ -422,13 +420,13 @@ fn run_label(row: &RenderJobRow) -> String {
         .and_then(JsonValue::as_i64)
         .unwrap_or(1);
     let preset = row.preset_id.as_deref().unwrap_or("custom");
-    format!("{preset} · {width}×{height} · {clips} clip{}", if clips == 1 { "" } else { "s" })
+    format!(
+        "{preset} · {width}×{height} · {clips} clip{}",
+        if clips == 1 { "" } else { "s" }
+    )
 }
 
-async fn list_runs(
-    State(state): State<AppState>,
-    Path(_deployment_id): Path<String>,
-) -> Response {
+async fn list_runs(State(state): State<AppState>, Path(_deployment_id): Path<String>) -> Response {
     let rows = match state.store.list_jobs(LIST_LIMIT).await {
         Ok(rows) => rows,
         Err(err) => return err.into_response(),

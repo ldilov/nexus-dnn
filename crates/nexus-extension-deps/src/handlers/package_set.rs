@@ -101,7 +101,10 @@ impl StepHandler for PackageSetHandler {
             ));
         }
         for extra in &parsed.extras {
-            let starts_alnum = extra.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+            let starts_alnum = extra
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
             let valid = starts_alnum
                 && extra
                     .chars()
@@ -110,9 +113,7 @@ impl StepHandler for PackageSetHandler {
                 return Err(DepError::invalid_spec(
                     "",
                     "extras",
-                    format!(
-                        "invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"
-                    ),
+                    format!("invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"),
                 ));
             }
         }

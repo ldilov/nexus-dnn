@@ -51,7 +51,6 @@ pub async fn run() -> Result<()> {
 }
 
 async fn run_scoped(config: WorkerConfig) -> Result<()> {
-
     let transport = WorkerTransport::from_stdio();
     let host = HostClient::new(transport.clone());
     let pool_cap_usize = config.pool_cap.get();

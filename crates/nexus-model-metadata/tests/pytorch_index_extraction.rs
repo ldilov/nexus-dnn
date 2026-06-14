@@ -89,7 +89,9 @@ fn pytorch_index_gpt2_transformer_h_pattern() {
 
     assert_eq!(meta.format, ArtifactFormat::PytorchIndex);
     assert_eq!(meta.layer_count, Some(12));
-    let arch = meta.architecture.expect("architecture set from config.json");
+    let arch = meta
+        .architecture
+        .expect("architecture set from config.json");
     assert!(
         arch.to_ascii_lowercase().contains("gpt2"),
         "expected architecture to map to gpt2 family, got: {arch}"
@@ -103,10 +105,9 @@ fn pytorch_index_malformed_json_failed() {
 
     // Must not panic — return Failed status instead.
     let result = extractor().extract(tmp.path(), "install-malformed");
-    let meta = result.unwrap_or_else(|_| ExtractedMetadata::failed(
-        "install-malformed",
-        ArtifactFormat::PytorchIndex,
-    ));
+    let meta = result.unwrap_or_else(|_| {
+        ExtractedMetadata::failed("install-malformed", ArtifactFormat::PytorchIndex)
+    });
 
     assert_eq!(meta.extraction_status, ExtractionStatus::Failed);
     assert!(meta.layer_count.is_none());

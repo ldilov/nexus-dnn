@@ -87,7 +87,8 @@ async fn cross_tenant_only_configured_install_reaps() {
     .await;
 
     // Only ext-A opts into reaping.
-    mgr.set_idle_timeout(install_a, Duration::from_secs(1)).await;
+    mgr.set_idle_timeout(install_a, Duration::from_secs(1))
+        .await;
 
     // Advance logical "now" past A's window.
     let future_now = Instant::now() + Duration::from_secs(60);
@@ -124,7 +125,8 @@ async fn idle_reapable_false_blocks_reaper() {
             .with_idle_reapable(false),
     )
     .await;
-    mgr.set_idle_timeout(install_id, Duration::from_millis(50)).await;
+    mgr.set_idle_timeout(install_id, Duration::from_millis(50))
+        .await;
 
     let future_now = Instant::now() + Duration::from_secs(60);
     let victims = mgr.reap_idle(future_now).await;
@@ -151,13 +153,17 @@ async fn in_flight_count_blocks_reaper() {
         RegisterMeta::new(install_id, OwnerKind::Deployment, "mid-prompt".into()),
     )
     .await;
-    mgr.set_idle_timeout(install_id, Duration::from_millis(50)).await;
+    mgr.set_idle_timeout(install_id, Duration::from_millis(50))
+        .await;
 
     // Broker-style: in-flight bumps to 1.
     mgr.activity_start(&lease_id).await;
     let future_now = Instant::now() + Duration::from_secs(60);
     let victims = mgr.reap_idle(future_now).await;
-    assert!(victims.is_empty(), "in_flight > 0 must block reaping mid-prompt");
+    assert!(
+        victims.is_empty(),
+        "in_flight > 0 must block reaping mid-prompt"
+    );
 
     // Drop the in-flight + advance: now the lease is reapable.
     mgr.activity_end(&lease_id).await;
@@ -165,7 +171,11 @@ async fn in_flight_count_blocks_reaper() {
     // operator returning hours later by passing an even later `now`.
     let later_now = Instant::now() + Duration::from_secs(120);
     let victims = mgr.reap_idle(later_now).await;
-    assert_eq!(victims.len(), 1, "after activity_end + window, reaper fires");
+    assert_eq!(
+        victims.len(),
+        1,
+        "after activity_end + window, reaper fires"
+    );
     let _ = victims.into_iter().next().unwrap().2.release().await;
 }
 
@@ -226,7 +236,9 @@ async fn reap_and_activity_serialize_via_mutex() {
     let mgr_b = mgr.clone();
     let lid = lease_id;
     let reap_task = tokio::spawn(async move {
-        mgr_a.reap_idle(Instant::now() + Duration::from_secs(120)).await
+        mgr_a
+            .reap_idle(Instant::now() + Duration::from_secs(120))
+            .await
     });
     let end_task = tokio::spawn(async move { mgr_b.activity_end(&lid).await });
 

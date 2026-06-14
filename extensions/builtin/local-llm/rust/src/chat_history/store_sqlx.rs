@@ -1,5 +1,7 @@
 use super::model::{ChatMessage, ChatThread, MessageRole, SamplerBlock, SamplerOverride};
-use super::schema_version::{classify_mode, read_stored_version, StoreMode, BUNDLED_SCHEMA_VERSION};
+use super::schema_version::{
+    classify_mode, read_stored_version, StoreMode, BUNDLED_SCHEMA_VERSION,
+};
 use super::title_autoderive::derive_title;
 use super::{
     AppendMessageInput, ChatHistoryStore, CreateThreadInput, MessageListPage, PatchThreadInput,
@@ -226,7 +228,11 @@ impl ChatHistoryStore for ChatHistoryStoreSqlx {
     }
 
     async fn list_threads(&self, filter: ThreadListFilter) -> Result<ThreadListPage> {
-        let limit = if filter.limit == 0 { 50 } else { filter.limit.min(200) };
+        let limit = if filter.limit == 0 {
+            50
+        } else {
+            filter.limit.min(200)
+        };
         let fetch_limit = (limit as i64) + 1;
 
         let mut query_str = String::from(
@@ -301,12 +307,14 @@ impl ChatHistoryStore for ChatHistoryStoreSqlx {
         let mut any_change = false;
 
         if let Some(title) = patch.title.as_deref() {
-            sqlx::query("UPDATE ext_local_llm_chat_threads SET title = ?, updated_at = ? WHERE id = ?")
-                .bind(title)
-                .bind(ts_now())
-                .bind(thread_id.as_str())
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(
+                "UPDATE ext_local_llm_chat_threads SET title = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(title)
+            .bind(ts_now())
+            .bind(thread_id.as_str())
+            .execute(&self.pool)
+            .await?;
             any_change = true;
         }
 
@@ -333,11 +341,9 @@ impl ChatHistoryStore for ChatHistoryStoreSqlx {
         }
 
         if patch.attach_to_current_deployment {
-            let current = self
-                .host
-                .current_deployment()
-                .await?
-                .ok_or_else(|| ChatHistoryError::Conflict("no deployment currently bound".into()))?;
+            let current = self.host.current_deployment().await?.ok_or_else(|| {
+                ChatHistoryError::Conflict("no deployment currently bound".into())
+            })?;
             sqlx::query(
                 "UPDATE ext_local_llm_chat_threads SET deployment_id = ?, updated_at = ? WHERE id = ?",
             )
@@ -450,13 +456,11 @@ impl ChatHistoryStore for ChatHistoryStoreSqlx {
             .execute(&mut *tx)
             .await?;
         } else {
-            sqlx::query(
-                "UPDATE ext_local_llm_chat_threads SET updated_at = ? WHERE id = ?",
-            )
-            .bind(&now)
-            .bind(thread_id.as_str())
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("UPDATE ext_local_llm_chat_threads SET updated_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(thread_id.as_str())
+                .execute(&mut *tx)
+                .await?;
         }
 
         tx.commit().await?;

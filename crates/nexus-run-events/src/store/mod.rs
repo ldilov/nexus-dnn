@@ -21,11 +21,7 @@ pub trait WorkerScraper: Send + Sync {
     /// Feed the next line into the scraper. The scraper may emit zero,
     /// one, or many events in response, including one or more
     /// `ScraperUnknown` events for unrecognised input.
-    fn ingest_line(
-        &mut self,
-        line: &str,
-        line_stream: LineStream,
-    ) -> Vec<RunEventItem>;
+    fn ingest_line(&mut self, line: &str, line_stream: LineStream) -> Vec<RunEventItem>;
 
     /// Flush any buffered state at end-of-stream and return whatever
     /// final events the scraper still owes its consumer.

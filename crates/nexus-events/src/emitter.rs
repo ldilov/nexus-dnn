@@ -170,7 +170,10 @@ mod tests {
             wire(&emitter.completed("mux", vec!["art-1".into()]).event)["type"],
             "node_completed"
         );
-        assert_eq!(wire(&emitter.failed("mux", "boom").event)["type"], "node_failed");
+        assert_eq!(
+            wire(&emitter.failed("mux", "boom").event)["type"],
+            "node_failed"
+        );
         let scheduled = wire(&emitter.scheduled("mux", "worker-7").event);
         assert_eq!(scheduled["type"], "node_scheduled");
         assert_eq!(scheduled["worker_id"], "worker-7");

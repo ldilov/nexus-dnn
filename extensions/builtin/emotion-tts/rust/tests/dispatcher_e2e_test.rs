@@ -645,8 +645,6 @@ async fn dispatcher_writes_export_history_on_completed_run() {
     );
 }
 
-
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dispatcher_serves_cache_hits_without_calling_worker() {
     let pool = fresh_pool().await;

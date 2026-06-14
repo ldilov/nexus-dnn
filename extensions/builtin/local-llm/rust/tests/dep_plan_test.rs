@@ -19,8 +19,8 @@ fn manifest_path() -> PathBuf {
 
 fn build_plan() -> InstallPlan {
     let manifest = parse_manifest(&manifest_path()).expect("manifest parses against host schema");
-    let block = resolve_dependencies_block(&manifest)
-        .expect("manifest resolves to a dependencies block");
+    let block =
+        resolve_dependencies_block(&manifest).expect("manifest resolves to a dependencies block");
     let registry = HandlerRegistry::default();
     parse_dependencies_block("nexus.local-llm", block, &registry)
         .expect("dependencies block topo-sorts against the real handler registry")
@@ -47,9 +47,18 @@ fn plan_has_expected_step_ids_and_types() {
     let plan = build_plan();
     let ids: Vec<&str> = plan.steps.iter().map(|s| s.id.as_str()).collect();
 
-    assert!(ids.contains(&"python"), "python runtime step present: {ids:?}");
-    assert!(ids.contains(&"pkgs"), "uv-sync package_set step present: {ids:?}");
-    assert!(ids.contains(&"validate"), "worker-handshake validation step present: {ids:?}");
+    assert!(
+        ids.contains(&"python"),
+        "python runtime step present: {ids:?}"
+    );
+    assert!(
+        ids.contains(&"pkgs"),
+        "uv-sync package_set step present: {ids:?}"
+    );
+    assert!(
+        ids.contains(&"validate"),
+        "worker-handshake validation step present: {ids:?}"
+    );
 
     let type_of = |id: &str| {
         plan.steps
@@ -75,10 +84,17 @@ fn plan_topo_orders_python_first_pkgs_then_validate_last() {
             .unwrap_or_else(|| panic!("step {id} missing"))
     };
 
-    assert_eq!(order[0], "python", "python has no requires and is declared first");
+    assert_eq!(
+        order[0], "python",
+        "python has no requires and is declared first"
+    );
     assert!(pos("pkgs") > pos("python"), "pkgs requires python");
     assert!(pos("validate") > pos("pkgs"), "validate requires pkgs");
-    assert_eq!(order.last().copied(), Some("validate"), "validate is terminal");
+    assert_eq!(
+        order.last().copied(),
+        Some("validate"),
+        "validate is terminal"
+    );
 }
 
 #[test]

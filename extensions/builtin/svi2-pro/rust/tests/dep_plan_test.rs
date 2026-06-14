@@ -11,7 +11,9 @@ use nexus_extension_deps::context::{
 };
 use nexus_extension_deps::plan::{parse_dependencies_block, DependenciesBlock, InstallPlan};
 use nexus_extension_deps::types::{ProgressEvent, ProgressSink, StepArtifact, StepStatus};
-use nexus_extension_deps::{HandlerRegistry, InstallReport, InstallRunner, PlatformTuple, RunnerContext};
+use nexus_extension_deps::{
+    HandlerRegistry, InstallReport, InstallRunner, PlatformTuple, RunnerContext,
+};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
@@ -26,7 +28,10 @@ fn extension_dir() -> PathBuf {
 }
 
 fn fake_backend_versions_path() -> PathBuf {
-    extension_dir().join("backends").join("fake").join("versions.yaml")
+    extension_dir()
+        .join("backends")
+        .join("fake")
+        .join("versions.yaml")
 }
 
 fn load_block() -> DependenciesBlock {
@@ -184,7 +189,8 @@ fn stub_fetch_artifact() -> Arc<nexus_extension_deps::fetch::FetchArtifact> {
     Arc::new(|_req: nexus_extension_deps::fetch::FetchRequest| {
         Box::pin(async move {
             Err(nexus_extension_deps::DepError::Backend(
-                "fetch_artifact must not be reached — system binaries are pre-seeded offline".into(),
+                "fetch_artifact must not be reached — system binaries are pre-seeded offline"
+                    .into(),
             ))
         })
     })
@@ -236,7 +242,9 @@ async fn seed_system_binary(ext_data: &Path, id: &str, sha256: &str) {
         .join("binaries")
         .join(id)
         .join(prefix);
-    tokio::fs::create_dir_all(&dir).await.expect("seed binary dir");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .expect("seed binary dir");
     tokio::fs::write(dir.join("artifact"), b"seeded")
         .await
         .expect("seed binary file");
@@ -292,11 +300,22 @@ fn plan_topo_orders_requires_python_first_pkgs_models_after_validate_last() {
     let plan = build_plan();
     let order: Vec<&str> = plan.steps.iter().map(|s| s.id.as_str()).collect();
 
-    let pos = |id: &str| order.iter().position(|s| *s == id).unwrap_or_else(|| panic!("step {id} missing"));
+    let pos = |id: &str| {
+        order
+            .iter()
+            .position(|s| *s == id)
+            .unwrap_or_else(|| panic!("step {id} missing"))
+    };
 
-    assert_eq!(order[0], "python", "python has no requires and is declared first");
+    assert_eq!(
+        order[0], "python",
+        "python has no requires and is declared first"
+    );
     assert!(pos("pkgs") > pos("python"), "pkgs requires python");
-    assert!(pos("model_wan_base") > pos("python"), "model steps require python");
+    assert!(
+        pos("model_wan_base") > pos("python"),
+        "model steps require python"
+    );
     assert!(pos("model_svi_lora") > pos("python"));
     assert!(pos("model_rife") > pos("python"));
     assert!(pos("sdcli") > pos("python"), "sdcli requires python");
@@ -400,7 +419,10 @@ async fn full_install_plan_runs_to_success_then_is_idempotent_offline() {
             continue;
         }
         assert!(
-            matches!(report2.statuses.get(&step.id), Some(StepStatus::Skipped { .. })),
+            matches!(
+                report2.statuses.get(&step.id),
+                Some(StepStatus::Skipped { .. })
+            ),
             "second run must skip step {} (probe satisfied), got {:?}",
             step.id,
             report2.statuses.get(&step.id)
@@ -423,7 +445,10 @@ fn fake_backend_declares_no_heavy_artifacts_offline_guarantee() {
         .get("versions")
         .and_then(|v| v.as_sequence())
         .expect("versions list present");
-    assert!(!versions.is_empty(), "fake backend declares at least one version");
+    assert!(
+        !versions.is_empty(),
+        "fake backend declares at least one version"
+    );
     for version in versions {
         let artifacts = version
             .get("artifacts")

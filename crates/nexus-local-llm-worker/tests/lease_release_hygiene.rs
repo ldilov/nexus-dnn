@@ -39,7 +39,9 @@ async fn dropping_lease_guard_calls_release_lease() {
         .await;
     let lease_id = call.params["lease_id"].as_str().expect("lease_id str");
     assert_eq!(lease_id, "lease-release-1");
-    h.fake_host.reply_ok(call.id, json!({"released": true})).await;
+    h.fake_host
+        .reply_ok(call.id, json!({"released": true}))
+        .await;
 }
 
 #[tokio::test]
@@ -53,15 +55,14 @@ async fn initiate_release_is_idempotent_on_drop() {
         .fake_host
         .expect_call("host.runtimes.release_lease", Duration::from_secs(2))
         .await;
-    h.fake_host.reply_ok(first.id, json!({"released": true})).await;
+    h.fake_host
+        .reply_ok(first.id, json!({"released": true}))
+        .await;
 
     drop(guard);
 
     // Subsequent drop must not issue a second release call.
-    let maybe_second = h
-        .fake_host
-        .try_take_call(Duration::from_millis(250))
-        .await;
+    let maybe_second = h.fake_host.try_take_call(Duration::from_millis(250)).await;
     assert!(
         maybe_second.is_none(),
         "second release_lease call should not be issued (got {:?})",
@@ -88,7 +89,9 @@ async fn releasing_multiple_leases_yields_multiple_release_calls() {
             .await;
         let id = call.params["lease_id"].as_str().unwrap().to_string();
         seen.insert(id);
-        h.fake_host.reply_ok(call.id, json!({"released": true})).await;
+        h.fake_host
+            .reply_ok(call.id, json!({"released": true}))
+            .await;
     }
     assert_eq!(seen.len(), 3);
 

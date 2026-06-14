@@ -167,7 +167,9 @@ impl<'a> RuntimesClient<'a> {
     }
 
     pub async fn acquire_lease(&self, req: AcquireLeaseRequest) -> WorkerResult<RuntimeLease> {
-        self.transport.call("host.runtimes.acquire_lease", req).await
+        self.transport
+            .call("host.runtimes.acquire_lease", req)
+            .await
     }
 
     pub async fn release_lease(&self, lease_id: &LeaseId) -> WorkerResult<bool> {

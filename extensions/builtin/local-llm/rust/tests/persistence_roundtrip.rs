@@ -126,5 +126,8 @@ async fn migrations_idempotent_across_repeat_application() {
     migrations::apply_all(&pool).await.unwrap();
     let host = MockHost::new();
     let store = ChatHistoryStoreSqlx::new(pool, host).await.unwrap();
-    let _ = store.create_thread(CreateThreadInput::default()).await.unwrap();
+    let _ = store
+        .create_thread(CreateThreadInput::default())
+        .await
+        .unwrap();
 }

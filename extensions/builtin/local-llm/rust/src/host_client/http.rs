@@ -97,6 +97,9 @@ impl HostDeploymentsClient for HttpHostDeploymentsClient {
             .map_err(|e| ChatHistoryError::HostClient(e.to_string()))?
             .into_records();
 
-        Ok(records.into_iter().map(|r| DeploymentId::new(r.id)).collect())
+        Ok(records
+            .into_iter()
+            .map(|r| DeploymentId::new(r.id))
+            .collect())
     }
 }

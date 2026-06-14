@@ -41,10 +41,7 @@ pub trait Database: Send + Sync {
         &self,
         workflow_id: &str,
     ) -> Result<Vec<WorkflowVersionRecord>, StorageError>;
-    async fn get_workflow_current_version(
-        &self,
-        id: &str,
-    ) -> Result<Option<String>, StorageError>;
+    async fn get_workflow_current_version(&self, id: &str) -> Result<Option<String>, StorageError>;
     async fn set_workflow_current_version(
         &self,
         id: &str,

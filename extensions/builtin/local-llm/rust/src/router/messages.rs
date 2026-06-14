@@ -1,5 +1,7 @@
 use super::ChatRouterState;
-use crate::chat_history::{AppendMessageInput, ChatMessage, MessageListPage, MessageRole, SamplerBlock};
+use crate::chat_history::{
+    AppendMessageInput, ChatMessage, MessageListPage, MessageRole, SamplerBlock,
+};
 use crate::error::Result;
 use crate::ids::{MessageId, ThreadId};
 use axum::{
@@ -41,7 +43,11 @@ pub async fn list_messages_handler(
 ) -> Result<Json<ListMessagesResponse>> {
     let page = state
         .store
-        .list_messages(&ThreadId::new(thread_id), q.after_ordinal, q.limit.unwrap_or(100))
+        .list_messages(
+            &ThreadId::new(thread_id),
+            q.after_ordinal,
+            q.limit.unwrap_or(100),
+        )
         .await?;
     Ok(Json(page.into()))
 }

@@ -140,8 +140,8 @@ fn merge_tree(src: &Path, dst: &Path) -> (u64, u64) {
             if let Some(parent) = target.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let ok = std::fs::hard_link(&path, &target).is_ok()
-                || std::fs::copy(&path, &target).is_ok();
+            let ok =
+                std::fs::hard_link(&path, &target).is_ok() || std::fs::copy(&path, &target).is_ok();
             if ok {
                 linked += 1;
             } else {

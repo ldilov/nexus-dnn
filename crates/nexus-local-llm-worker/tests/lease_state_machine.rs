@@ -94,7 +94,10 @@ async fn wait_until_ready_errors_on_terminal_state() {
         .await
         .expect_err("should surface terminal");
     let msg = format!("{err}");
-    assert!(msg.contains("backend unavailable"), "unexpected error: {msg}");
+    assert!(
+        msg.contains("backend unavailable"),
+        "unexpected error: {msg}"
+    );
 }
 
 #[tokio::test]

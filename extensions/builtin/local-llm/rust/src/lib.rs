@@ -9,7 +9,7 @@ pub mod register;
 pub mod router;
 
 pub use chat::{
-    ChatHandlerResources, InferenceCancelRegistry, LoadState, ModelLoadRegistry, build_chat_router,
+    build_chat_router, ChatHandlerResources, InferenceCancelRegistry, LoadState, ModelLoadRegistry,
 };
 pub use register::{LocalLlmProviderResources, LocalLlmRouterProvider, EXTENSION_ID};
 

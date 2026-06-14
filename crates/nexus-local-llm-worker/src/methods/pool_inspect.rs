@@ -10,7 +10,10 @@ pub struct PoolListResponse {
     pub cap: usize,
 }
 
-pub async fn handle_pool_list(pool: &Arc<RuntimePool>, cap: usize) -> WorkerResult<PoolListResponse> {
+pub async fn handle_pool_list(
+    pool: &Arc<RuntimePool>,
+    cap: usize,
+) -> WorkerResult<PoolListResponse> {
     Ok(PoolListResponse {
         slots: pool.list().await,
         cap,
@@ -22,9 +25,6 @@ pub struct RestartRequest {
     pub pool_key: PoolKey,
 }
 
-pub async fn handle_pool_restart(
-    pool: &Arc<RuntimePool>,
-    req: RestartRequest,
-) -> WorkerResult<()> {
+pub async fn handle_pool_restart(pool: &Arc<RuntimePool>, req: RestartRequest) -> WorkerResult<()> {
     pool.evict(&req.pool_key, "user_restart").await
 }

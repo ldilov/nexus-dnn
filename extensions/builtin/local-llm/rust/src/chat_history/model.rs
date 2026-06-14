@@ -166,11 +166,31 @@ impl SamplerBlock {
 }
 
 impl SamplerOverride {
-    pub fn empty() -> Self { Self::default() }
-    pub fn with_temperature(mut self, v: f32) -> Self { self.temperature = Some(v); self }
-    pub fn with_min_p(mut self, v: f32) -> Self { self.min_p = Some(v); self }
-    pub fn with_top_k(mut self, v: u32) -> Self { self.top_k = Some(v); self }
-    pub fn with_top_p(mut self, v: f32) -> Self { self.top_p = Some(v); self }
-    pub fn with_seed(mut self, v: i64) -> Self { self.seed = Some(v); self }
-    pub fn with_repeat_penalty(mut self, v: f32) -> Self { self.repeat_penalty = Some(v); self }
+    pub fn empty() -> Self {
+        Self::default()
+    }
+    pub fn with_temperature(mut self, v: f32) -> Self {
+        self.temperature = Some(v);
+        self
+    }
+    pub fn with_min_p(mut self, v: f32) -> Self {
+        self.min_p = Some(v);
+        self
+    }
+    pub fn with_top_k(mut self, v: u32) -> Self {
+        self.top_k = Some(v);
+        self
+    }
+    pub fn with_top_p(mut self, v: f32) -> Self {
+        self.top_p = Some(v);
+        self
+    }
+    pub fn with_seed(mut self, v: i64) -> Self {
+        self.seed = Some(v);
+        self
+    }
+    pub fn with_repeat_penalty(mut self, v: f32) -> Self {
+        self.repeat_penalty = Some(v);
+        self
+    }
 }
