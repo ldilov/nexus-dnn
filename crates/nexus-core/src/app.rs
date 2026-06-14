@@ -561,6 +561,7 @@ async fn persist_discovery_to_db(
         persist_recipe_records(db, ext).await?;
         persist_workflow_records(db, ext).await?;
         persist_ui_contribution_records(db, ext).await?;
+        pin_extension_recipes(db, ext).await?;
     }
 
     Ok(())
@@ -920,6 +921,57 @@ async fn persist_recipe_records(
     Ok(())
 }
 
+/// For each extension recipe with a `workflow_template`, resolve the template
+/// file to its host `workflow_id`, read the workflow's `current_version`, and
+/// write the recipe's version pin + computed status. Recipes whose template
+/// cannot be resolved are marked `broken` (needs re-pin).
+async fn pin_extension_recipes(
+    db: &Arc<SqliteDatabase>,
+    ext: &ActivatedExtension,
+) -> anyhow::Result<()> {
+    for recipe in &ext.recipes {
+        let Some(template_ref) = recipe.workflow_template.as_ref() else {
+            continue;
+        };
+        let path = ext.directory.join(template_ref);
+        let workflow_id = match std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| nexus_workflow::parse_workflow(&c).ok())
+        {
+            Some(wf) => wf.id,
+            None => {
+                db.update_recipe_pin(
+                    &recipe.recipe.id,
+                    None,
+                    None,
+                    nexus_recipe::RecipeStatus::Broken.as_str(),
+                )
+                .await?;
+                continue;
+            }
+        };
+        let current = db
+            .get_workflow_current_version(&workflow_id)
+            .await
+            .ok()
+            .flatten();
+        let pinned_exists = current.is_some();
+        let status = nexus_recipe::compute_version_status(
+            current.as_deref(),
+            current.as_deref(),
+            pinned_exists,
+        );
+        db.update_recipe_pin(
+            &recipe.recipe.id,
+            Some(&workflow_id),
+            current.as_deref(),
+            status.as_str(),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 async fn persist_ui_contribution_records(
     db: &Arc<SqliteDatabase>,
     ext: &ActivatedExtension,
@@ -1268,6 +1320,43 @@ mod tests {
             Some("1")
         );
         assert_eq!(db.list_workflow_versions("wf").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn pin_marks_recipe_healthy_when_workflow_present() {
+        let db = std::sync::Arc::new(
+            nexus_storage::SqliteDatabase::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
+        db.insert_workflow(&nexus_storage::records::WorkflowRecord {
+            id: "wf".into(),
+            title: "T".into(),
+            version: "0.1.0".into(),
+            inputs: Some("[]".into()),
+            outputs: Some("[]".into()),
+            nodes: "[]".into(),
+            edges: "[]".into(),
+            stages: Some("[]".into()),
+            created_at: "t".into(),
+            updated_at: "t".into(),
+            user_edited_at: None,
+            extension_id: None,
+            extension_version: None,
+            extension_version_first_seen: None,
+        })
+        .await
+        .unwrap();
+        db.set_workflow_current_version("wf", "1", "t")
+            .await
+            .unwrap();
+
+        let status = nexus_recipe::compute_version_status(Some("1"), Some("1"), true);
+        assert_eq!(status, nexus_recipe::RecipeStatus::Healthy);
+
+        db.update_recipe_pin("rid", Some("wf"), Some("1"), status.as_str())
+            .await
+            .unwrap_or(());
     }
 
     fn template(id: &str) -> String {

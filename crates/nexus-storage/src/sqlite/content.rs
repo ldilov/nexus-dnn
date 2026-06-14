@@ -74,6 +74,23 @@ pub async fn delete_recipes_by_extension(
     Ok(())
 }
 
+pub async fn update_recipe_pin(
+    pool: &SqlitePool,
+    id: &str,
+    workflow_id: Option<&str>,
+    workflow_version: Option<&str>,
+    status: &str,
+) -> Result<(), StorageError> {
+    sqlx::query(include_str!("../../queries/recipes/update_pin.sql"))
+        .bind(workflow_id)
+        .bind(workflow_version)
+        .bind(status)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn insert_ui_contribution(
     pool: &SqlitePool,
     r: &UIContributionRecord,

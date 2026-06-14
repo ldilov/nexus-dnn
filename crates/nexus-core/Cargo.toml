@@ -22,6 +22,7 @@ nexus-storage = { path = "../nexus-storage" }
 nexus-artifact = { path = "../nexus-artifact" }
 nexus-extension = { path = "../nexus-extension" }
 nexus-workflow = { path = "../nexus-workflow" }
+nexus-recipe = { path = "../nexus-recipe" }
 nexus-worker = { path = "../nexus-worker" }
 nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-run = { path = "../nexus-run" }

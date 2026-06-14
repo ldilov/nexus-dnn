@@ -3468,6 +3468,7 @@ dependencies = [
  "nexus-huggingface",
  "nexus-models-store",
  "nexus-protocol",
+ "nexus-recipe",
  "nexus-run",
  "nexus-scheduler",
  "nexus-storage",

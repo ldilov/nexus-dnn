@@ -124,6 +124,13 @@ pub trait Database: Send + Sync {
         extension_id: &str,
     ) -> Result<Vec<RecipeRecord>, StorageError>;
     async fn delete_recipes_by_extension(&self, extension_id: &str) -> Result<(), StorageError>;
+    async fn update_recipe_pin(
+        &self,
+        id: &str,
+        workflow_id: Option<&str>,
+        workflow_version: Option<&str>,
+        status: &str,
+    ) -> Result<(), StorageError>;
 
     async fn insert_ui_contribution(
         &self,

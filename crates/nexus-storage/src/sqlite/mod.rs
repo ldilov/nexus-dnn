@@ -274,6 +274,16 @@ impl Database for SqliteDatabase {
         content::delete_recipes_by_extension(&self.pool, extension_id).await
     }
 
+    async fn update_recipe_pin(
+        &self,
+        id: &str,
+        workflow_id: Option<&str>,
+        workflow_version: Option<&str>,
+        status: &str,
+    ) -> Result<(), StorageError> {
+        content::update_recipe_pin(&self.pool, id, workflow_id, workflow_version, status).await
+    }
+
     async fn insert_ui_contribution(&self, r: &UIContributionRecord) -> Result<(), StorageError> {
         content::insert_ui_contribution(&self.pool, r).await
     }
