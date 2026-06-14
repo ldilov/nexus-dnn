@@ -605,90 +605,133 @@ async fn persist_workflow_records(
             }
         };
 
-        let now = chrono::Utc::now().to_rfc3339();
-        let existing = db.get_workflow(&workflow.id).await.ok();
-
-        let first_seen = existing
-            .as_ref()
-            .and_then(|e| e.extension_version_first_seen.clone())
-            .unwrap_or_else(|| now.clone());
-        let created_at = existing
-            .as_ref()
-            .map(|e| e.created_at.clone())
-            .unwrap_or_else(|| now.clone());
-        let record = match build_workflow_record(
+        persist_one_workflow(
+            db,
             &workflow,
-            &created_at,
-            &now,
-            Some(&ext.manifest.extension.id),
-            Some(&ext.manifest.extension.version),
-            Some(&first_seen),
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to build workflow record; skipping");
-                continue;
-            }
-        };
-
-        let author = nexus_storage::versioning::VersionAuthor::Extension {
-            id: ext.manifest.extension.id.clone(),
-            version: ext.manifest.extension.version.clone(),
-        };
-        let nv = nexus_storage::versioning::NewWorkflowVersion {
-            canonical_hash: match nexus_workflow::compute_canonical_hash(&workflow) {
-                Ok(h) => h,
-                Err(_) => continue,
-            },
-            operator_schema_hash: None,
-            inputs: record.inputs.clone(),
-            outputs: record.outputs.clone(),
-            nodes: record.nodes.clone(),
-            edges: record.edges.clone(),
-            stages: record.stages.clone(),
-            author,
-        };
-        let _ = nexus_storage::versioning::record_version_if_changed(
-            db.as_ref(),
-            &workflow.id,
-            nv,
-            &now,
+            &ext.manifest.extension.id,
+            &ext.manifest.extension.version,
         )
         .await;
-
-        if let Some(existing) = existing.as_ref()
-            && existing.user_edited_at.is_some()
-        {
-            if existing.extension_id.is_none()
-                && let Err(e) = db
-                    .stamp_workflow_extension(
-                        &workflow.id,
-                        &ext.manifest.extension.id,
-                        &ext.manifest.extension.version,
-                        &now,
-                    )
-                    .await
-            {
-                tracing::debug!(
-                    workflow_id = %workflow.id,
-                    error = %e,
-                    "stamp_workflow_extension (user-edited row) failed"
-                );
-            }
-            tracing::debug!(
-                workflow_id = %workflow.id,
-                user_edited_at = %existing.user_edited_at.as_deref().unwrap_or(""),
-                "skipping workflow re-persistence: row has user edits"
-            );
-            continue;
-        }
-
-        if let Err(e) = db.insert_workflow(&record).await {
-            tracing::debug!(workflow_id = %workflow.id, error = %e, "insert_workflow failed");
-        }
     }
 
     Ok(())
+}
+
+/// Re-persist a single extension-owned workflow and record its shipped-graph
+/// version. The version row is recorded only AFTER the `workflows` head row
+/// exists (insert for new rows; pre-existing for user-edited rows), so the
+/// head-pointer UPDATE never silently matches zero rows and leaves a NULL head.
+async fn persist_one_workflow(
+    db: &Arc<SqliteDatabase>,
+    workflow: &nexus_workflow::Workflow,
+    extension_id: &str,
+    extension_version: &str,
+) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let existing = db.get_workflow(&workflow.id).await.ok();
+
+    let first_seen = existing
+        .as_ref()
+        .and_then(|e| e.extension_version_first_seen.clone())
+        .unwrap_or_else(|| now.clone());
+    let created_at = existing
+        .as_ref()
+        .map(|e| e.created_at.clone())
+        .unwrap_or_else(|| now.clone());
+    let record = match build_workflow_record(
+        workflow,
+        &created_at,
+        &now,
+        Some(extension_id),
+        Some(extension_version),
+        Some(&first_seen),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to build workflow record; skipping");
+            return;
+        }
+    };
+
+    let author = nexus_storage::versioning::VersionAuthor::Extension {
+        id: extension_id.to_string(),
+        version: extension_version.to_string(),
+    };
+    let nv = nexus_storage::versioning::NewWorkflowVersion {
+        canonical_hash: match nexus_workflow::compute_canonical_hash(workflow) {
+            Ok(h) => h,
+            Err(_) => return,
+        },
+        operator_schema_hash: None,
+        inputs: record.inputs.clone(),
+        outputs: record.outputs.clone(),
+        nodes: record.nodes.clone(),
+        edges: record.edges.clone(),
+        stages: record.stages.clone(),
+        author,
+    };
+
+    if let Some(existing) = existing.as_ref()
+        && existing.user_edited_at.is_some()
+    {
+        let head = db
+            .get_workflow_current_version(&workflow.id)
+            .await
+            .ok()
+            .flatten();
+        if head.is_some() {
+            record_extension_workflow_version(db.as_ref(), &workflow.id, nv, &now).await;
+        } else {
+            tracing::debug!(
+                workflow_id = %workflow.id,
+                "deferring extension version record for user-edited row with no head; backfill seeds user head first"
+            );
+        }
+
+        if existing.extension_id.is_none()
+            && let Err(e) = db
+                .stamp_workflow_extension(&workflow.id, extension_id, extension_version, &now)
+                .await
+        {
+            tracing::debug!(
+                workflow_id = %workflow.id,
+                error = %e,
+                "stamp_workflow_extension (user-edited row) failed"
+            );
+        }
+        tracing::debug!(
+            workflow_id = %workflow.id,
+            user_edited_at = %existing.user_edited_at.as_deref().unwrap_or(""),
+            "skipping workflow re-persistence: row has user edits"
+        );
+        return;
+    }
+
+    if let Err(e) = db.insert_workflow(&record).await {
+        tracing::debug!(workflow_id = %workflow.id, error = %e, "insert_workflow failed");
+        return;
+    }
+
+    record_extension_workflow_version(db.as_ref(), &workflow.id, nv, &now).await;
+}
+
+/// Record a shipped-graph version for an extension-owned workflow. MUST run only
+/// after the `workflows` head row exists, so the head-pointer UPDATE matches it.
+async fn record_extension_workflow_version(
+    db: &SqliteDatabase,
+    workflow_id: &str,
+    nv: nexus_storage::versioning::NewWorkflowVersion,
+    now: &str,
+) {
+    if let Err(e) =
+        nexus_storage::versioning::record_version_if_changed(db, workflow_id, nv, now).await
+    {
+        tracing::warn!(
+            workflow_id = %workflow_id,
+            error = %e,
+            "record_version_if_changed failed during boot re-persist"
+        );
+    }
 }
 
 fn build_workflow_record(
@@ -1219,5 +1262,166 @@ mod tests {
             Some("1")
         );
         assert_eq!(db.list_workflow_versions("wf").await.unwrap().len(), 1);
+    }
+
+    fn template(id: &str) -> String {
+        format!(
+            "spec_version: \"1.0\"\nworkflow:\n  id: \"{id}\"\n  version: \"0.1.0\"\n  title: \"T\"\n"
+        )
+    }
+
+    async fn mem_db() -> Arc<SqliteDatabase> {
+        Arc::new(
+            nexus_storage::SqliteDatabase::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        )
+    }
+
+    /// Mirror production boot order: `persist_extension_record` seeds the
+    /// `extensions` row before `persist_workflow_records`, satisfying the
+    /// `workflows.extension_id -> extensions(id)` foreign key.
+    async fn seed_extension(db: &SqliteDatabase, id: &str, version: &str) {
+        db.insert_extension(&nexus_storage::records::ExtensionRecord {
+            id: id.into(),
+            name: Some(id.into()),
+            version: version.into(),
+            description: None,
+            publisher: None,
+            host_api_compat: "1.0".into(),
+            protocol_compat: "1.0".into(),
+            runtime_family: "python".into(),
+            entrypoint: "worker.py".into(),
+            capabilities: None,
+            status: "active".into(),
+            directory: "/tmp/ext".into(),
+            installed_at: "t".into(),
+            recipe_count: Some(1),
+            ui_contribution_count: None,
+            validation_errors: None,
+            primary_recipe_id: None,
+            default_workflow_id: None,
+            icon_kind: None,
+            icon_symbol: None,
+            icon_svg: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn boot_persist_sets_head_for_new_extension_workflow() {
+        let db = mem_db().await;
+        seed_extension(&db, "ext.demo", "1.0.0").await;
+        let wf = nexus_workflow::parse_workflow(&template("wf")).unwrap();
+
+        super::persist_one_workflow(&db, &wf, "ext.demo", "1.0.0").await;
+
+        assert_eq!(
+            db.get_workflow_current_version("wf")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("1"),
+            "head must be set right after persist; a 0-row UPDATE bug leaves it NULL"
+        );
+        assert_eq!(db.list_workflow_versions("wf").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn boot_persist_then_backfill_does_not_duplicate_version() {
+        let db = mem_db().await;
+        seed_extension(&db, "ext.demo", "1.0.0").await;
+        let wf = nexus_workflow::parse_workflow(&template("wf")).unwrap();
+
+        super::persist_one_workflow(&db, &wf, "ext.demo", "1.0.0").await;
+        super::backfill_workflow_versions(&db).await.unwrap();
+
+        assert_eq!(
+            db.get_workflow_current_version("wf")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("1"),
+            "head must stay on the single shipped version, not advance to a duplicate"
+        );
+        assert_eq!(
+            db.list_workflow_versions("wf").await.unwrap().len(),
+            1,
+            "backfill must be a no-op for a workflow that already has a head"
+        );
+    }
+
+    #[tokio::test]
+    async fn boot_persist_idempotent_across_two_boots() {
+        let db = mem_db().await;
+        seed_extension(&db, "ext.demo", "1.0.0").await;
+        let wf = nexus_workflow::parse_workflow(&template("wf")).unwrap();
+
+        super::persist_one_workflow(&db, &wf, "ext.demo", "1.0.0").await;
+        super::persist_one_workflow(&db, &wf, "ext.demo", "1.0.0").await;
+        super::backfill_workflow_versions(&db).await.unwrap();
+
+        assert_eq!(db.list_workflow_versions("wf").await.unwrap().len(), 1);
+        assert_eq!(
+            db.get_workflow_current_version("wf")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("1")
+        );
+    }
+
+    #[tokio::test]
+    async fn user_edited_row_without_head_defers_then_backfill_seeds_user_head() {
+        let db = mem_db().await;
+        seed_extension(&db, "ext.demo", "1.0.0").await;
+        db.insert_workflow(&nexus_storage::records::WorkflowRecord {
+            id: "wf".into(),
+            title: "User Edited".into(),
+            version: "0.1.0".into(),
+            inputs: Some("[]".into()),
+            outputs: Some("[]".into()),
+            nodes: "[]".into(),
+            edges: "[]".into(),
+            stages: Some("[]".into()),
+            created_at: "t".into(),
+            updated_at: "t".into(),
+            user_edited_at: Some("t".into()),
+            extension_id: None,
+            extension_version: None,
+            extension_version_first_seen: None,
+        })
+        .await
+        .unwrap();
+
+        let wf = nexus_workflow::parse_workflow(&template("wf")).unwrap();
+        super::persist_one_workflow(&db, &wf, "ext.demo", "1.0.0").await;
+
+        assert!(
+            db.get_workflow_current_version("wf")
+                .await
+                .unwrap()
+                .is_none(),
+            "extension persist must not establish a head on a user-edited row with no head"
+        );
+        assert_eq!(
+            db.list_workflow_versions("wf").await.unwrap().len(),
+            0,
+            "no version row should be written before the user head is seeded"
+        );
+
+        super::backfill_workflow_versions(&db).await.unwrap();
+
+        let head_ver = db
+            .get_workflow_current_version("wf")
+            .await
+            .unwrap()
+            .expect("backfill must seed a head");
+        let head = db.get_workflow_version("wf", &head_ver).await.unwrap();
+        assert_eq!(
+            head.author_kind, "user",
+            "backfill must record the user-edited graph as a User-authored head"
+        );
     }
 }
