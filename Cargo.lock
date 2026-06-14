@@ -3746,6 +3746,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexus-recipe"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "nexus-run"
 version = "0.1.0"
 dependencies = [
