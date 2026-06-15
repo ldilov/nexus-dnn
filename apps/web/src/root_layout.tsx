@@ -206,16 +206,9 @@ export default function RootLayout() {
 
   const handleOpenRecipe = useCallback(
     (recipe: Recipe) => {
-      const target =
-        extensionLayouts.find(
-          (l) => l.extension_id === recipe.extension_id && l.is_default,
-        ) ??
-        extensionLayouts.find((l) => l.extension_id === recipe.extension_id);
-      if (target) {
-        navigate(`/extensions/${encodeURIComponent(target.id)}`);
-      }
+      navigate(`/extensions/${encodeURIComponent(recipe.extension_id)}/settings`);
     },
-    [extensionLayouts, navigate],
+    [navigate],
   );
 
   const goToRecipes = useCallback(() => navigate("/recipes"), [navigate]);

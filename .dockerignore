@@ -9,7 +9,11 @@ apps/web/dist
 **/*.mp4
 **/*.log
 videos
-# NOTE: svi2-pro/binaries/*.whl are intentionally NOT excluded. uv reads the
-# metadata of every [tool.uv.sources] path dependency during `uv sync`, even
-# ones whose platform marker excludes the current OS, so the Windows wheels
-# must be present in the image or the linux/aarch64 sync aborts.
+# NOTE: the repo-global binaries/ tree (vendored wheels + sd-cli) is
+# intentionally NOT excluded. uv reads the metadata of every
+# [tool.uv.sources] path dependency during `uv sync`, even ones whose platform
+# marker excludes the current OS, so every vendored wheel must be in the image
+# or the linux/aarch64 sync aborts.
+# Per-extension model-download caches under */binaries/ are excluded:
+**/binaries/huggingface
+**/binaries/download

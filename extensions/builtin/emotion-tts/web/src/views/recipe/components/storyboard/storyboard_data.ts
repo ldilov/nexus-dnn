@@ -123,7 +123,9 @@ function initialOf(name: string): string {
  * the vision demo cast when the deployment has none (AC-2.2). */
 export function buildVoices(assets: readonly VoiceAsset[]): readonly Voice[] {
   const usable = assets.filter((a) => a.isActive && (a.kind === "speaker" || a.kind === "mixed"));
-  if (usable.length === 0) return DEMO_VOICES;
+  // No demo fallback — an empty deployment shows a real empty state, not
+  // fabricated voices the user never created.
+  if (usable.length === 0) return [];
   return usable.map((a, i) => {
     const sw = VOICE_SWATCHES[i % VOICE_SWATCHES.length] as Swatch;
     const icon = VOICE_ICONS[i % VOICE_ICONS.length] as string;
@@ -156,7 +158,7 @@ export function buildEmotions(presets: readonly VectorPreset[]): readonly Emotio
     seen.add(id);
     out.push({ id, label: p.presetName });
   }
-  return out.length > 0 ? out : DEMO_EMOTIONS;
+  return out;
 }
 
 /** Split a script into paragraphs of clickable WORD segments — each word keeps

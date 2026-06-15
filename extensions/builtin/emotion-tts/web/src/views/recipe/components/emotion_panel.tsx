@@ -15,8 +15,6 @@ import { EmotionRadar } from "./emotion_radar";
 import { EmotionSliders } from "./emotion_sliders";
 
 const MODES: readonly { id: EmotionMode; label: string }[] = [
-  { id: "none", label: "None" },
-  { id: "audio_ref", label: "Audio ref" },
   { id: "emotion_vector", label: "Vector" },
   { id: "qwen_template", label: "Qwen" },
 ];
@@ -39,7 +37,8 @@ interface Props {
 }
 
 export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Element {
-  const mode = value.mode ?? "none";
+  const rawMode = value.mode ?? "emotion_vector";
+  const mode = rawMode === "none" || rawMode === "audio_ref" ? "emotion_vector" : rawMode;
   const vector = normaliseVector(value.vector);
   const alpha = value.emotionAlpha ?? 1.0;
 
@@ -249,38 +248,29 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
           </label>
         )}
 
-        {mode === "audio_ref" && (
-          <p className={css.helpText}>
-            Audio references are attached per character in the mapping editor — the global panel only
-            toggles the mode.
-          </p>
-        )}
-
-        {mode !== "none" && (
-          <div className={css.alphaRow}>
-            <span className={css.sliderLabel}>alpha</span>
-            <input
-              type="range"
-              min={0}
-              max={10}
-              step={0.01}
-              value={alpha}
-              className={css.slider}
-              onChange={(e) => setAlpha(Number(e.currentTarget.value))}
-              aria-label="Emotion alpha"
-            />
-            <input
-              type="number"
-              min={0}
-              max={10}
-              step={0.01}
-              value={Number(alpha.toFixed(2))}
-              className={css.sliderNumber}
-              onChange={(e) => setAlpha(Number(e.currentTarget.value))}
-              aria-label="Emotion alpha numeric"
-            />
-          </div>
-        )}
+        <div className={css.alphaRow}>
+          <span className={css.sliderLabel}>alpha</span>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            step={0.01}
+            value={alpha}
+            className={css.slider}
+            onChange={(e) => setAlpha(Number(e.currentTarget.value))}
+            aria-label="Emotion alpha"
+          />
+          <input
+            type="number"
+            min={0}
+            max={10}
+            step={0.01}
+            value={Number(alpha.toFixed(2))}
+            className={css.sliderNumber}
+            onChange={(e) => setAlpha(Number(e.currentTarget.value))}
+            aria-label="Emotion alpha numeric"
+          />
+        </div>
 
         {presetsError && <Banner severity="error">{presetsError}</Banner>}
 

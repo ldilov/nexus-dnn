@@ -212,7 +212,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee26
 [[package]]
 name = "flash-attn"
 version = "2.8.3"
-source = { path = "../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" }
+source = { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
@@ -233,7 +233,7 @@ requires-dist = [
 [[package]]
 name = "flash-attn"
 version = "2.8.3+cu132torch2.12"
-source = { path = "../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" }
+source = { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" }
 resolution-markers = [
     "python_full_version < '3.12' and sys_platform == 'win32'",
 ]
@@ -254,7 +254,7 @@ requires-dist = [
 [[package]]
 name = "flash-attn"
 version = "2.8.3+cu132torch2.12"
-source = { path = "../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" }
+source = { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
 ]
@@ -559,9 +559,9 @@ diffusers = [
 ]
 flash = [
     { name = "flash-attn", version = "2.8.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')" },
-    { name = "flash-attn", version = "2.8.3", source = { path = "../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" }, marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
-    { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" }, marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "flash-attn", version = "2.8.3", source = { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" }, marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" }, marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
+    { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
 ]
 rtx-upscale = [
     { name = "nvidia-vfx", marker = "sys_platform == 'win32'" },
@@ -578,11 +578,11 @@ requires-dist = [
     { name = "av", marker = "extra == 'diffusers'", specifier = ">=12.0" },
     { name = "einops", marker = "extra == 'diffusers'", specifier = ">=0.8" },
     { name = "ffmpeg-python", specifier = ">=0.2" },
-    { name = "flash-attn", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'flash'", path = "../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'flash'", path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" },
     { name = "flash-attn", marker = "(python_full_version != '3.12.*' and sys_platform == 'linux' and extra == 'flash') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'flash')", specifier = ">=2.8" },
-    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'win32' and extra == 'flash'", path = "../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'win32' and extra == 'flash'", path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" },
     { name = "flash-attn", marker = "(python_full_version < '3.11' and sys_platform == 'win32' and extra == 'flash') or (python_full_version >= '3.13' and sys_platform == 'win32' and extra == 'flash')" },
-    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'flash'", path = "../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'flash'", path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" },
     { name = "ftfy", marker = "extra == 'diffusers'", specifier = ">=6.2" },
     { name = "huggingface-hub", specifier = ">=0.26" },
     { name = "imageio", marker = "extra == 'diffusers'", specifier = ">=2.37" },

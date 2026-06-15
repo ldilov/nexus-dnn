@@ -52,9 +52,9 @@ RUN curl -fsSL https://github.com/astral-sh/uv/releases/latest/download/uv-aarch
  && uv --version
 COPY --from=builder /usr/local/bin/nexus-dnn /usr/local/bin/nexus-dnn
 COPY --from=builder /app/extensions/builtin /usr/local/share/nexus-dnn/extensions/builtin
-# Prebuilt stable-diffusion.cpp CLI (CUDA, aarch64) for the svi2-pro qwen-edit
-# path; the svi2 sdcli step resolves it via allow_system_path on PATH.
-COPY --from=builder /app/extensions/builtin/svi2-pro/binaries/linux-aarch64/sd-cli-linux-aarch64 /usr/local/bin/sd
+# `../../../../binaries/...` both in-repo and in this image.
+COPY --from=builder /app/binaries /usr/local/share/nexus-dnn/binaries
+COPY --from=builder /app/binaries/linux-aarch64/sd-cli-linux-aarch64 /usr/local/bin/sd
 RUN chmod +x /usr/local/bin/sd
 ENV NEXUS_DATA_DIR=/data \
     NEXUS_PORT=3000

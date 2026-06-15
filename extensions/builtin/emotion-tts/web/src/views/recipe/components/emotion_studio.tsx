@@ -37,8 +37,6 @@ export interface EmotionStudioProps {
 }
 
 const MODES: readonly { id: EmotionMode; label: string }[] = [
-  { id: "none", label: "None" },
-  { id: "audio_ref", label: "Audio ref" },
   { id: "emotion_vector", label: "Vector" },
   { id: "qwen_template", label: "Qwen" },
 ];
@@ -50,7 +48,9 @@ export function EmotionStudio({
   presets,
   onPresetsChange,
 }: EmotionStudioProps): JSX.Element {
-  const mode: EmotionMode = value.mode ?? "none";
+  const rawMode: EmotionMode = value.mode ?? "emotion_vector";
+  const mode: EmotionMode =
+    rawMode === "none" || rawMode === "audio_ref" ? "emotion_vector" : rawMode;
   const vec = useMemo(() => normaliseVec(value.vector), [value.vector]);
   const alpha = value.emotionAlpha ?? 1.0;
 
@@ -168,20 +168,6 @@ export function EmotionStudio({
         </div>
       </div>
 
-      {mode === "none" && (
-        <div className={css.noneNotice}>
-          Neutral default. Per-line <code>[Char|emotion_vector:…]</code> overrides
-          still apply when present.
-        </div>
-      )}
-
-      {mode === "audio_ref" && (
-        <div className={css.noneNotice}>
-          Audio reference uses the voice asset assigned per character. Open the cast
-          section to assign references; per-character overrides take precedence.
-        </div>
-      )}
-
       {mode === "qwen_template" && (
         <div className={css.qwenColumn}>
           <textarea
@@ -218,7 +204,7 @@ export function EmotionStudio({
         </div>
       )}
 
-      {(mode === "emotion_vector" || mode === "none" || mode === "audio_ref") && (
+      {mode === "emotion_vector" && (
         <div className={css.splitBody}>
           <div className={`${recipeCss.splitColumn} ${css.radarColumn}`}>
             <EttsRadar

@@ -14,7 +14,6 @@ import {
   buildEmotions,
   buildVoices,
   countWords,
-  DEMO_SCRIPT,
   emotionLabel,
   flatSegments,
   jobOfSegment,
@@ -56,7 +55,7 @@ export function Storyboard({
   const voices = useMemo(() => buildVoices(voiceAssets), [voiceAssets]);
   const emotions = useMemo(() => buildEmotions(presets), [presets]);
 
-  const sourceText = storyText.trim().length > 0 ? storyText : DEMO_SCRIPT;
+  const sourceText = storyText;
   const paragraphs = useMemo(() => segmentScript(sourceText), [sourceText]);
 
   const firstVoice = (voices[0] as Voice).id;

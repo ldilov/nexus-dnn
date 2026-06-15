@@ -1,5 +1,5 @@
-extensions/builtin/svi2-pro/binaries filter=lfs diff=lfs merge=lfs -text
-: filter=lfs diff=lfs merge=lfs -text
-extensions/builtin/svi2-pro/binaries: filter=lfs diff=lfs merge=lfs -text
-extensions/builtin/svi2-pro/binaries/**/* filter=lfs diff=lfs merge=lfs -text
+# Global vendored binaries/wheels (per-arch CUDA deps not on PyPI).
+binaries/** filter=lfs diff=lfs merge=lfs -text
 *.whl filter=lfs diff=lfs merge=lfs -text
+# sd-cli / other large prebuilt binaries shipped under binaries/
+binaries/linux-aarch64/sd-cli-linux-aarch64 filter=lfs diff=lfs merge=lfs -text
