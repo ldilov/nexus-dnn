@@ -3750,6 +3750,9 @@ dependencies = [
 name = "nexus-recipe"
 version = "0.1.0"
 dependencies = [
+ "nexus-extension",
+ "nexus-storage",
+ "nexus-workflow",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
