@@ -262,6 +262,13 @@ pub trait DeploymentRepository: Send + Sync {
         last_validation_id: Option<&str>,
     ) -> Result<(), DeploymentError>;
     async fn fetch_deployment(&self, id: &DeploymentId) -> Result<DeploymentRow, DeploymentError>;
+    /// Resolve the recipe id backing a deployment via the primary recipe source
+    /// link of its current revision. `None` when the deployment has no
+    /// recipe-kind primary source (e.g. user-workflow or cloned deployments).
+    async fn fetch_primary_recipe_id(
+        &self,
+        id: &DeploymentId,
+    ) -> Result<Option<String>, DeploymentError>;
     async fn fetch_revision(
         &self,
         id: &DeploymentRevisionId,

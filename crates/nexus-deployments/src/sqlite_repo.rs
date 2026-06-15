@@ -284,6 +284,13 @@ impl DeploymentRepository for SqliteDeploymentRepository {
         })
     }
 
+    async fn fetch_primary_recipe_id(
+        &self,
+        id: &DeploymentId,
+    ) -> Result<Option<String>, DeploymentError> {
+        Ok(self.inner.fetch_primary_recipe_id(id.as_str()).await?)
+    }
+
     async fn fetch_revision(
         &self,
         id: &DeploymentRevisionId,

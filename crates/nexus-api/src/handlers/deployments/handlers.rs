@@ -18,6 +18,7 @@ use nexus_deployments::service::save::{DeploymentSaveService, SaveRequest};
 use nexus_deployments::service::validate::DeploymentValidateService;
 use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
 use nexus_events::types::NexusEvent;
+use nexus_storage::Database;
 use nexus_storage::DeploymentMappers;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -263,7 +264,15 @@ async fn load(
 #[derive(Debug, Deserialize, Default)]
 struct RunBody {
     revision_id: Option<String>,
+    /// Legacy opaque inputs (deprecated). When `control_values` is empty this is
+    /// forwarded to the deployment execution context as before.
+    #[serde(default)]
     inputs: Option<Value>,
+    #[serde(default)]
+    control_values: std::collections::BTreeMap<String, Value>,
+    #[serde(default)]
+    preset_id: Option<String>,
+    #[serde(default)]
     run_id: String,
 }
 
@@ -273,13 +282,63 @@ async fn run(
     Json(body): Json<RunBody>,
 ) -> impl IntoResponse {
     let repo = repo_for(&state);
-    let did = DeploymentId::from_str(&id).unwrap();
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(e) => {
+            return err_to_response(nexus_deployments::DeploymentError::RestoreBlocked(
+                e.to_string(),
+            ));
+        }
+    };
+
+    let run_id = if body.control_values.is_empty() {
+        body.run_id.clone()
+    } else {
+        let Some(recipe_id) = (match repo.fetch_primary_recipe_id(&did).await {
+            Ok(r) => r,
+            Err(e) => return err_to_response(e),
+        }) else {
+            return err_to_response(nexus_deployments::DeploymentError::RestoreBlocked(
+                "deployment has no source recipe to compile".into(),
+            ));
+        };
+        let recipe = match state.db.get_recipe(&recipe_id).await {
+            Ok(r) => r,
+            Err(e) => {
+                return err_to_response(nexus_deployments::DeploymentError::RestoreBlocked(
+                    e.to_string(),
+                ));
+            }
+        };
+        match crate::recipe_run::compile_and_launch(
+            &state,
+            &recipe,
+            body.control_values.clone(),
+            body.preset_id.clone(),
+        )
+        .await
+        {
+            Ok(rid) => rid,
+            Err(e) => {
+                return ApiResponse::<()>::bad_request(e.to_string()).into_response();
+            }
+        }
+    };
+
     let svc = DeploymentExecuteService::new(repo);
     let rev = body
         .revision_id
-        .map(|s| DeploymentRevisionId::from_str(&s).unwrap());
-    let inputs = body.inputs.unwrap_or(serde_json::json!({}));
-    match svc.execute(&did, rev.as_ref(), &inputs, &body.run_id).await {
+        .as_deref()
+        .and_then(|s| DeploymentRevisionId::from_str(s).ok());
+    let context_inputs = if body.control_values.is_empty() {
+        body.inputs.clone().unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::to_value(&body.control_values).unwrap_or(serde_json::json!({}))
+    };
+    match svc
+        .execute(&did, rev.as_ref(), &context_inputs, &run_id)
+        .await
+    {
         Ok((res, _events)) => {
             #[derive(Serialize)]
             struct R {

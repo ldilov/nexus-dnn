@@ -457,6 +457,28 @@ impl DeploymentMappers {
         }))
     }
 
+    /// Resolve the recipe id backing a deployment: the primary source link of
+    /// the deployment's current revision when that link's `source_kind` is
+    /// `'recipe'`. Generic — keyed only by deployment id, no extension knowledge.
+    pub async fn fetch_primary_recipe_id(
+        &self,
+        deployment_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        let row = sqlx::query(
+            "SELECT sl.source_id AS recipe_id \
+             FROM deployments d \
+             JOIN deployment_source_links sl \
+               ON sl.deployment_revision_id = d.current_revision_id \
+              AND sl.is_primary_source = 1 \
+              AND sl.source_kind = 'recipe' \
+             WHERE d.id = ?",
+        )
+        .bind(deployment_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.and_then(|r| r.try_get::<Option<String>, _>("recipe_id").ok().flatten()))
+    }
+
     pub async fn list_deployments(
         &self,
         workspace_id: Option<&str>,
