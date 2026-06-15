@@ -100,16 +100,29 @@ impl NexusConfig {
     }
 
     pub fn builtin_extensions_dir(&self) -> PathBuf {
-        let from_env = std::env::var("NEXUS_BUILTIN_EXTENSIONS_DIR")
-            .ok()
-            .map(PathBuf::from);
-
-        if let Some(dir) = from_env {
-            return dir;
+        if let Some(dir) = std::env::var_os("NEXUS_BUILTIN_EXTENSIONS_DIR") {
+            return PathBuf::from(dir);
         }
 
-        let workspace_root = PathBuf::from(env!("NEXUS_WORKSPACE_ROOT"));
-        workspace_root.join("extensions").join("builtin")
+        // Installed / container layout: built-in extensions ship alongside the
+        // executable. Probe the common relative locations before falling back
+        // to the dev-time workspace root.
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(exe_dir) = exe.parent()
+        {
+            for rel in [
+                "extensions/builtin",
+                "../share/nexus-dnn/extensions/builtin",
+                "../lib/nexus-dnn/extensions/builtin",
+            ] {
+                let candidate = exe_dir.join(rel);
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
+        }
+
+        workspace_root().join("extensions").join("builtin")
     }
 
     pub fn logs_dir(&self) -> PathBuf {
@@ -237,6 +250,19 @@ fn default_data_directory() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(DATA_DIR_NAME)
+}
+
+/// Resolve the dev-time workspace root: runtime `NEXUS_WORKSPACE_ROOT` wins,
+/// then the value baked in at compile time (set by `build.rs`), then the
+/// current working directory. Never panics when the env var is absent.
+fn workspace_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("NEXUS_WORKSPACE_ROOT") {
+        return PathBuf::from(dir);
+    }
+    if let Some(dir) = option_env!("NEXUS_WORKSPACE_ROOT") {
+        return PathBuf::from(dir);
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn default_tui_ring_buffer_capacity() -> usize {

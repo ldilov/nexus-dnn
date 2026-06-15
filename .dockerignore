@@ -1,0 +1,13 @@
+.git
+target
+**/target
+node_modules
+**/node_modules
+**/.venv
+**/__pycache__
+apps/web/dist
+**/*.mp4
+**/*.log
+videos
+# Windows-only prebuilt wheels (irrelevant to the aarch64/linux image)
+extensions/builtin/svi2-pro/binaries/*win_amd64.whl
