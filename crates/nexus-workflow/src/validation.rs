@@ -242,6 +242,17 @@ fn check_required_inputs(
     Ok(())
 }
 
+/// Validate a single node's `config` against its operator's `config_schema`
+/// (JSON-Schema draft7). `Ok(())` when no schema or no config. Public wrapper
+/// over the internal check so callers (e.g. the recipe binding compiler) can
+/// validate a single node without re-running the whole workflow.
+pub fn validate_node_config(
+    node: &crate::model::NodeInstance,
+    op_def: &OperatorDefinition,
+) -> Result<(), WorkflowError> {
+    check_node_config(node, op_def)
+}
+
 fn check_node_config(
     node: &crate::model::NodeInstance,
     op_def: &OperatorDefinition,
@@ -269,4 +280,53 @@ fn check_node_config(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod p2_wrapper_tests {
+    use super::*;
+    use crate::model::NodeInstance;
+    use nexus_extension::OperatorDefinition;
+    use std::collections::HashMap;
+
+    fn op_with_schema(schema: serde_json::Value) -> OperatorDefinition {
+        serde_json::from_value(serde_json::json!({
+            "spec_version": "1.0",
+            "operator": { "id": "op", "version": "1.0.0" },
+            "config_schema": schema,
+        }))
+        .expect("operator definition fixture")
+    }
+
+    #[test]
+    fn rejects_config_violating_schema() {
+        let op = op_with_schema(serde_json::json!({
+            "type": "object",
+            "properties": { "steps": { "type": "integer", "minimum": 1, "maximum": 10 } }
+        }));
+        let node = NodeInstance {
+            id: "n".into(),
+            operator: "op@1.0.0".into(),
+            stage: None,
+            inputs: HashMap::new(),
+            config: Some(serde_json::json!({ "steps": 999 })),
+        };
+        assert!(validate_node_config(&node, &op).is_err());
+    }
+
+    #[test]
+    fn accepts_config_within_schema() {
+        let op = op_with_schema(serde_json::json!({
+            "type": "object",
+            "properties": { "steps": { "type": "integer", "minimum": 1, "maximum": 10 } }
+        }));
+        let node = NodeInstance {
+            id: "n".into(),
+            operator: "op@1.0.0".into(),
+            stage: None,
+            inputs: HashMap::new(),
+            config: Some(serde_json::json!({ "steps": 5 })),
+        };
+        assert!(validate_node_config(&node, &op).is_ok());
+    }
 }
