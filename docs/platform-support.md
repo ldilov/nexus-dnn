@@ -19,14 +19,14 @@ This page describes what the repo appears to support today and where the stronge
 | ffmpeg (managed install) | 🟢 | 🟢 | 🟢 |
 | LLM via llama.cpp (managed) | 🟢 cpu/cuda | 🟢 cpu/cuda | 🟢 CPU + Vulkan GPU; no official CUDA arm64 (CUDA via external server) |
 | LLM via external server | 🟢 | 🟢 | 🟢 GPU-capable — CUDA `llama-server` on GB10 / sbsa |
-| EmotionTTS | 🟢 | 🟢 | 🟢 works (cu128 torch arm64; no flash-attn dependency) |
+| EmotionTTS | 🟢 | 🟢 | 🟢 cu128 torch **2.11+** arm64 wheels; no flash-attn dependency |
 | LTX-2.3 / LongCat video | 🟢 | 🟢 | 🟡 works; SDPA fallback (flash-attn has no arm64 wheel) |
 | SVI2-Pro | 🟢 | 🟡 | 🟡 GB10-validated; flash-attn builds from source or SDPA; sd-cli edit needs system binary |
 
 **aarch64 Linux notes:**
 
 - **Managed llama.cpp on aarch64 offers CPU and Vulkan GPU.** The managed installer surfaces both the official arm64 **CPU** build (`ubuntu-arm64`) and the arm64 **Vulkan** GPU build (`ubuntu-vulkan-arm64`, GPU-capable on GB10); on a host with a GPU/CUDA stack present, the installer defaults to the Vulkan variant. There is no *official* CUDA arm64 prebuilt — CUDA on aarch64 comes from a source build (see Arm's GB10 llama.cpp guide) or third-party arm64 CUDA tarballs (e.g. ai-dock). For the fastest CUDA path on a DGX Spark, run a CUDA `llama-server` and reach it via `NEXUS_LLAMA_SERVER_URL` (arch-agnostic).
-- **EmotionTTS works on aarch64.** IndexTTS-2 uses cu128 torch (arm64 CUDA wheels exist) with no flash-attn dependency, so `uv sync` resolves cleanly.
+- **EmotionTTS works on aarch64.** IndexTTS-2 uses cu128 torch with no flash-attn dependency. Note the worker pins `torch>=2.11`: the cu128 index only began publishing `manylinux_2_28_aarch64` CUDA wheels at torch 2.11.0, so the earlier 2.8.0 lock had **no** arm64 wheel and `uv sync` failed on aarch64. With the 2.11+ pin (matching the LTX-2.3 worker's cu128 setup) `uv sync` resolves cleanly.
 - **SVI2-Pro / LongCat: the GPU attention wheels (flash-attn, sageattention) have no aarch64 builds.** On a host with a CUDA toolkit (e.g. DGX Spark — validated on GB10) `uv sync` compiles flash-attn from source (slow, ~30–90 min) and the render works; without a toolkit that build fails and the worker falls back to SDPA (already the Blackwell default). Arch-gating these extras to `x86_64` so the source build is skipped on aarch64 is a pending follow-up (needs a `uv.lock` regen).
 - **stable-diffusion.cpp (svi2-pro edit-then-animate) has no Linux arm64/CUDA prebuilt.** Core image-to-video render works; the optional edit path needs an operator-built `sd` on `PATH`.
 
