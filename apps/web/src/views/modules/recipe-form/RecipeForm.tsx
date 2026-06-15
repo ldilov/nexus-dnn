@@ -11,10 +11,13 @@ interface RecipeFormProps {
   onLaunched: (runId: string) => void;
 }
 
+const isUserSettable = (mode: string): boolean => mode !== "locked" && mode !== "hidden";
+
 export function RecipeForm({ form, onLaunched }: RecipeFormProps) {
   const initial = useMemo(() => {
     const v: Record<string, unknown> = {};
     for (const c of form.controls) {
+      if (!isUserSettable(c.mode)) continue;
       if (c.default_value !== null && c.default_value !== undefined) v[c.control_id] = c.default_value;
     }
     return v;
@@ -25,7 +28,7 @@ export function RecipeForm({ form, onLaunched }: RecipeFormProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const editable = useMemo(
-    () => form.controls.filter((c) => c.mode !== "locked"),
+    () => form.controls.filter((c) => isUserSettable(c.mode)),
     [form.controls],
   );
   const byId = useMemo(() => new Map(form.controls.map((c) => [c.control_id, c])), [form.controls]);
@@ -60,12 +63,13 @@ export function RecipeForm({ form, onLaunched }: RecipeFormProps) {
   const renderControl = (id: string): ReactNode => {
     const c = byId.get(id);
     if (!c || c.mode === "hidden") return null;
+    const displayValue = isUserSettable(c.mode) ? values[id] : c.default_value;
     return (
       <div key={id} className={s.field}>
         <label className={s.label} htmlFor={id}>
           {c.label}
         </label>
-        <ControlWidget control={c} value={values[id]} onChange={(v) => setValue(id, v)} />
+        <ControlWidget control={c} value={displayValue} onChange={(v) => setValue(id, v)} />
         {c.help_text && <span className={s.help}>{c.help_text}</span>}
         {validation.errors[id] && <span className={s.error}>{validation.errors[id]}</span>}
       </div>

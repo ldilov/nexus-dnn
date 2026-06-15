@@ -20,6 +20,11 @@ describe("validateControlValues", () => {
     expect(r.ok).toBe(false);
     expect(r.errors.c).toMatch(/locked/);
   });
+  it("rejects hidden override", () => {
+    const r = validateControlValues([ctrl({ control_id: "c", mode: "hidden" })], { c: 1 });
+    expect(r.ok).toBe(false);
+    expect(r.errors.c).toMatch(/not settable/);
+  });
   it("enforces numeric range", () => {
     const r = validateControlValues(
       [ctrl({ control_id: "c", schema_hint: { value_type: "integer", enum_values: null, minimum: 1, maximum: 10 } })],

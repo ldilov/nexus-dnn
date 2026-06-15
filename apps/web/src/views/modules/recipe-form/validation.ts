@@ -6,9 +6,14 @@ export interface ValidationResult {
 }
 
 /**
- * Mirror the host compiler's user-input rules client-side: locked controls are
- * never editable, numeric values respect schema min/max, and enum values must be
- * in range. The server re-validates — this is fast feedback, not the gate.
+ * Mirror the host compiler's user-input rules client-side (compiler.rs:67-78).
+ * `values` is the USER-supplied override map only — the same shape the compiler
+ * receives as `control_values`. The compiler applies locked/hidden defaults
+ * internally and rejects only locked or hidden controls that appear in the user
+ * map; it never sees a locked default as a user override. So locked defaults
+ * MUST NOT be seeded into `values` by the caller. Beyond that: numeric values
+ * respect schema min/max and enum values must be in range. The server
+ * re-validates — this is fast feedback, not the gate.
  */
 export function validateControlValues(
   controls: FormControlDto[],
@@ -24,6 +29,10 @@ export function validateControlValues(
     }
     if (control.mode === "locked") {
       errors[id] = "this value is locked by the recipe";
+      continue;
+    }
+    if (control.mode === "hidden") {
+      errors[id] = "this value is not settable";
       continue;
     }
     const hint = control.schema_hint;
