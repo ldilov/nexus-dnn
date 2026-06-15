@@ -714,12 +714,12 @@ function buildCharacterRows(
 }
 
 function castRowStyle(v: Voice, active: boolean): CSSProperties {
+  // Layout lives in the css.castRow class; only the active accent is inline so
+  // the class :hover background still applies to inactive rows.
+  if (!active) return {};
   return {
-    display: "flex", alignItems: "center", gap: 10, padding: "7px 9px",
-    borderRadius: 9, cursor: "pointer", width: "100%", textAlign: "left",
-    border: `1px solid ${active ? `rgba(${v.rgb},0.5)` : "transparent"}`,
-    background: active ? `rgba(${v.rgb},0.12)` : "transparent",
-    transition: "background .14s, border-color .14s",
+    border: `1px solid rgba(${v.rgb},0.5)`,
+    background: `rgba(${v.rgb},0.12)`,
   };
 }
 

@@ -116,6 +116,7 @@ export function ScriptSection({
           presets={presets}
           storyText={storyText}
           onStoryTextChange={onStoryTextChange}
+          mappings={mappingsByLower}
         />
       ) : isRows ? (
         <CharacterRowsEditor
