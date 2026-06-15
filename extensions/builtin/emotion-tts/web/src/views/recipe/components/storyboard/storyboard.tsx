@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { VoiceAsset } from "../../../../services/voice_assets_client";
 import type { VectorPreset } from "../../../../services/presets_client";
+import type { CharacterMapping } from "../../../../services/mappings_client";
 import {
   buildEmotions,
   buildVoices,
@@ -39,7 +40,11 @@ interface StoryboardProps {
   presets: readonly VectorPreset[];
   storyText: string;
   onStoryTextChange: (next: string) => void;
+  // Deployment character mappings for the cast popover's "Characters" tab.
+  mappings?: ReadonlyMap<string, CharacterMapping>;
 }
+
+type CastMode = "voice" | "character";
 
 interface PopPos {
   top: number;
@@ -51,6 +56,7 @@ export function Storyboard({
   presets,
   storyText,
   onStoryTextChange,
+  mappings,
 }: StoryboardProps): JSX.Element {
   const voices = useMemo(() => buildVoices(voiceAssets), [voiceAssets]);
   const emotions = useMemo(() => buildEmotions(presets), [presets]);
@@ -58,8 +64,15 @@ export function Storyboard({
   const sourceText = storyText;
   const paragraphs = useMemo(() => segmentScript(sourceText), [sourceText]);
 
-  const firstVoice = (voices[0] as Voice).id;
-  const firstEmotion = (emotions[0] as EmotionOption).id;
+  const firstVoice = voices[0]?.id ?? "";
+  const firstEmotion = emotions[0]?.id ?? "";
+
+  const [castMode, setCastMode] = useState<CastMode>("voice");
+  const [castQuery, setCastQuery] = useState<string>("");
+  const characterRows = useMemo(
+    () => buildCharacterRows(mappings, voices),
+    [mappings, voices],
+  );
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selection, setSelection] = useState<string[]>([]);
@@ -206,16 +219,7 @@ export function Storyboard({
     carRef.current?.scrollBy({ left: dir * 280, behavior: "smooth" });
   }, []);
 
-  // Roving arrow nav across voice tiles / emotion pills (AC-2.5).
-  const cycleVoice = useCallback(
-    (dir: number) => {
-      const idx = voices.findIndex((v) => v.id === draftVoice);
-      const next = voices[(idx + dir + voices.length) % voices.length] as Voice;
-      setDraftVoice(next.id);
-      popoverRef.current?.querySelector<HTMLButtonElement>(`[data-voice="${next.id}"]`)?.focus();
-    },
-    [voices, draftVoice],
-  );
+  // Roving arrow nav across emotion pills (AC-2.5).
   const cycleEmotion = useCallback(
     (dir: number) => {
       const idx = emotions.findIndex((e) => e.id === draftEmotion);
@@ -272,7 +276,34 @@ export function Storyboard({
   const words = useMemo(() => countWords(paragraphs), [paragraphs]);
   const summary = statusSummary(jobs);
 
-  const draft = voiceById(voices, draftVoice);
+  const draft: Voice = voiceById(voices, draftVoice) ?? FALLBACK_VOICE;
+
+  const [castChar, setCastChar] = useState<string | null>(null);
+  const castFilter = castQuery.trim().toLowerCase();
+  const castVoiceList = useMemo(
+    () =>
+      voices.filter(
+        (v) =>
+          !castFilter ||
+          v.name.toLowerCase().includes(castFilter) ||
+          v.role.toLowerCase().includes(castFilter),
+      ),
+    [voices, castFilter],
+  );
+  const castCharList = useMemo(
+    () =>
+      characterRows.filter(
+        (c) =>
+          !castFilter ||
+          c.name.toLowerCase().includes(castFilter) ||
+          (c.voice?.name.toLowerCase().includes(castFilter) ?? false),
+      ),
+    [characterRows, castFilter],
+  );
+  const castListCount =
+    castMode === "character"
+      ? `${castCharList.length} character${castCharList.length === 1 ? "" : "s"}`
+      : `${castVoiceList.length} voice${castVoiceList.length === 1 ? "" : "s"}`;
 
   const stop = (e: ReactMouseEvent) => e.stopPropagation();
 
@@ -339,7 +370,7 @@ export function Storyboard({
                       role="button"
                       tabIndex={0}
                       aria-pressed={selected || !!job}
-                      aria-label={job ? `${voiceById(voices, job.voiceId).name} · ${seg.text.trim()}` : seg.text.trim()}
+                      aria-label={job ? `${v?.name ?? "voice"} · ${seg.text.trim()}` : seg.text.trim()}
                       className={css.seg}
                       style={segStyle(selected, v, hovered, seg.kind)}
                       onClick={(e) => {
@@ -387,35 +418,69 @@ export function Storyboard({
                 </button>
               </div>
 
-              <div
-                className={css.voiceRow}
-                role="radiogroup"
-                aria-label="Voice"
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); cycleVoice(1); }
-                  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); cycleVoice(-1); }
-                }}
-              >
-                {voices.map((v) => {
-                  const active = draftVoice === v.id;
+              <div className={css.castModeRow}>
+                <div className={css.castModeBar} role="radiogroup" aria-label="Cast source">
+                  <button type="button" role="radio" aria-checked={castMode === "voice"}
+                    className={castMode === "voice" ? css.castModeBtnActive : css.castModeBtn}
+                    onClick={() => { setCastMode("voice"); setCastQuery(""); }}>Voices</button>
+                  <button type="button" role="radio" aria-checked={castMode === "character"}
+                    className={castMode === "character" ? css.castModeBtnActive : css.castModeBtn}
+                    onClick={() => { setCastMode("character"); setCastQuery(""); }}>Characters</button>
+                </div>
+                <span className={css.castCount}>{castListCount}</span>
+              </div>
+
+              <div className={css.castSearchWrap}>
+                <span className="material-symbols-outlined" aria-hidden="true" style={CAST_SEARCH_ICON}>search</span>
+                <input
+                  className={css.castSearch}
+                  value={castQuery}
+                  onChange={(e) => setCastQuery(e.target.value)}
+                  placeholder={castMode === "character" ? "Search characters…" : "Search voices…"}
+                  aria-label={castMode === "character" ? "Search characters" : "Search voices"}
+                />
+              </div>
+
+              <div className={css.castList} role="radiogroup" aria-label={castMode === "character" ? "Character" : "Voice"}>
+                {castMode === "voice" && castVoiceList.map((v) => {
+                  const active = castChar == null && draftVoice === v.id;
                   return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      data-voice={v.id}
-                      tabIndex={active ? 0 : -1}
-                      className={css.voiceTile}
-                      style={voiceTileStyle(v, active)}
-                      onClick={() => setDraftVoice(v.id)}
-                    >
-                      <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 19, color: active ? v.color : "var(--on-surface-variant, #c4c7c5)" }}>{v.icon}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--on-surface, #e3e3e3)" : "var(--on-surface-variant, #c4c7c5)" }}>{v.name}</span>
-                      <span style={TILE_ROLE}>{v.role}</span>
+                    <button key={v.id} type="button" role="radio" aria-checked={active}
+                      className={css.castRow} style={castRowStyle(v, active)}
+                      onClick={() => { setDraftVoice(v.id); setCastChar(null); }}>
+                      <span style={castMonoStyle(v)}>{v.initial}</span>
+                      <span className={css.castRowText}>
+                        <span style={castNameStyle(active)}>{v.name}</span>
+                        <span style={CAST_ROLE_STYLE}>{v.role}</span>
+                      </span>
+                      {active && <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: v.color, flexShrink: 0 }}>check</span>}
                     </button>
                   );
                 })}
+                {castMode === "character" && castCharList.map((c) => {
+                  const cv = c.voice ?? FALLBACK_VOICE;
+                  const active = castChar === c.id;
+                  return (
+                    <button key={c.id} type="button" role="radio" aria-checked={active}
+                      className={css.castRow} style={castRowStyle(cv, active)}
+                      onClick={() => { setDraftVoice(c.voiceId); setCastChar(c.id); }}>
+                      <span style={castMonoStyle(cv)}>{cv.initial}</span>
+                      <span className={css.castRowText}>
+                        <span style={castNameStyle(active)}>{c.name}</span>
+                        <span style={CAST_SUB_STYLE}>{cv.name}</span>
+                      </span>
+                      {active && <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: cv.color, flexShrink: 0 }}>check</span>}
+                    </button>
+                  );
+                })}
+                {((castMode === "voice" && castVoiceList.length === 0) ||
+                  (castMode === "character" && castCharList.length === 0)) && (
+                  <div className={css.castEmpty}>
+                    {castMode === "character"
+                      ? (characterRows.length === 0 ? "No characters mapped yet." : `No matches for “${castQuery}”`)
+                      : (voices.length === 0 ? "No voices yet — add voice assets." : `No matches for “${castQuery}”`)}
+                  </div>
+                )}
               </div>
 
               <div className={css.divider} />
@@ -504,7 +569,7 @@ export function Storyboard({
 
         <div ref={carRef} className={css.carousel}>
           {sortedJobs.map((j) => {
-            const v = voiceById(voices, j.voiceId);
+            const v = voiceById(voices, j.voiceId) ?? FALLBACK_VOICE;
             const meta = STATUS_META[j.status];
             const active = focusedJobId === j.id || hoveredJobId === j.id;
             const playing = playingJobId === j.id;
@@ -599,7 +664,6 @@ export function Storyboard({
 }
 
 const HEADER_ROW: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 };
-const TILE_ROLE: CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--on-surface-muted)" };
 const LIVE_CHIP: CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 10px",
   borderRadius: 999, fontFamily: "var(--font-ui)", fontSize: 11, fontWeight: 500, color: "#b8f0c8",
@@ -627,12 +691,59 @@ function markerStyle(v: Voice): CSSProperties {
   return { color: v.color, background: `rgba(${v.rgb},0.18)`, boxShadow: `inset 0 0 0 1px rgba(${v.rgb},0.45)` };
 }
 
-function voiceTileStyle(v: Voice, active: boolean): CSSProperties {
+interface CharacterRow {
+  id: string;
+  name: string;
+  voiceId: string;
+  voice: Voice | null;
+}
+
+function buildCharacterRows(
+  mappings: ReadonlyMap<string, CharacterMapping> | undefined,
+  voices: readonly Voice[],
+): CharacterRow[] {
+  if (!mappings) return [];
+  return [...mappings.values()]
+    .filter((m) => m.isActive)
+    .map((m) => ({
+      id: m.mappingId,
+      name: m.characterName,
+      voiceId: m.speakerVoiceAssetId,
+      voice: voices.find((v) => v.id === m.speakerVoiceAssetId) ?? null,
+    }));
+}
+
+function castRowStyle(v: Voice, active: boolean): CSSProperties {
   return {
-    border: `1px solid ${active ? `rgba(${v.rgb},0.6)` : "rgba(120,124,128,0.35)"}`,
-    background: active ? `rgba(${v.rgb},0.14)` : "var(--surface-raised, rgba(255,255,255,0.05))",
+    display: "flex", alignItems: "center", gap: 10, padding: "7px 9px",
+    borderRadius: 9, cursor: "pointer", width: "100%", textAlign: "left",
+    border: `1px solid ${active ? `rgba(${v.rgb},0.5)` : "transparent"}`,
+    background: active ? `rgba(${v.rgb},0.12)` : "transparent",
+    transition: "background .14s, border-color .14s",
   };
 }
+
+function castMonoStyle(v: Voice): CSSProperties {
+  return {
+    width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center",
+    justifyContent: "center", flexShrink: 0, fontFamily: "var(--font-mono)",
+    fontSize: 12, fontWeight: 700, color: v.color, background: `rgba(${v.rgb},0.16)`,
+    boxShadow: `inset 0 0 0 1px rgba(${v.rgb},0.4)`,
+  };
+}
+
+function castNameStyle(active: boolean): CSSProperties {
+  return {
+    fontSize: 12, fontWeight: 600,
+    color: active ? "var(--on-surface, #e3e3e3)" : "var(--on-surface-variant, #c4c7c5)",
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  };
+}
+
+const CAST_SEARCH_ICON: CSSProperties = { position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: "var(--on-surface-muted)", pointerEvents: "none" };
+const CAST_ROLE_STYLE: CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--on-surface-muted)" };
+const CAST_SUB_STYLE: CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.02em", color: "var(--on-surface-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+const FALLBACK_VOICE: Voice = { id: "", name: "Unassigned", role: "", icon: "graphic_eq", color: "var(--on-surface-variant, #c4c7c5)", rgb: "120,124,128", onColor: "#15171a", initial: "—", lib: "" };
 
 function emoBtnStyle(v: Voice, active: boolean): CSSProperties {
   return {

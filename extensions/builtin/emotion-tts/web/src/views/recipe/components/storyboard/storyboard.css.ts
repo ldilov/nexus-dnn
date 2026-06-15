@@ -203,6 +203,109 @@ export const voiceTile = style({
   },
 });
 
+export const castModeRow = style({ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" });
+
+export const castModeBar = style({
+  display: "inline-flex",
+  padding: "2px",
+  background: surfaceFloor,
+  border: "1px solid rgba(70,72,74,0.4)",
+  borderRadius: "8px",
+});
+
+export const castModeBtn = style({
+  fontFamily: vars.font.ui,
+  fontSize: "11px",
+  fontWeight: 600,
+  padding: "5px 11px",
+  borderRadius: "6px",
+  cursor: "pointer",
+  border: "none",
+  background: "transparent",
+  color: vars.color.textVariant,
+  transition: `all ${vars.motion.fast}`,
+});
+
+export const castModeBtnActive = style([
+  castModeBtn,
+  {
+    background: "var(--surface-high, rgba(255,255,255,0.08))",
+    color: vars.color.text,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+  },
+]);
+
+export const castCount = style({
+  fontFamily: vars.font.mono,
+  fontSize: "9.5px",
+  color: vars.color.textMuted,
+  fontVariantNumeric: "tabular-nums",
+  whiteSpace: "nowrap",
+});
+
+export const castSearchWrap = style({ position: "relative" });
+
+export const castSearch = style({
+  width: "100%",
+  height: "34px",
+  background: surfaceFloor,
+  border: "1px solid rgba(70,72,74,0.4)",
+  borderRadius: "8px",
+  color: vars.color.text,
+  fontFamily: vars.font.mono,
+  fontSize: "11.5px",
+  letterSpacing: "0.02em",
+  padding: "0 10px 0 28px",
+  outline: "none",
+  selectors: {
+    "&:focus": { borderColor: vars.color.accent },
+    "&::placeholder": { color: vars.color.textMuted },
+  },
+});
+
+export const castList = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "3px",
+  maxHeight: "184px",
+  overflowY: "auto",
+  margin: "0 -4px",
+  padding: "2px 4px",
+  selectors: {
+    "&::-webkit-scrollbar": { width: "8px" },
+    "&::-webkit-scrollbar-thumb": { background: "rgba(70,72,74,0.55)", borderRadius: "4px" },
+    "&::-webkit-scrollbar-track": { background: "transparent" },
+  },
+});
+
+export const castRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  padding: "7px 9px",
+  borderRadius: "9px",
+  cursor: "pointer",
+  width: "100%",
+  textAlign: "left",
+  border: "1px solid transparent",
+  background: "transparent",
+  transition: `background ${vars.motion.fast}, border-color ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": { background: "rgba(255,255,255,0.045)" },
+    "&:focus-visible": { outline: `2px solid ${vars.color.accent}`, outlineOffset: "2px" },
+  },
+});
+
+export const castRowText = style({ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0, flex: 1 });
+
+export const castEmpty = style({
+  padding: "14px 8px",
+  textAlign: "center",
+  fontFamily: vars.font.mono,
+  fontSize: "10.5px",
+  color: vars.color.textMuted,
+});
+
 export const divider = style({
   height: "1px",
   background: "rgba(70,72,74,0.28)",
