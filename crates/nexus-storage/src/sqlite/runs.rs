@@ -119,3 +119,36 @@ pub async fn update_node_execution(
     }
     Ok(())
 }
+
+pub async fn insert_run_resolved_graph(
+    pool: &SqlitePool,
+    r: &ResolvedRunGraphRecord,
+) -> Result<(), StorageError> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO run_resolved_graphs \
+         (run_id, workflow_id, workflow_version, workflow_json, inputs_values_json, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&r.run_id)
+    .bind(&r.workflow_id)
+    .bind(&r.workflow_version)
+    .bind(&r.workflow_json)
+    .bind(&r.inputs_values_json)
+    .bind(&r.created_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_run_resolved_graph(
+    pool: &SqlitePool,
+    run_id: &str,
+) -> Result<Option<ResolvedRunGraphRecord>, StorageError> {
+    Ok(
+        sqlx::query("SELECT * FROM run_resolved_graphs WHERE run_id = ?")
+            .bind(run_id)
+            .map(map_resolved_run_graph_row)
+            .fetch_optional(pool)
+            .await?,
+    )
+}

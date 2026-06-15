@@ -2,7 +2,8 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
+    RecipeRecord, ResolvedRunGraphRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    WorkflowVersionRecord,
 };
 
 #[allow(async_fn_in_trait)]
@@ -80,6 +81,14 @@ pub trait Database: Send + Sync {
         status: &str,
         error: Option<&str>,
     ) -> Result<(), StorageError>;
+    async fn insert_run_resolved_graph(
+        &self,
+        record: &ResolvedRunGraphRecord,
+    ) -> Result<(), StorageError>;
+    async fn get_run_resolved_graph(
+        &self,
+        run_id: &str,
+    ) -> Result<Option<ResolvedRunGraphRecord>, StorageError>;
 
     async fn insert_node_execution(&self, record: &NodeExecutionRecord)
     -> Result<(), StorageError>;

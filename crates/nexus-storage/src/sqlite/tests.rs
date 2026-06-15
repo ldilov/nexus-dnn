@@ -478,3 +478,27 @@ async fn extension_delete_spares_user_recipes() {
     assert!(db.get_recipe("ext-r").await.is_err());
     assert!(db.get_recipe("user-r").await.is_ok());
 }
+
+#[tokio::test]
+async fn resolved_run_graph_roundtrip() {
+    let db = setup_db().await;
+    db.insert_run_resolved_graph(&crate::records::ResolvedRunGraphRecord {
+        run_id: "r1".into(),
+        workflow_id: "wf".into(),
+        workflow_version: "1".into(),
+        workflow_json: r#"{"id":"wf"}"#.into(),
+        inputs_values_json: r#"{"script":"hi"}"#.into(),
+        created_at: "t".into(),
+    })
+    .await
+    .unwrap();
+
+    let got = db.get_run_resolved_graph("r1").await.unwrap().unwrap();
+    assert_eq!(got.workflow_version, "1");
+    assert!(
+        db.get_run_resolved_graph("missing")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

@@ -17,7 +17,8 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
+    RecipeRecord, ResolvedRunGraphRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    WorkflowVersionRecord,
 };
 pub struct SqliteDatabase {
     pool: SqlitePool,
@@ -182,6 +183,20 @@ impl Database for SqliteDatabase {
         error: Option<&str>,
     ) -> Result<(), StorageError> {
         runs::update_run_status(&self.pool, id, status, error).await
+    }
+
+    async fn insert_run_resolved_graph(
+        &self,
+        r: &ResolvedRunGraphRecord,
+    ) -> Result<(), StorageError> {
+        runs::insert_run_resolved_graph(&self.pool, r).await
+    }
+
+    async fn get_run_resolved_graph(
+        &self,
+        run_id: &str,
+    ) -> Result<Option<ResolvedRunGraphRecord>, StorageError> {
+        runs::get_run_resolved_graph(&self.pool, run_id).await
     }
 
     async fn insert_node_execution(&self, r: &NodeExecutionRecord) -> Result<(), StorageError> {

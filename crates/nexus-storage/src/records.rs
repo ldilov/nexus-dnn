@@ -133,6 +133,19 @@ pub struct RunRecord {
     pub predecessor_run_id: Option<String>,
 }
 
+/// The frozen, validated execution graph + resolved input values for one run,
+/// produced by the recipe binding compiler. When present, the run engine plans
+/// from this instead of the live workflow head row.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ResolvedRunGraphRecord {
+    pub run_id: String,
+    pub workflow_id: String,
+    pub workflow_version: String,
+    pub workflow_json: String,
+    pub inputs_values_json: String,
+    pub created_at: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeExecutionRecord {
     pub run_id: String,

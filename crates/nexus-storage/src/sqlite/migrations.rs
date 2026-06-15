@@ -155,6 +155,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    // spec workflow-driven-recipes P3 — frozen, validated run execution graphs
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/025_run_resolved_graphs.sql"),
+        false,
+    )
+    .await?;
     Ok(())
 }
 
