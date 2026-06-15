@@ -4,6 +4,7 @@ pub mod envelope;
 pub mod extension_dependencies;
 pub mod extensions;
 pub mod models;
+pub mod recipe_form;
 pub mod recipes;
 pub mod runs;
 pub mod system;
@@ -24,6 +25,9 @@ pub use models::{
     HyperparameterCommonDto, HyperparameterLlamacppDto, HyperparameterProfileDto,
     HyperparameterTrtDto, InstallModelRequestDto, InstalledModelDto, LoadStateDto, LoadTaskDto,
     ModelInstallTaskDto, ModelLimitsDto, RepoFileDto,
+};
+pub use recipe_form::{
+    FormControlDto, FormPresetDto, FormSectionDto, RecipeFormDto, SchemaHintDto,
 };
 pub use recipes::{RecipeDto, RecipeFieldBindingDto};
 pub use runs::{CreateRunResponseDto, NodeExecutionDto, RunDetailDto, RunDto};
@@ -73,6 +77,12 @@ mod export_tests {
 
         RecipeDto::export_all().unwrap();
         RecipeFieldBindingDto::export_all().unwrap();
+
+        RecipeFormDto::export_all().unwrap();
+        FormSectionDto::export_all().unwrap();
+        FormControlDto::export_all().unwrap();
+        FormPresetDto::export_all().unwrap();
+        SchemaHintDto::export_all().unwrap();
 
         ModelLimitsDto::export_all().unwrap();
         HyperparameterCommonDto::export_all().unwrap();
