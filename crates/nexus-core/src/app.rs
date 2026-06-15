@@ -908,8 +908,16 @@ async fn persist_recipe_records(
             bindings,
             workflow_id: None,
             workflow_version: None,
-            projection_schema_version: None,
-            projection: None,
+            projection_schema_version: recipe
+                .projection
+                .as_ref()
+                .and_then(|v| v.get("schema_version").and_then(|s| s.as_i64())),
+            projection: recipe.projection.as_ref().map(|v| {
+                if serde_json::from_value::<nexus_recipe::RecipeProjection>(v.clone()).is_err() {
+                    tracing::warn!(recipe_id = %recipe.recipe.id, "recipe projection does not parse as RecipeProjection; storing raw");
+                }
+                serde_json::to_string(v).unwrap_or_default()
+            }),
             status: None,
             author_kind: "extension".to_owned(),
             created_at: chrono::Utc::now().to_rfc3339(),

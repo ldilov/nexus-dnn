@@ -120,8 +120,16 @@ fn recipe_to_record(
         bindings,
         workflow_id: None,
         workflow_version: None,
-        projection_schema_version: None,
-        projection: None,
+        projection_schema_version: recipe
+            .projection
+            .as_ref()
+            .and_then(|v| v.get("schema_version").and_then(|s| s.as_i64())),
+        projection: recipe.projection.as_ref().map(|v| {
+            if serde_json::from_value::<nexus_recipe::RecipeProjection>(v.clone()).is_err() {
+                tracing::warn!(recipe_id = %recipe.recipe.id, "recipe projection does not parse as RecipeProjection; storing raw");
+            }
+            serde_json::to_string(v).unwrap_or_default()
+        }),
         status: None,
         author_kind: "extension".to_owned(),
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -158,5 +166,94 @@ fn ui_contribution_to_record(
         priority: contrib.priority.unwrap_or(0) as i32,
         metadata,
         availability: ext.status.as_str().to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod recipe_to_record_tests {
+    use super::*;
+    use nexus_extension::{ActivatedExtension, ExtensionManifest, ExtensionStatus, RecipeFile};
+    use serde_json::json;
+
+    fn manifest() -> ExtensionManifest {
+        serde_json::from_value(json!({
+            "spec_version": "0.1",
+            "extension": { "id": "test.ext", "version": "1.0.0" },
+            "compatibility": { "host_api": "1", "protocol": "1" },
+            "runtime": { "family": "python", "entrypoint": "main.py" }
+        }))
+        .unwrap()
+    }
+
+    fn recipe_with_projection() -> RecipeFile {
+        serde_json::from_value(json!({
+            "spec_version": "0.1",
+            "recipe": {
+                "id": "r",
+                "version": "1.0.0",
+                "display_name": "R",
+                "summary": "s",
+                "category": "c"
+            },
+            "workflow_template": "workflows/x.yaml",
+            "projection": {
+                "schema_version": 1,
+                "controls": [
+                    {
+                        "control_id": "speed",
+                        "kind": "float",
+                        "label": "Speed",
+                        "mode": "basic",
+                        "default_value": 1.0,
+                        "bindings": ["node:post_1.config.speed"]
+                    }
+                ]
+            }
+        }))
+        .unwrap()
+    }
+
+    fn fixture(recipe: RecipeFile) -> ActivatedExtension {
+        ActivatedExtension {
+            manifest: manifest(),
+            operators: Vec::new(),
+            recipes: vec![recipe],
+            ui_contributions: Vec::new(),
+            layouts: Vec::new(),
+            storage: None,
+            recipe_count: 1,
+            ui_contribution_count: 0,
+            validation_errors: Vec::new(),
+            status: ExtensionStatus::Active,
+            directory: std::path::PathBuf::from("/tmp/test.ext"),
+            install_plan: None,
+        }
+    }
+
+    #[test]
+    fn ingests_recipe_projection_into_projection_column() {
+        let recipe = recipe_with_projection();
+        let ext = fixture(recipe.clone());
+
+        let record = recipe_to_record(&recipe, &ext);
+
+        assert_eq!(record.projection_schema_version, Some(1));
+        let raw = record.projection.expect("projection persisted");
+        let parsed: nexus_recipe::RecipeProjection = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.schema_version, 1);
+        assert_eq!(parsed.controls[0].control_id, "speed");
+        assert_eq!(parsed.controls[0].bindings[0], "node:post_1.config.speed");
+    }
+
+    #[test]
+    fn recipe_without_projection_leaves_column_none() {
+        let mut recipe = recipe_with_projection();
+        recipe.projection = None;
+        let ext = fixture(recipe.clone());
+
+        let record = recipe_to_record(&recipe, &ext);
+
+        assert!(record.projection.is_none());
+        assert!(record.projection_schema_version.is_none());
     }
 }
