@@ -20,7 +20,9 @@ dependencies:
       type: runtime
       spec:
         family: python
-        version: ">=3.11,<3.13"
+        # Pinned to 3.12 so the prebuilt linux-aarch64 flash-attn wheel (cp312)
+        # and torch 2.12+cu132 cp312 wheels resolve without a source build.
+        version: ">=3.12,<3.13"
         accelerator_profiles: [cpu, cuda12, cuda13]
     - id: pkgs
       type: package_set

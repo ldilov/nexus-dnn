@@ -411,8 +411,8 @@ export function Storyboard({
                       style={voiceTileStyle(v, active)}
                       onClick={() => setDraftVoice(v.id)}
                     >
-                      <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 19, color: active ? v.color : "var(--on-surface-variant)" }}>{v.icon}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--on-surface)" : "var(--on-surface-variant)" }}>{v.name}</span>
+                      <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 19, color: active ? v.color : "var(--on-surface-variant, #c4c7c5)" }}>{v.icon}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--on-surface, #e3e3e3)" : "var(--on-surface-variant, #c4c7c5)" }}>{v.name}</span>
                       <span style={TILE_ROLE}>{v.role}</span>
                     </button>
                   );
@@ -630,16 +630,16 @@ function markerStyle(v: Voice): CSSProperties {
 
 function voiceTileStyle(v: Voice, active: boolean): CSSProperties {
   return {
-    border: `1px solid ${active ? `rgba(${v.rgb},0.6)` : "rgba(70,72,74,0.4)"}`,
-    background: active ? `rgba(${v.rgb},0.14)` : "var(--surface-floor, #000)",
+    border: `1px solid ${active ? `rgba(${v.rgb},0.6)` : "rgba(120,124,128,0.35)"}`,
+    background: active ? `rgba(${v.rgb},0.14)` : "var(--surface-raised, rgba(255,255,255,0.05))",
   };
 }
 
 function emoBtnStyle(v: Voice, active: boolean): CSSProperties {
   return {
-    border: `1px solid ${active ? `rgba(${v.rgb},0.45)` : "rgba(70,72,74,0.4)"}`,
-    background: active ? `rgba(${v.rgb},0.14)` : "var(--surface-floor, #000)",
-    color: active ? v.color : "var(--on-surface-variant)",
+    border: `1px solid ${active ? `rgba(${v.rgb},0.45)` : "rgba(120,124,128,0.35)"}`,
+    background: active ? `rgba(${v.rgb},0.14)` : "var(--surface-raised, rgba(255,255,255,0.05))",
+    color: active ? v.color : "var(--on-surface-variant, #c4c7c5)",
   };
 }
 

@@ -86,7 +86,7 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
     ) -> Result<Option<RuntimeBootstrapResult>, DepError> {
         let Some(canonical_family) = RuntimeFamily::canonical(family) else {
             tracing::debug!(
-                target: "spec_035::probe",
+                target: "extension_install::probe",
                 family,
                 "probe: unknown runtime family — returning None"
             );
@@ -98,7 +98,7 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
             // TRACE because this fires on every probe iteration; debug-level
             // tracing is reserved for "filesystem hit/miss" outcomes.
             tracing::trace!(
-                target: "spec_035::probe",
+                target: "extension_install::probe",
                 family,
                 target_dir = %target_dir.display(),
                 interpreter = %interpreter.display(),
@@ -110,7 +110,7 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
                     .map(|m| m.len())
                     .unwrap_or(0);
                 tracing::debug!(
-                    target: "spec_035::probe",
+                    target: "extension_install::probe",
                     family,
                     interpreter = %interpreter.display(),
                     bytes_placed,
@@ -140,7 +140,7 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
 
         match &row {
             Some(r) => tracing::info!(
-                target: "spec_035::probe",
+                target: "extension_install::probe",
                 family,
                 install_root = %r.install_root,
                 version = %r.version,
@@ -148,7 +148,7 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
                 "probe: DB hit — runtime satisfied via host_runtime_installs"
             ),
             None => tracing::debug!(
-                target: "spec_035::probe",
+                target: "extension_install::probe",
                 family,
                 version = ?version,
                 "probe: filesystem miss + DB miss — runtime not satisfied"
@@ -211,28 +211,52 @@ impl RealRuntimeBootstrapper {
 
         let started = std::time::Instant::now();
         tracing::info!(
-            target: "spec_035::bootstrap_python",
+            target: "extension_install::bootstrap_python",
             target_dir = %target_dir.display(),
             version = ?version,
             accelerator_profiles = ?accelerator_profiles,
             "bootstrap_python: enter"
         );
 
-        let asset = self.python_asset.as_ref().ok_or_else(|| {
-            tracing::warn!(
-                target: "spec_035::bootstrap_python",
-                "no PythonAsset configured — failing with categorised pointer"
-            );
-            DepError::Backend(
-                "embedded python asset not configured on this host (set \
-                 NEXUS_EMBEDDED_PYTHON_URL/SHA256/SIZE/KIND or pin a release in \
-                 family_python::builtin_assets::REGISTRY); install it from the Backends \
-                 page if a different runtime install pipeline is preferred."
-                    .to_owned(),
-            )
-        })?;
+        // Resolve the interpreter asset. An explicit override (env-configured
+        // `NEXUS_EMBEDDED_PYTHON_*`) always wins; otherwise pick the registry
+        // asset whose version satisfies the step's declared range, so different
+        // extensions can pin different Python versions on the same host.
+        let asset: nexus_backend_runtimes::family_python::PythonAsset =
+            match self.python_asset.as_ref() {
+                Some(a) => a.clone(),
+                None => {
+                    nexus_backend_runtimes::family_python::builtin_assets::for_current_target_matching(
+                        version,
+                    )
+                    .ok_or_else(|| {
+                        tracing::warn!(
+                            target: "extension_install::bootstrap_python",
+                            version = ?version,
+                            "no PythonAsset matches this host target + version range — \
+                             failing with categorised pointer"
+                        );
+                        DepError::Backend(
+                            "embedded python asset not configured on this host (set \
+                             NEXUS_EMBEDDED_PYTHON_URL/SHA256/SIZE/KIND or pin a release in \
+                             family_python::builtin_assets::REGISTRY); install it from the \
+                             Backends page if a different runtime install pipeline is preferred."
+                                .to_owned(),
+                        )
+                    })?
+                }
+            };
+        let resolved_version = asset
+            .url
+            .split("cpython-")
+            .nth(1)
+            .and_then(|s| s.split('+').next())
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                nexus_backend_runtimes::family_python::builtin_assets::python_version().to_owned()
+            });
         tracing::info!(
-            target: "spec_035::bootstrap_python",
+            target: "extension_install::bootstrap_python",
             url = %asset.url,
             sha256_prefix = %asset.sha256.chars().take(12).collect::<String>(),
             kind = ?asset.kind,
@@ -243,7 +267,7 @@ impl RealRuntimeBootstrapper {
         let interpreter_pre = python_exe_in(target_dir);
         if interpreter_pre.is_file() {
             tracing::info!(
-                target: "spec_035::bootstrap_python",
+                target: "extension_install::bootstrap_python",
                 interpreter = %interpreter_pre.display(),
                 "bootstrap_python: interpreter already present pre-call — \
                  family_python::bootstrap::run will short-circuit (this is \
@@ -259,7 +283,7 @@ impl RealRuntimeBootstrapper {
             .await
             .map_err(|e| DepError::Backend(format!("create cache dir {}: {e}", cache.display())))?;
         tracing::debug!(
-            target: "spec_035::bootstrap_python",
+            target: "extension_install::bootstrap_python",
             target_dir = %target_dir.display(),
             cache = %cache.display(),
             "bootstrap_python: dirs ensured"
@@ -299,15 +323,15 @@ impl RealRuntimeBootstrapper {
         };
 
         tracing::info!(
-            target: "spec_035::bootstrap_python",
+            target: "extension_install::bootstrap_python",
             "bootstrap_python: invoking family_python::bootstrap::run \
              (download + sha256 verify + archive extract)"
         );
-        py_bootstrap::run(&mut ctx, Some(asset))
+        py_bootstrap::run(&mut ctx, Some(&asset))
             .await
             .map_err(|e| {
                 tracing::error!(
-                    target: "spec_035::bootstrap_python",
+                    target: "extension_install::bootstrap_python",
                     phase = %e.phase,
                     category = %e.category.to_wire(),
                     detail = %e.detail,
@@ -323,7 +347,7 @@ impl RealRuntimeBootstrapper {
             .map(|m| m.len())
             .unwrap_or(0);
         tracing::info!(
-            target: "spec_035::bootstrap_python",
+            target: "extension_install::bootstrap_python",
             interpreter = %interpreter.display(),
             exists,
             bytes_placed,
@@ -342,8 +366,7 @@ impl RealRuntimeBootstrapper {
 
         Ok(RuntimeBootstrapResult {
             install_dir: target_dir.to_path_buf(),
-            resolved_version:
-                nexus_backend_runtimes::family_python::builtin_assets::python_version().to_owned(),
+            resolved_version,
             resolved_profile: Some(accelerator_label.to_owned()),
             bytes_placed,
         })
@@ -432,7 +455,7 @@ impl RealModelStoreClient {
                         _ => return Err(err),
                     };
                     tracing::warn!(
-                        target: "spec_035::model_artifact",
+                        target: "extension_install::model_artifact",
                         repo_id,
                         attempt,
                         error = %err,
@@ -485,7 +508,7 @@ impl RealModelStoreClient {
                 // Resilience fallback: one search attempt keeps installs
                 // alive if the detail endpoint regresses while search works.
                 tracing::warn!(
-                    target: "spec_035::model_artifact",
+                    target: "extension_install::model_artifact",
                     repo_id,
                     error = %detail_err,
                     "hf detail enumeration failed after retries — falling back to search"
@@ -609,7 +632,7 @@ impl ModelStoreClient for RealModelStoreClient {
         let job_id = job.job_id;
         self.orchestrator.enqueue(job_id).await;
         tracing::info!(
-            target: "spec_035::model_store",
+            target: "extension_install::model_store",
             family_id,
             job_id = %job_id,
             "model_store: download job created and enqueued"
@@ -737,7 +760,7 @@ impl ModelStoreClient for RealModelStoreClient {
             .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
         let Some(job_id) = rows.into_iter().next().map(|r| r.job_id) else {
             tracing::warn!(
-                target: "spec_035::model_store",
+                target: "extension_install::model_store",
                 extension_id,
                 family_id,
                 "record_reference: no install-map row for family — skipping ref"
@@ -749,7 +772,7 @@ impl ModelStoreClient for RealModelStoreClient {
             .await
             .map_err(|e| DepError::Backend(format!("install_map.add_ref: {e}")))?;
         tracing::info!(
-            target: "spec_035::model_store",
+            target: "extension_install::model_store",
             extension_id,
             family_id,
             job_id = %job_id,
@@ -791,7 +814,7 @@ impl ModelStoreClient for RealModelStoreClient {
         }
 
         tracing::info!(
-            target: "spec_035::model_store",
+            target: "extension_install::model_store",
             extension_id,
             family_id,
             jobs = job_ids.len(),
@@ -919,7 +942,7 @@ impl WorkerHandshake for RealWorkerHandshake {
             })
             .collect();
         tracing::info!(
-            target: "spec_035::handshake",
+            target: "extension_install::handshake",
             extension_id,
             extension_dir = %extension_dir.display(),
             extension_data_dir = %extension_data_dir.display(),
@@ -941,7 +964,7 @@ impl WorkerHandshake for RealWorkerHandshake {
                     nexus_backend_runtimes::family_python::python_exe_in(&runtime_convention);
                 if candidate.is_file() {
                     tracing::warn!(
-                        target: "spec_035::handshake",
+                        target: "extension_install::handshake",
                         extension_id,
                         candidate = %candidate.display(),
                         "handshake: upstream artifacts missing python — falling back to convention path \
@@ -965,7 +988,7 @@ impl WorkerHandshake for RealWorkerHandshake {
             None => {
                 if venv_convention.join("pyvenv.cfg").is_file() {
                     tracing::warn!(
-                        target: "spec_035::handshake",
+                        target: "extension_install::handshake",
                         extension_id,
                         candidate = %venv_convention.display(),
                         "handshake: upstream artifacts missing venv — falling back to convention path"
@@ -1020,7 +1043,7 @@ impl WorkerHandshake for RealWorkerHandshake {
         }
 
         tracing::info!(
-            target: "spec_035::handshake",
+            target: "extension_install::handshake",
             extension_id,
             venv_python = %venv_python.display(),
             venv_dir = %venv_dir.display(),
@@ -1098,7 +1121,7 @@ impl WorkerHandshake for RealWorkerHandshake {
                 let _ = tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await;
                 let _ = child.kill().await;
                 tracing::info!(
-                    target: "spec_035::handshake",
+                    target: "extension_install::handshake",
                     extension_id,
                     "handshake: success"
                 );
@@ -1225,7 +1248,7 @@ async fn run_handshake_protocol(
         // Notification (method without id) — log and keep reading.
         if parsed.get("id").is_none() && parsed.get("method").is_some() {
             tracing::debug!(
-                target: "spec_035::handshake",
+                target: "extension_install::handshake",
                 frame = %parsed,
                 attempt,
                 "handshake: skipping notification while waiting for response"

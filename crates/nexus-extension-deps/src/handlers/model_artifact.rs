@@ -145,7 +145,7 @@ impl StepHandler for ModelArtifactHandler {
         // re-attaching to an already-complete job that streams nothing.
         if ctx.force {
             tracing::info!(
-                target: "spec_035::model_artifact",
+                target: "extension_install::model_artifact",
                 extension_id = %ctx.extension_id,
                 family_id = %parsed.family_id,
                 "model_artifact: force reinstall — purging prior copy before re-download"
@@ -159,7 +159,7 @@ impl StepHandler for ModelArtifactHandler {
             .start_download(&parsed.family_id, accelerator.as_deref(), &parsed.selection)
             .await?;
         tracing::info!(
-            target: "spec_035::model_artifact",
+            target: "extension_install::model_artifact",
             extension_id = %ctx.extension_id,
             family_id = %parsed.family_id,
             accelerator = ?accelerator,
@@ -189,7 +189,7 @@ impl StepHandler for ModelArtifactHandler {
         loop {
             if ctx.cancellation_token.is_cancelled() {
                 tracing::warn!(
-                    target: "spec_035::model_artifact",
+                    target: "extension_install::model_artifact",
                     family_id = %parsed.family_id,
                     job_id = %job_id,
                     "model_artifact: cancelled by client"
@@ -221,7 +221,7 @@ impl StepHandler for ModelArtifactHandler {
                         || pct.saturating_sub(last_log_pct) >= 10
                     {
                         tracing::info!(
-                            target: "spec_035::model_artifact",
+                            target: "extension_install::model_artifact",
                             family_id = %parsed.family_id,
                             job_id = %job_id,
                             current_bytes,
@@ -241,7 +241,7 @@ impl StepHandler for ModelArtifactHandler {
                 }
                 ModelDownloadProgress::Completed { path, bytes_placed } => {
                     tracing::info!(
-                        target: "spec_035::model_artifact",
+                        target: "extension_install::model_artifact",
                         family_id = %parsed.family_id,
                         job_id = %job_id,
                         bytes_placed,
@@ -261,7 +261,7 @@ impl StepHandler for ModelArtifactHandler {
                         .await
                     {
                         tracing::warn!(
-                            target: "spec_035::model_artifact",
+                            target: "extension_install::model_artifact",
                             extension_id = %ctx.extension_id,
                             family_id = %parsed.family_id,
                             error = %err,
@@ -290,7 +290,7 @@ impl StepHandler for ModelArtifactHandler {
                 }
                 ModelDownloadProgress::Failed { category, message } => {
                     tracing::error!(
-                        target: "spec_035::model_artifact",
+                        target: "extension_install::model_artifact",
                         family_id = %parsed.family_id,
                         job_id = %job_id,
                         category = %category,

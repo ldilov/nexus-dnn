@@ -9,5 +9,7 @@ apps/web/dist
 **/*.mp4
 **/*.log
 videos
-# Windows-only prebuilt wheels (irrelevant to the aarch64/linux image)
-extensions/builtin/svi2-pro/binaries/*win_amd64.whl
+# NOTE: svi2-pro/binaries/*.whl are intentionally NOT excluded. uv reads the
+# metadata of every [tool.uv.sources] path dependency during `uv sync`, even
+# ones whose platform marker excludes the current OS, so the Windows wheels
+# must be present in the image or the linux/aarch64 sync aborts.

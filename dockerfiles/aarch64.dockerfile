@@ -37,7 +37,10 @@ COPY . .
 RUN cargo build --release -p nexus-core --bin nexus-dnn \
  && cp target/release/nexus-dnn /usr/local/bin/nexus-dnn
 
-FROM debian:bookworm-slim AS runtime
+# CUDA 13 runtime base: provides system libcudart/libcublas/libcublasLt.so.13
+# that the prebuilt stable-diffusion.cpp `sd` binary links against. torch-based
+# extensions bring their own bundled CUDA libs in-venv and are unaffected.
+FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04 AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ffmpeg gcc g++ make git curl ca-certificates xz-utils libssl3 \
@@ -49,6 +52,10 @@ RUN curl -fsSL https://github.com/astral-sh/uv/releases/latest/download/uv-aarch
  && uv --version
 COPY --from=builder /usr/local/bin/nexus-dnn /usr/local/bin/nexus-dnn
 COPY --from=builder /app/extensions/builtin /usr/local/share/nexus-dnn/extensions/builtin
+# Prebuilt stable-diffusion.cpp CLI (CUDA, aarch64) for the svi2-pro qwen-edit
+# path; the svi2 sdcli step resolves it via allow_system_path on PATH.
+COPY --from=builder /app/extensions/builtin/svi2-pro/binaries/linux-aarch64/sd-cli-linux-aarch64 /usr/local/bin/sd
+RUN chmod +x /usr/local/bin/sd
 ENV NEXUS_DATA_DIR=/data \
     NEXUS_PORT=3000
 EXPOSE 3000

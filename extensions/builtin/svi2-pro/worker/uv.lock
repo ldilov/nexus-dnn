@@ -4,7 +4,8 @@ requires-python = ">=3.11, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
     "python_full_version < '3.12' and sys_platform == 'win32'",
-    "sys_platform == 'linux'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')",
     "sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 
@@ -200,11 +201,11 @@ name = "flash-attn"
 version = "2.8.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "sys_platform == 'linux'",
+    "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')",
 ]
 dependencies = [
-    { name = "einops", marker = "sys_platform == 'linux'" },
-    { name = "torch", marker = "sys_platform == 'linux'" },
+    { name = "einops", marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')" },
+    { name = "torch", marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee264754709c22963447f7f8134613fd9ce80984ed0dab7/flash_attn-2.8.3.tar.gz", hash = "sha256:1e71dd64a9e0280e0447b8a0c2541bad4bf6ac65bdeaa2f90e51a9e57de0370d", size = 8447812, upload-time = "2025-08-15T08:28:12.911Z" }
 
@@ -536,7 +537,7 @@ diffusers = [
     { name = "transformers" },
 ]
 flash = [
-    { name = "flash-attn", version = "2.8.3", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.8.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" }, marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
 ]
@@ -555,7 +556,7 @@ requires-dist = [
     { name = "av", marker = "extra == 'diffusers'", specifier = ">=12.0" },
     { name = "einops", marker = "extra == 'diffusers'", specifier = ">=0.8" },
     { name = "ffmpeg-python", specifier = ">=0.2" },
-    { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'flash'", specifier = ">=2.8" },
+    { name = "flash-attn", marker = "platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'flash'", specifier = ">=2.8" },
     { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'win32' and extra == 'flash'", path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" },
     { name = "flash-attn", marker = "(python_full_version < '3.11' and sys_platform == 'win32' and extra == 'flash') or (python_full_version >= '3.13' and sys_platform == 'win32' and extra == 'flash')" },
     { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'flash'", path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" },

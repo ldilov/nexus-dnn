@@ -371,52 +371,36 @@ impl NexusApp {
                 download_orchestrator: download_orchestrator.clone(),
             });
 
-        // Resolve the embedded-Python asset once: env-var override wins, then
-        // the spec-032 REGISTRY pin for the host's target triple. The same
-        // asset feeds BOTH the legacy backend pipeline (FamilyPythonHandler in
-        // family_handlers) AND the spec-035 dep installer's RealRuntimeBootstrapper.
-        let resolved_python_asset =
+        let python_env_override =
             match nexus_backend_runtimes::family_python::PythonAssetConfig::from_env().load() {
                 Ok(Some(asset)) => {
-                    tracing::info!(
-                        url = %asset.url,
-                        kind = ?asset.kind,
-                        source = "env",
-                        "embedded-Python asset configured"
-                    );
+                    tracing::info!(url = %asset.url, kind = ?asset.kind, source = "env", "embedded-Python asset configured");
                     Some(asset)
                 }
-                Ok(None) => {
-                    match nexus_backend_runtimes::family_python::builtin_assets::for_current_target(
-                    ) {
-                        Some(asset) => {
-                            tracing::info!(
-                                url = %asset.url,
-                                kind = ?asset.kind,
-                                source = "registry",
-                                release_tag = nexus_backend_runtimes::family_python::builtin_assets::release_tag(),
-                                python_version = nexus_backend_runtimes::family_python::builtin_assets::python_version(),
-                                "embedded-Python asset resolved from REGISTRY"
-                            );
-                            Some(asset)
-                        }
-                        None => {
-                            tracing::debug!(
-                                "no embedded-Python asset for this host target; python-family \
-                         installs will fail until NEXUS_EMBEDDED_PYTHON_* env vars are set \
-                         or the target triple is added to REGISTRY"
-                            );
-                            None
-                        }
-                    }
-                }
+                Ok(None) => None,
                 Err(reason) => {
                     tracing::warn!(%reason, "invalid NEXUS_EMBEDDED_PYTHON_* env config — falling back to REGISTRY");
-                    nexus_backend_runtimes::family_python::builtin_assets::for_current_target()
+                    None
                 }
             };
-        let python_asset_for_family_handlers = resolved_python_asset.clone();
-        let python_asset_for_dep_bootstrapper = resolved_python_asset;
+        let python_asset_for_family_handlers = python_env_override.clone().or_else(|| {
+            let asset = nexus_backend_runtimes::family_python::builtin_assets::for_current_target();
+            match &asset {
+                Some(a) => tracing::info!(
+                    url = %a.url,
+                    source = "registry",
+                    python_version = nexus_backend_runtimes::family_python::builtin_assets::python_version(),
+                    "embedded-Python default asset resolved from REGISTRY"
+                ),
+                None => tracing::debug!(
+                    "no embedded-Python asset for this host target; python-family installs \
+                     will fail until NEXUS_EMBEDDED_PYTHON_* is set or the triple is in REGISTRY"
+                ),
+            }
+            asset
+        });
+        // None here means "resolve per step by version range" in the bootstrapper.
+        let python_asset_for_dep_bootstrapper = python_env_override;
 
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {

@@ -33,7 +33,10 @@ dependencies:
       type: runtime
       spec:
         family: python
-        version: ">=3.11,<3.13"
+        # Pinned to 3.11: indextts -> numba 0.58 / llvmlite 0.41 ship no 3.12
+        # wheels and fail to source-build on 3.12's setuptools. The host
+        # resolves the interpreter per-extension from this range.
+        version: ">=3.11,<3.12"
         # PyTorch publishes wheel indices for cu118/cu121/cu124/cu128. There
         # is no `cu13x` wheel index today; if/when upstream ships CUDA 13,
         # add `cuda13` back. Until then, advertising `cuda13` lets the dep

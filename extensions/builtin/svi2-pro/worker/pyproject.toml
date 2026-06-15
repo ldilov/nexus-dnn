@@ -62,8 +62,14 @@ allow-direct-references = true
 torch = [{ index = "pytorch-cu132" }]
 torchvision = [{ index = "pytorch-cu132" }]
 flash-attn = [
+  # Prebuilt wheels per platform (cu132 / torch 2.12). aarch64 + windows ship
+  # vendored wheels under binaries/; linux-amd64 resolves a wheel from the
+  # index (PyPI) — if none matches, the CUDA toolkit is required to source-build.
+  # windows-amd64
   { path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.12'" },
   { path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.11'" },
+  # linux-aarch64 (built on GB10 / CUDA 13, cpython 3.12)
+  { path = "../binaries/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
 ]
 
 [[tool.uv.index]]

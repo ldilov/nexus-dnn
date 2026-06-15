@@ -212,9 +212,9 @@ fn build_env_filter(default_level: &str) -> EnvFilter {
     EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         let directives = [
             default_level,
-            "spec_035=debug",
-            "spec_035::probe=debug",
-            "spec_035::bootstrap_python=debug",
+            "extension_install=debug",
+            "extension_install::probe=debug",
+            "extension_install::bootstrap_python=debug",
             "nexus_extension_deps=debug",
             "nexus_extension_deps::runner=debug",
             "nexus_extension_deps::handlers=debug",

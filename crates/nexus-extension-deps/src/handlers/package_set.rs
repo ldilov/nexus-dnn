@@ -192,7 +192,7 @@ impl StepHandler for PackageSetHandler {
             .to_path_buf();
 
         tracing::info!(
-            target: "spec_035::package_set",
+            target: "extension_install::package_set",
             manager = %parsed.manager,
             uv_bin = %uv_bin.display(),
             python_exe = %python_exe.as_deref().map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".into()),
@@ -250,7 +250,7 @@ impl StepHandler for PackageSetHandler {
             cmd.env("VIRTUAL_ENV", &venv);
         }
         tracing::debug!(
-            target: "spec_035::package_set",
+            target: "extension_install::package_set",
             uv_cache = %uv_cache.display(),
             "package_set: extension-isolated uv cache + env scrubbed (PYTHONHOME, PYTHONPATH, PIP_*)"
         );
@@ -341,7 +341,7 @@ impl StepHandler for PackageSetHandler {
         let stderr = truncate_utf8(&stderr_bytes, 16384);
         if !status.success() {
             tracing::error!(
-                target: "spec_035::package_set",
+                target: "extension_install::package_set",
                 exit_status = ?status,
                 exit_code = status.code(),
                 uv_bin = %uv_bin.display(),
@@ -361,21 +361,21 @@ impl StepHandler for PackageSetHandler {
             )));
         }
         tracing::info!(
-            target: "spec_035::package_set",
+            target: "extension_install::package_set",
             stdout_bytes = stdout_bytes.len(),
             stderr_bytes = stderr_bytes.len(),
             "package_set: uv sync OK"
         );
         if !stdout.trim().is_empty() {
             tracing::debug!(
-                target: "spec_035::package_set",
+                target: "extension_install::package_set",
                 stdout = %stdout,
                 "package_set: uv stdout"
             );
         }
         if !stderr.trim().is_empty() {
             tracing::debug!(
-                target: "spec_035::package_set",
+                target: "extension_install::package_set",
                 stderr = %stderr,
                 "package_set: uv stderr (warnings)"
             );
@@ -529,7 +529,7 @@ fn locate_uv(ctx: &StepContext<'_>) -> PathBuf {
     for c in candidates {
         if c.exists() {
             tracing::debug!(
-                target: "spec_035::package_set",
+                target: "extension_install::package_set",
                 uv = %c.display(),
                 "package_set: located embedded uv"
             );
@@ -537,7 +537,7 @@ fn locate_uv(ctx: &StepContext<'_>) -> PathBuf {
         }
     }
     tracing::debug!(
-        target: "spec_035::package_set",
+        target: "extension_install::package_set",
         "package_set: no embedded uv found — falling back to PATH lookup"
     );
     PathBuf::from("uv")

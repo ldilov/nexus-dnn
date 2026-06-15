@@ -180,16 +180,13 @@ impl StepHandler for SystemBinaryHandler {
     async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError> {
         let parsed = parse(spec)?;
         let host = PlatformTuple::host();
-        let Some(source) = select_source(&parsed, &host) else {
-            return Ok(ProbeResult::Unsupported {
-                reason: format!("no source declared for {}", host.as_canonical()),
-            });
-        };
 
-        // Opt-in: resolve via system PATH first. If found, the step is
-        // satisfied without touching the network. Useful for ubiquitous
-        // utilities (ffmpeg, git) where the user's existing install is
-        // canonical and the manifest's URLs are moving targets.
+        // Opt-in: resolve via system PATH first. This takes precedence over a
+        // declared source, so a binary present on PATH satisfies the step even
+        // when no source exists for the host platform — the documented
+        // mitigation for platforms (e.g. linux-arm64) we can't pin a download
+        // for. Also covers ubiquitous utilities (ffmpeg, git) whose system
+        // install is canonical and whose manifest URLs are moving targets.
         if parsed.allow_system_path
             && let Some(found) = locate_on_path(&parsed.id)
         {
@@ -206,6 +203,12 @@ impl StepHandler for SystemBinaryHandler {
                 },
             });
         }
+
+        let Some(source) = select_source(&parsed, &host) else {
+            return Ok(ProbeResult::Unsupported {
+                reason: format!("no source declared for {}", host.as_canonical()),
+            });
+        };
 
         let dir = target_dir(ctx, &parsed.id, &source.sha256);
         if dir.exists() && tokio::fs::read_dir(&dir).await.is_ok() {
@@ -231,25 +234,18 @@ impl StepHandler for SystemBinaryHandler {
     async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
         let parsed = parse(spec)?;
         let host = PlatformTuple::host();
-        let Some(source) = select_source(&parsed, &host) else {
-            return Err(DepError::UnsupportedPlatform {
-                platform: host.as_canonical(),
-            });
-        };
 
-        // PATH-fallback also runs in `run()`, not just `probe()`. The
-        // runner skips `probe()` entirely under force-reinstall (`force=true`),
-        // so without this duplicate check a forced reinstall would attempt
-        // to re-download and re-verify a binary the user already has on
-        // PATH — failing with sha256_mismatch when the manifest carries
-        // soft-fallback URLs (e.g. ffmpeg "latest" releases that can't be
-        // pinned). Force-reinstall on a system-owned binary is a no-op by
-        // design; this handler doesn't own /usr/local/bin/ffmpeg.
+        // PATH-fallback runs before source selection. The runner skips
+        // `probe()` entirely under force-reinstall (`force=true`), so without
+        // this check a forced reinstall would attempt to re-download a binary
+        // the user already has on PATH. Checking PATH first also lets a
+        // system binary satisfy the step on platforms with no declared source
+        // (e.g. linux-arm64) — `allow_system_path` is the documented mitigation.
         if parsed.allow_system_path
             && let Some(found) = locate_on_path(&parsed.id)
         {
             tracing::info!(
-                target: "spec_035::probe",
+                target: "extension_install::probe",
                 id = %parsed.id,
                 path = %found.display(),
                 "system_binary: PATH hit during run() — skipping bundled download \
@@ -266,6 +262,12 @@ impl StepHandler for SystemBinaryHandler {
                 metadata: Value::Null,
             });
         }
+
+        let Some(source) = select_source(&parsed, &host) else {
+            return Err(DepError::UnsupportedPlatform {
+                platform: host.as_canonical(),
+            });
+        };
 
         let dir = target_dir(ctx, &parsed.id, &source.sha256);
         let archive = source

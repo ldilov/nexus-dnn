@@ -34,7 +34,7 @@ impl InstallRunner {
         let started = std::time::Instant::now();
         let step_ids: Vec<&str> = self.plan.steps.iter().map(|s| s.id.as_str()).collect();
         info!(
-            target: "spec_035::runner",
+            target: "extension_install::runner",
             extension_id = %ctx.extension_id,
             install_run_id = %ctx.install_run_id,
             extension_dir = %ctx.extension_dir.display(),
@@ -52,7 +52,7 @@ impl InstallRunner {
             // pending so the user can see exactly what's blocked.
             if !upstream_satisfied(step, &statuses) {
                 tracing::warn!(
-                    target: "spec_035::runner",
+                    target: "extension_install::runner",
                     step_id = %step.id,
                     requires = ?step.requires,
                     "install: skipping step — upstream requirement(s) not satisfied"
@@ -67,7 +67,7 @@ impl InstallRunner {
             // Halt on first failure. Subsequent steps stay pending.
             if matches!(statuses.get(&step.id), Some(StepStatus::Failed { .. })) {
                 tracing::error!(
-                    target: "spec_035::runner",
+                    target: "extension_install::runner",
                     step_id = %step.id,
                     "install: HALTING run on first failure — downstream steps stay pending"
                 );
@@ -123,7 +123,7 @@ impl InstallRunner {
             .collect();
         match outcome {
             InstallOutcome::Success => info!(
-                target: "spec_035::runner",
+                target: "extension_install::runner",
                 extension_id = %ctx.extension_id,
                 install_run_id = %ctx.install_run_id,
                 total_ms,
@@ -131,7 +131,7 @@ impl InstallRunner {
                 "install: run COMPLETE — all_satisfied=true"
             ),
             InstallOutcome::Failed => tracing::error!(
-                target: "spec_035::runner",
+                target: "extension_install::runner",
                 extension_id = %ctx.extension_id,
                 install_run_id = %ctx.install_run_id,
                 total_ms,
@@ -139,7 +139,7 @@ impl InstallRunner {
                 "install: run FAILED — see step:run failed entries above for category + stderr"
             ),
             InstallOutcome::Cancelled => tracing::warn!(
-                target: "spec_035::runner",
+                target: "extension_install::runner",
                 extension_id = %ctx.extension_id,
                 install_run_id = %ctx.install_run_id,
                 total_ms,
@@ -291,7 +291,7 @@ async fn run_one_step(
 ) -> StepOutcome {
     let started = std::time::Instant::now();
     info!(
-        target: "spec_035::runner",
+        target: "extension_install::runner",
         extension_id = %ctx.extension_id,
         step_id = %step.id,
         step_type = %step.step_type,
@@ -305,7 +305,7 @@ async fn run_one_step(
             format!("no handler registered for type '{}'", step.step_type),
         );
         tracing::error!(
-            target: "spec_035::runner",
+            target: "extension_install::runner",
             step_id = %step.id,
             step_type = %step.step_type,
             "step: no handler registered — failing"
@@ -352,7 +352,7 @@ async fn run_one_step(
     };
     if ctx.force {
         info!(
-            target: "spec_035::runner",
+            target: "extension_install::runner",
             step_id = %step.id,
             "step: force=true — skipping probe and running unconditionally"
         );
@@ -363,7 +363,7 @@ async fn run_one_step(
         match probe_result {
             Ok(ProbeResult::Satisfied { artifact }) => {
                 info!(
-                    target: "spec_035::runner",
+                    target: "extension_install::runner",
                     step_id = %step.id,
                     probe_ms,
                     artifact_path = ?artifact.path,
@@ -377,7 +377,7 @@ async fn run_one_step(
             }
             Ok(ProbeResult::Unsupported { reason }) => {
                 tracing::warn!(
-                    target: "spec_035::runner",
+                    target: "extension_install::runner",
                     step_id = %step.id,
                     probe_ms,
                     %reason,
@@ -387,7 +387,7 @@ async fn run_one_step(
             }
             Ok(ProbeResult::NotSatisfied) => {
                 info!(
-                    target: "spec_035::runner",
+                    target: "extension_install::runner",
                     step_id = %step.id,
                     probe_ms,
                     "step: probe NotSatisfied — proceeding to run"
@@ -395,7 +395,7 @@ async fn run_one_step(
             }
             Err(e) => {
                 tracing::error!(
-                    target: "spec_035::runner",
+                    target: "extension_install::runner",
                     step_id = %step.id,
                     probe_ms,
                     error = %e,
@@ -420,7 +420,7 @@ async fn run_one_step(
     match run_result {
         Ok(artifact) => {
             info!(
-                target: "spec_035::runner",
+                target: "extension_install::runner",
                 step_id = %step.id,
                 run_ms,
                 total_ms = started.elapsed().as_millis() as u64,
@@ -440,7 +440,7 @@ async fn run_one_step(
         Err(e) => {
             let step_error = dep_error_to_step_error(e);
             tracing::error!(
-                target: "spec_035::runner",
+                target: "extension_install::runner",
                 step_id = %step.id,
                 run_ms,
                 category = %step_error.category,

@@ -12,8 +12,14 @@ export function ExtensionsGalleryRoute() {
 export function ExtensionLayoutRoute() {
   const { layoutId = "" } = useParams();
   const id = decodeURIComponent(layoutId);
+  const ctx = useRootOutletContext();
+  // The route param is a layout id (e.g. "emotion-tts.layout.main"); the
+  // dependency gate is keyed by the OWNING extension id. Resolve it from the
+  // layouts list, falling back to the raw id when the layout isn't loaded yet.
+  const extensionId =
+    ctx.extensionLayouts.find((layout) => layout.id === id)?.extension_id ?? id;
   return (
-    <DependencyGate extensionId={id}>
+    <DependencyGate extensionId={extensionId}>
       <ExtensionLayoutView layoutId={id} />
     </DependencyGate>
   );

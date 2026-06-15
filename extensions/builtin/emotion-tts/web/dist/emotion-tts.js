@@ -24517,8 +24517,8 @@ function zL({
                           style: HL(V, ce),
                           onClick: () => z(V.id),
                           children: [
-                            /* @__PURE__ */ c.jsx("span", { className: "material-symbols-outlined", "aria-hidden": "true", style: { fontSize: 19, color: ce ? V.color : "var(--on-surface-variant)" }, children: V.icon }),
-                            /* @__PURE__ */ c.jsx("span", { style: { fontSize: 11, fontWeight: 600, color: ce ? "var(--on-surface)" : "var(--on-surface-variant)" }, children: V.name }),
+                            /* @__PURE__ */ c.jsx("span", { className: "material-symbols-outlined", "aria-hidden": "true", style: { fontSize: 19, color: ce ? V.color : "var(--on-surface-variant, #c4c7c5)" }, children: V.icon }),
+                            /* @__PURE__ */ c.jsx("span", { style: { fontSize: 11, fontWeight: 600, color: ce ? "var(--on-surface, #e3e3e3)" : "var(--on-surface-variant, #c4c7c5)" }, children: V.name }),
                             /* @__PURE__ */ c.jsx("span", { style: LL, children: V.role })
                           ]
                         },
@@ -24741,15 +24741,15 @@ function IL(t) {
 }
 function HL(t, a) {
   return {
-    border: `1px solid ${a ? `rgba(${t.rgb},0.6)` : "rgba(70,72,74,0.4)"}`,
-    background: a ? `rgba(${t.rgb},0.14)` : "var(--surface-floor, #000)"
+    border: `1px solid ${a ? `rgba(${t.rgb},0.6)` : "rgba(120,124,128,0.35)"}`,
+    background: a ? `rgba(${t.rgb},0.14)` : "var(--surface-raised, rgba(255,255,255,0.05))"
   };
 }
 function qL(t, a) {
   return {
-    border: `1px solid ${a ? `rgba(${t.rgb},0.45)` : "rgba(70,72,74,0.4)"}`,
-    background: a ? `rgba(${t.rgb},0.14)` : "var(--surface-floor, #000)",
-    color: a ? t.color : "var(--on-surface-variant)"
+    border: `1px solid ${a ? `rgba(${t.rgb},0.45)` : "rgba(120,124,128,0.35)"}`,
+    background: a ? `rgba(${t.rgb},0.14)` : "var(--surface-raised, rgba(255,255,255,0.05))",
+    color: a ? t.color : "var(--on-surface-variant, #c4c7c5)"
   };
 }
 function FL(t) {
