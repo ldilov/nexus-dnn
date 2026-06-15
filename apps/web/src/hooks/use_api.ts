@@ -6,12 +6,14 @@ import {
   fetchLayouts,
   fetchModule,
   fetchModules,
+  fetchRecipeForm,
   fetchWorkflow,
   type DeploymentSummary,
   type HostModelsResponse,
   type LayoutSummary,
   type ModuleDetail,
   type ModuleSummary,
+  type RecipeFormDto,
   type Workflow,
 } from "../api/client";
 
@@ -73,6 +75,19 @@ export function useWorkflow(
   return useSWR<Workflow>(
     workflowId ? ["workflow", workflowId] : null,
     () => fetchWorkflow(workflowId as string),
+    config,
+  );
+}
+
+// ─── Recipe form (P4) ─────────────────────────────────────────────────────
+
+export function useRecipeForm(
+  recipeId: string | null | undefined,
+  config?: SWRConfiguration<RecipeFormDto>,
+): SWRResponse<RecipeFormDto> {
+  return useSWR<RecipeFormDto>(
+    recipeId ? ["recipe-form", recipeId] : null,
+    () => fetchRecipeForm(recipeId as string),
     config,
   );
 }

@@ -11,6 +11,7 @@ import type { LayoutSummaryDto } from "../api/generated/LayoutSummaryDto";
 import type { ListResponseDto } from "../api/generated/ListResponseDto";
 import type { OperatorDto } from "../api/generated/OperatorDto";
 import type { RecipeDto } from "../api/generated/RecipeDto";
+import type { RecipeFormDto } from "../api/generated/RecipeFormDto";
 import type { RefreshReportDto } from "../api/generated/RefreshReportDto";
 import type { RunDetailDto } from "../api/generated/RunDetailDto";
 import type { RunDto } from "../api/generated/RunDto";
@@ -201,6 +202,7 @@ export type {
   ListResponseDto,
   OperatorDto,
   RecipeDto,
+  RecipeFormDto,
   RefreshReportDto,
   RunDetailDto,
   RunDto,
@@ -296,6 +298,23 @@ export function fetchTools(): Promise<ToolDto[]> {
 
 export function fetchRecipes(): Promise<RecipeDto[]> {
   return apiFetch<ListResponseDto<RecipeDto>>("/recipes").then(unwrapItems);
+}
+
+export function fetchRecipeForm(id: string): Promise<RecipeFormDto> {
+  return apiFetch(`/recipes/${encodeURIComponent(id)}/form`);
+}
+
+export interface RunRecipeBody {
+  control_values: Record<string, unknown>;
+  preset_id?: string;
+}
+
+export function runRecipe(id: string, body: RunRecipeBody): Promise<CreateRunResponseDto> {
+  return apiFetch(`/recipes/${encodeURIComponent(id)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function fetchUIContributions(): Promise<UIContributionDto[]> {
