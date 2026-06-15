@@ -19,6 +19,7 @@ nexus-extension = { path = "../nexus-extension" }
 nexus-extension-deps = { path = "../nexus-extension-deps" }
 dashmap = "6"
 nexus-workflow = { path = "../nexus-workflow" }
+nexus-recipe = { path = "../nexus-recipe" }
 nexus-worker = { path = "../nexus-worker" }
 nexus-run = { path = "../nexus-run" }
 nexus-scheduler = { path = "../nexus-scheduler" }

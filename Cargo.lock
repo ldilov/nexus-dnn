@@ -3344,6 +3344,7 @@ dependencies = [
  "nexus-local-llm-chat-history",
  "nexus-models-store",
  "nexus-protocol",
+ "nexus-recipe",
  "nexus-run",
  "nexus-run-events",
  "nexus-scheduler",

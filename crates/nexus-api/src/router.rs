@@ -238,6 +238,7 @@ pub fn build(state: AppState) -> Router {
         .route("/operators/{id}", get(extensions::get_operator))
         .route("/recipes", get(recipes::list_recipes))
         .route("/recipes/{id}", get(recipes::get_recipe))
+        .route("/recipes/{id}/run", post(recipes::run_recipe))
         .route(
             "/ui/contributions",
             get(ui_contributions::list_contributions),

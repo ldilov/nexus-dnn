@@ -6,6 +6,7 @@ pub mod extension_router;
 pub mod frontend;
 pub mod handlers;
 pub mod mapping;
+pub mod recipe_run;
 pub mod router;
 pub mod workflow_versioning;
 mod ws;
