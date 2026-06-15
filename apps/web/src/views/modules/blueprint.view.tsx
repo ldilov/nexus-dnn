@@ -13,8 +13,9 @@ import {
   type RecipeRef,
   type Workflow,
 } from "../../api/client";
-import { useModule, useWorkflow } from "../../hooks/use_api";
+import { useModule, useRecipeForm, useWorkflow } from "../../hooks/use_api";
 import { GraphView } from "../workflows/components/canvas/graph_view";
+import { RecipeForm } from "./recipe-form/RecipeForm";
 import { PageHero } from "../../components/base/page_hero";
 import { Pill } from "../../components/base/pill";
 import { Tabs } from "../../components/base/tabs";
@@ -45,6 +46,9 @@ export function BlueprintView({
   const { data: detail, error: moduleError, isLoading } = useModule(moduleId);
 
   const workflowId = detail?.summary.workflow_id ?? null;
+  const handleRunLaunched = (runId: string): void => {
+    navigate(`/runtime/load/${encodeURIComponent(runId)}`);
+  };
   const { data: workflow, error: workflowFetchError, isLoading: workflowLoading } =
     useWorkflow(workflowId);
   const workflowError =
@@ -67,6 +71,8 @@ export function BlueprintView({
       null;
     return primary?.recipe_id ?? null;
   }, [detail, selectedRecipeId]);
+
+  const { data: recipeForm } = useRecipeForm(effectiveRecipeId);
 
   const selectedBlueprint = useMemo<RecipeRef | null>(() => {
     if (!detail || !effectiveRecipeId) return null;
@@ -328,6 +334,13 @@ export function BlueprintView({
             id="panel-recipe"
             className={s.stackLarge}
           >
+            {recipeForm && (
+              <section className={s.section}>
+                <h2 className={s.sectionNumber}>Run this recipe</h2>
+                <RecipeForm form={recipeForm} onLaunched={handleRunLaunched} />
+              </section>
+            )}
+
             {selectedBlueprint && (
               <section className={s.section}>
                 <h2 className={s.sectionNumber}>01 / Overview</h2>
