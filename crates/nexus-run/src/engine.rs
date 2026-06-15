@@ -14,6 +14,15 @@ use nexus_worker::WorkerManager;
 
 use crate::error::RunError;
 
+/// A validated, frozen run request from the recipe binding compiler. The engine
+/// stores `workflow_json` (graph with overrides applied) and plans from it.
+pub struct ResolvedRunInput {
+    pub workflow_id: String,
+    pub workflow_version: String,
+    pub workflow_json: String,
+    pub inputs_values_json: String,
+}
+
 pub struct DefaultRunEngine<W: WorkerManager> {
     db: Arc<SqliteDatabase>,
     workers: Arc<W>,
@@ -76,6 +85,51 @@ impl<W: WorkerManager + 'static> DefaultRunEngine<W> {
         Ok(run_id)
     }
 
+    pub async fn create_run_from_resolved(
+        &self,
+        input: &ResolvedRunInput,
+    ) -> Result<String, RunError> {
+        let run_id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        let record = RunRecord {
+            id: run_id.clone(),
+            workflow_id: input.workflow_id.clone(),
+            workflow_version: input.workflow_version.clone(),
+            status: "created".to_owned(),
+            started_at: None,
+            completed_at: None,
+            error: None,
+            created_at: now.clone(),
+            run_label: None,
+            execution_profile: None,
+            predecessor_run_id: None,
+        };
+        self.db
+            .insert_run(&record)
+            .await
+            .map_err(|e| RunError::StorageError(e.to_string()))?;
+
+        self.db
+            .insert_run_resolved_graph(&nexus_storage::records::ResolvedRunGraphRecord {
+                run_id: run_id.clone(),
+                workflow_id: input.workflow_id.clone(),
+                workflow_version: input.workflow_version.clone(),
+                workflow_json: input.workflow_json.clone(),
+                inputs_values_json: input.inputs_values_json.clone(),
+                created_at: now,
+            })
+            .await
+            .map_err(|e| RunError::StorageError(e.to_string()))?;
+
+        self.event_bus.publish(NexusEvent::RunCreated {
+            run_id: run_id.clone(),
+            workflow_id: input.workflow_id.clone(),
+        });
+
+        Ok(run_id)
+    }
+
     pub async fn execute_run(&self, run_id: &str) -> Result<(), RunError> {
         self.update_run_status_with_event(run_id, "created", "planning")
             .await?;
@@ -86,13 +140,23 @@ impl<W: WorkerManager + 'static> DefaultRunEngine<W> {
             .await
             .map_err(|e| RunError::RunNotFound(e.to_string()))?;
 
-        let workflow_record = self
+        let workflow = match self
             .db
-            .get_workflow(&run_record.workflow_id)
+            .get_run_resolved_graph(run_id)
             .await
-            .map_err(|e| RunError::WorkflowNotFound(e.to_string()))?;
-
-        let workflow = parse_workflow_from_record(&workflow_record)?;
+            .map_err(|e| RunError::StorageError(e.to_string()))?
+        {
+            Some(frozen) => serde_json::from_str::<nexus_workflow::Workflow>(&frozen.workflow_json)
+                .map_err(|e| RunError::WorkflowError(e.to_string()))?,
+            None => {
+                let workflow_record = self
+                    .db
+                    .get_workflow(&run_record.workflow_id)
+                    .await
+                    .map_err(|e| RunError::WorkflowNotFound(e.to_string()))?;
+                parse_workflow_from_record(&workflow_record)?
+            }
+        };
 
         let sorted_nodes = nexus_workflow::validate_dag(&workflow)
             .map_err(|e| RunError::WorkflowError(e.to_string()))?;
