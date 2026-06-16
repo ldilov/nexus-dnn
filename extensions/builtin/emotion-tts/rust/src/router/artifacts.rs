@@ -228,7 +228,9 @@ async fn fetch_artifacts(
         let voice_asset_id: Option<String> = row
             .try_get("resolved_speaker_voice_asset_id")
             .map_err(EmotionTtsError::from)?;
-        let output_format: String = row.try_get("output_format").map_err(EmotionTtsError::from)?;
+        let output_format: String = row
+            .try_get("output_format")
+            .map_err(EmotionTtsError::from)?;
         out.push(ArtifactRow {
             utterance_id,
             run_id,
@@ -321,7 +323,9 @@ async fn fetch_one(
     let voice_asset_id: Option<String> = row
         .try_get("resolved_speaker_voice_asset_id")
         .map_err(EmotionTtsError::from)?;
-    let output_format: String = row.try_get("output_format").map_err(EmotionTtsError::from)?;
+    let output_format: String = row
+        .try_get("output_format")
+        .map_err(EmotionTtsError::from)?;
 
     Ok(ArtifactRow {
         utterance_id,
@@ -522,10 +526,8 @@ async fn download_zip(
     };
 
     if rows.is_empty() {
-        return EmotionTtsError::not_found(format!(
-            "no artifacts for deployment {deployment_id}"
-        ))
-        .into_response();
+        return EmotionTtsError::not_found(format!("no artifacts for deployment {deployment_id}"))
+            .into_response();
     }
 
     // Build the zip in-memory. ZipWriter is sync; use spawn_blocking so the
