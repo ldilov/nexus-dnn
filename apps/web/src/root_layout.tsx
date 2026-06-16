@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   Outlet,
   useLoaderData,
@@ -24,6 +24,7 @@ import { usePollingMetrics } from "./hooks/use_polling_metrics";
 import { fetchLayouts } from "./services/layouts";
 import { createRun } from "./services/runs";
 import { fetchDeployments } from "./services/deployments";
+import { freeAllMemory } from "./services/backend_runtimes_client";
 import { SearchPalette } from "./layout/search/search_palette";
 import type { SearchItem } from "./layout/search/search_results";
 import type {
@@ -172,6 +173,10 @@ export default function RootLayout() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [deployments, setDeployments] = useState<DeploymentSummary[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(false);
+  const [gcState, setGcState] = useState<
+    "idle" | "loading" | "done" | "error"
+  >("idle");
+  const gcResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { specs: operatorSpecs } = useOperatorSpecs();
   const { events } = useEventStream();
@@ -203,6 +208,43 @@ export default function RootLayout() {
   const handleCancel = useCallback(() => {
     setIsRunning(false);
   }, []);
+
+  const scheduleGcReset = useCallback(() => {
+    if (gcResetTimer.current) clearTimeout(gcResetTimer.current);
+    gcResetTimer.current = setTimeout(() => {
+      setGcState("idle");
+      gcResetTimer.current = null;
+    }, 3000);
+  }, []);
+
+  const handleFreeMemory = useCallback(() => {
+    setGcState((prev) => {
+      if (prev === "loading") return prev;
+      void freeAllMemory()
+        .then(({ workers_notified, total_freed_mb }) => {
+          if (workers_notified === 0) {
+            toast.info("No live runtimes to free", {
+              description: "Start a runtime first.",
+            });
+          } else {
+            const gb = (total_freed_mb / 1024).toFixed(1);
+            const plural = workers_notified !== 1 ? "s" : "";
+            toast.success(
+              `Freed ${gb} GB across ${workers_notified} runtime${plural}`,
+            );
+          }
+          setGcState("done");
+        })
+        .catch((err: unknown) => {
+          const message =
+            err instanceof Error ? err.message : "Unexpected error";
+          toast.error("Failed to free GPU memory", { description: message });
+          setGcState("error");
+        })
+        .finally(scheduleGcReset);
+      return "loading";
+    });
+  }, [scheduleGcReset]);
 
   const handleOpenRecipe = useCallback(
     (recipe: Recipe) => {
@@ -282,6 +324,13 @@ export default function RootLayout() {
     };
   }, [searchOpen]);
 
+  useEffect(
+    () => () => {
+      if (gcResetTimer.current) clearTimeout(gcResetTimer.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -310,6 +359,8 @@ export default function RootLayout() {
             onOpenNotifications={notYetWired("Notifications")}
             onOpenProfile={notYetWired("Profile")}
             tweakPanel={<TweakPanel />}
+            onFreeMemory={handleFreeMemory}
+            gcState={gcState}
           />
         }
         sidebar={
