@@ -1,4 +1,4 @@
-import { style } from "@vanilla-extract/css";
+import { style, keyframes } from "@vanilla-extract/css";
 import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
 
@@ -116,6 +116,48 @@ export const iconButton = style({
   ":hover": {
     background: vars.color.bg.hover,
     color: vars.color.text.primary,
+  },
+});
+
+export const gcButton = style({
+  width: vars.control.heightSm,
+  height: vars.control.heightSm,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "transparent",
+  border: "none",
+  color: vars.color.text.secondary,
+  borderRadius: vars.radius.full,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.warning.base,
+    color: vars.color.onColor.primary,
+  },
+  ":disabled": {
+    cursor: "default",
+    color: vars.color.text.muted,
+  },
+  selectors: {
+    "&:disabled:hover": {
+      background: "transparent",
+      color: vars.color.text.muted,
+    },
+  },
+});
+
+const spin = keyframes({
+  from: { transform: "rotate(0deg)" },
+  to: { transform: "rotate(360deg)" },
+});
+
+export const spinningIcon = style({
+  animation: `${spin} ${vars.motion.durationSlower} linear infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
   },
 });
 

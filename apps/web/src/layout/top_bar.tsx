@@ -14,6 +14,8 @@ export interface RuntimeBadge {
   label: string;
 }
 
+export type GcState = "idle" | "loading" | "done" | "error";
+
 export interface TopBarProps {
   breadcrumbs: ReadonlyArray<BreadcrumbItem>;
   host: RuntimeBadge;
@@ -25,7 +27,41 @@ export interface TopBarProps {
   /** Optional slot for the tweak panel (US6). Rendered between the
    *  search affordance and notifications when supplied. */
   tweakPanel?: ReactNode;
+  /** Broadcast a memory-release to every live runtime. When provided,
+   *  a power-action button is rendered before notifications. */
+  onFreeMemory?: () => void;
+  gcState?: GcState;
 }
+
+const GC_BUTTON_BY_STATE: Record<
+  GcState,
+  { icon: string; spin: boolean; disabled: boolean; ariaLabel: string }
+> = {
+  idle: {
+    icon: "memory",
+    spin: false,
+    disabled: false,
+    ariaLabel: "Free GPU memory",
+  },
+  loading: {
+    icon: "sync",
+    spin: true,
+    disabled: true,
+    ariaLabel: "Freeing memory…",
+  },
+  done: {
+    icon: "check_circle",
+    spin: false,
+    disabled: true,
+    ariaLabel: "Memory freed",
+  },
+  error: {
+    icon: "memory",
+    spin: false,
+    disabled: false,
+    ariaLabel: "Free GPU memory (last attempt failed)",
+  },
+};
 
 export function TopBar({
   breadcrumbs,
@@ -36,7 +72,10 @@ export function TopBar({
   onOpenProfile,
   profileInitials = "·",
   tweakPanel,
+  onFreeMemory,
+  gcState = "idle",
 }: TopBarProps) {
+  const gc = GC_BUTTON_BY_STATE[gcState];
   return (
     <div className={styles.root}>
       <div className={styles.leftZone}>
@@ -88,6 +127,27 @@ export function TopBar({
           <span>Search</span>
         </button>
         {tweakPanel}
+        {onFreeMemory && (
+          <button
+            type="button"
+            className={styles.gcButton}
+            onClick={onFreeMemory}
+            disabled={gc.disabled}
+            aria-label={gc.ariaLabel}
+            title={
+              gcState === "idle" || gcState === "error"
+                ? "Free all GPU memory across running runtimes — interrupts active renders"
+                : undefined
+            }
+          >
+            <span
+              className={`material-symbols-outlined${gc.spin ? ` ${styles.spinningIcon}` : ""}`}
+              aria-hidden="true"
+            >
+              {gc.icon}
+            </span>
+          </button>
+        )}
         <button
           type="button"
           className={styles.iconButton}
