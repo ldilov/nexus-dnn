@@ -93,14 +93,30 @@ dependencies:
       type: model_artifact
       requires: [python]
       spec:
-        # Real HuggingFace repo for IndexTTS-2. The repo is self-contained
-        # at v1.5.0+ — gpt.pth, s2mel.pth, bpe.model, config.yaml, the
-        # qwen0.6bemo4-merge subfolder, etc. all live here. The dep
-        # installer downloads every file in the repo (snapshot-style)
-        # because IndexTTS needs configs at runtime that the model store's
-        # default normalizer would otherwise drop as "Unknown" format.
+        # Real HuggingFace repo for IndexTTS-2. Pinned to exactly what the
+        # worker loads (config.yaml drives infer_v2.py): the root checkpoints
+        # plus the whole qwen0.6bemo4-merge emotion submodel subfolder (loaded
+        # via transformers AutoModel/AutoTokenizer.from_pretrained, so the
+        # ENTIRE dir is required — not just config + weights). BigVGAN
+        # (nvidia/bigvgan_v2_22khz_80band_256x) and the w2v-bert feature
+        # extractor (facebook/w2v-bert-2.0) are SEPARATE repos fetched at
+        # runtime — intentionally NOT in this selection; README/LICENSE/
+        # .gitattributes are skipped (never loaded). The download path
+        # (snapshot_targets_from_huggingface) bypasses normalize_family, so
+        # "Unknown"-format configs (config.yaml, bpe.model, *.pt) download
+        # verbatim. Explicit include[] lets the per-file install verify cover
+        # IndexTTS-2 so a partial/interrupted download fails loud + heals on re-run.
         family_id: "huggingface:IndexTeam/IndexTTS-2"
         acceleration_match: "matches_runtime_step:python"
+        include:
+          - "config.yaml"
+          - "gpt.pth"
+          - "s2mel.pth"
+          - "bpe.model"
+          - "feat1.pt"
+          - "feat2.pt"
+          - "wav2vec2bert_stats.pt"
+          - "qwen0.6bemo4-merge/**"
 
     - id: validate
       type: validation
