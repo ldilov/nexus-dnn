@@ -3,6 +3,7 @@
 //! topic `extension.install.*`.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::extract::{Path, Query, State};
 use chrono::Utc;
@@ -19,6 +20,12 @@ use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
 use super::common::{EventBusProgressSink, install_plan_for, runner_context_inputs};
+
+/// The sink backfill is a whole-sink walk that grows with sink size, so the
+/// install path runs it at most once per process — the first install since
+/// startup adopts any orphaned rows; later installs skip it. The unconditional
+/// reconcile lives behind the operator-triggered revalidate route instead.
+static INSTALL_PATH_BACKFILL_DONE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Default, Deserialize)]
 pub struct StartInstallQuery {
@@ -51,28 +58,40 @@ pub async fn start_install(
 
     // Adopt any store-sink bytes whose install-map rows were lost (terminal-job
     // prune / fresh DB) BEFORE the runner probes, so model_artifact's per-file
-    // verify sees already-present files and skips a needless re-download. Best
-    // effort + generic (host-owned sink only) — a failure must not block install.
-    if let (Some(install_map), Some(orchestrator)) = (
-        state.install_map.as_ref(),
-        state.download_orchestrator.as_ref(),
-    ) {
-        match install_map
-            .backfill_install_map_from_sink(orchestrator.sink_root())
-            .await
-        {
-            Ok(report) if report.recorded > 0 => tracing::info!(
-                extension_id = %extension_id,
-                recorded = report.recorded,
-                scanned_jobs = report.scanned_jobs,
-                "install: backfilled install-map rows from download sink before run"
-            ),
-            Ok(_) => {}
-            Err(e) => tracing::warn!(
-                extension_id = %extension_id,
-                error = %e,
-                "install: sink backfill failed (continuing — install will re-download if needed)"
-            ),
+    // verify sees already-present files and skips a needless re-download. Runs at
+    // most once per process (the whole-sink walk grows with sink size); the
+    // operator-triggered revalidate route reconciles unconditionally. Best effort
+    // + generic (host-owned sink only) — a failure must not block install, and on
+    // failure we clear the guard so a later install retries the adopt.
+    if INSTALL_PATH_BACKFILL_DONE
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        if let (Some(install_map), Some(orchestrator)) = (
+            state.install_map.as_ref(),
+            state.download_orchestrator.as_ref(),
+        ) {
+            match install_map
+                .backfill_install_map_from_sink(orchestrator.sink_root())
+                .await
+            {
+                Ok(report) if report.recorded > 0 => tracing::info!(
+                    extension_id = %extension_id,
+                    recorded = report.recorded,
+                    scanned_jobs = report.scanned_jobs,
+                    "install: backfilled install-map rows from download sink before run"
+                ),
+                Ok(_) => {}
+                Err(e) => {
+                    // Let a later install retry — this run had nothing adopted.
+                    INSTALL_PATH_BACKFILL_DONE.store(false, Ordering::SeqCst);
+                    tracing::warn!(
+                        extension_id = %extension_id,
+                        error = %e,
+                        "install: sink backfill failed (continuing — install will re-download if needed)"
+                    );
+                }
+            }
         }
     }
 
