@@ -8,7 +8,7 @@ import {
 } from "react-router";
 import { toast } from "sonner";
 import { Shell } from "./layout/shell";
-import { TopBar, type BreadcrumbItem } from "./layout/top_bar";
+import { TopBar, type BreadcrumbItem, type GcState } from "./layout/top_bar";
 import { Sidebar, type SidebarVariant } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
 import { TweakPanel } from "./layout/tweak_panel";
@@ -173,10 +173,9 @@ export default function RootLayout() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [deployments, setDeployments] = useState<DeploymentSummary[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(false);
-  const [gcState, setGcState] = useState<
-    "idle" | "loading" | "done" | "error"
-  >("idle");
+  const [gcState, setGcState] = useState<GcState>("idle");
   const gcResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gcInFlight = useRef<boolean>(false);
 
   const { specs: operatorSpecs } = useOperatorSpecs();
   const { events } = useEventStream();
@@ -218,32 +217,33 @@ export default function RootLayout() {
   }, []);
 
   const handleFreeMemory = useCallback(() => {
-    setGcState((prev) => {
-      if (prev === "loading") return prev;
-      void freeAllMemory()
-        .then(({ workers_notified, total_freed_mb }) => {
-          if (workers_notified === 0) {
-            toast.info("No live runtimes to free", {
-              description: "Start a runtime first.",
-            });
-          } else {
-            const gb = (total_freed_mb / 1024).toFixed(1);
-            const plural = workers_notified !== 1 ? "s" : "";
-            toast.success(
-              `Freed ${gb} GB across ${workers_notified} runtime${plural}`,
-            );
-          }
-          setGcState("done");
-        })
-        .catch((err: unknown) => {
-          const message =
-            err instanceof Error ? err.message : "Unexpected error";
-          toast.error("Failed to free GPU memory", { description: message });
-          setGcState("error");
-        })
-        .finally(scheduleGcReset);
-      return "loading";
-    });
+    if (gcInFlight.current) return;
+    gcInFlight.current = true;
+    setGcState("loading");
+    void freeAllMemory()
+      .then(({ workers_notified, total_freed_mb }) => {
+        if (workers_notified === 0) {
+          toast.info("No live runtimes to free", {
+            description: "Start a runtime first.",
+          });
+        } else {
+          const gb = (total_freed_mb / 1024).toFixed(1);
+          const plural = workers_notified !== 1 ? "s" : "";
+          toast.success(
+            `Freed ${gb} GB across ${workers_notified} runtime${plural}`,
+          );
+        }
+        setGcState("done");
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Unexpected error";
+        toast.error("Failed to free GPU memory", { description: message });
+        setGcState("error");
+      })
+      .finally(() => {
+        gcInFlight.current = false;
+        scheduleGcReset();
+      });
   }, [scheduleGcReset]);
 
   const handleOpenRecipe = useCallback(
