@@ -222,30 +222,32 @@ impl RealRuntimeBootstrapper {
         // `NEXUS_EMBEDDED_PYTHON_*`) always wins; otherwise pick the registry
         // asset whose version satisfies the step's declared range, so different
         // extensions can pin different Python versions on the same host.
-        let asset: nexus_backend_runtimes::family_python::PythonAsset =
-            match self.python_asset.as_ref() {
-                Some(a) => a.clone(),
-                None => {
-                    nexus_backend_runtimes::family_python::builtin_assets::for_current_target_matching(
-                        version,
-                    )
-                    .ok_or_else(|| {
-                        tracing::warn!(
-                            target: "extension_install::bootstrap_python",
-                            version = ?version,
-                            "no PythonAsset matches this host target + version range — \
-                             failing with categorised pointer"
-                        );
-                        DepError::Backend(
-                            "embedded python asset not configured on this host (set \
+        let asset: nexus_backend_runtimes::family_python::PythonAsset = match self
+            .python_asset
+            .as_ref()
+        {
+            Some(a) => a.clone(),
+            None => {
+                nexus_backend_runtimes::family_python::builtin_assets::for_current_target_matching(
+                    version,
+                )
+                .ok_or_else(|| {
+                    tracing::warn!(
+                        target: "extension_install::bootstrap_python",
+                        version = ?version,
+                        "no PythonAsset matches this host target + version range — \
+                         failing with categorised pointer"
+                    );
+                    DepError::Backend(
+                        "embedded python asset not configured on this host (set \
                              NEXUS_EMBEDDED_PYTHON_URL/SHA256/SIZE/KIND or pin a release in \
                              family_python::builtin_assets::REGISTRY); install it from the \
                              Backends page if a different runtime install pipeline is preferred."
-                                .to_owned(),
-                        )
-                    })?
-                }
-            };
+                            .to_owned(),
+                    )
+                })?
+            }
+        };
         let resolved_version = asset
             .url
             .split("cpython-")
@@ -511,7 +513,14 @@ impl RealModelStoreClient {
                     target: "extension_install::model_artifact",
                     repo_id,
                     error = %detail_err,
-                    "hf detail enumeration failed after retries — falling back to search"
+                    unrestricted_selection = selection.is_unrestricted(),
+                    "hf detail enumeration failed after retries — falling back to search. \
+                     Search may return a partial file list; for an UNRESTRICTED (whole-repo) \
+                     selection the per-file verify is disabled (it cannot enumerate the repo \
+                     without the network), so a partial download would still probe Satisfied \
+                     (pre-existing limitation). Pin an explicit files[] selection in the \
+                     extension's model_artifact step once the repo's file list is stable to \
+                     make the install heal on re-run."
                 );
                 let req = SearchReq {
                     query: repo_id.to_owned(),
@@ -744,6 +753,85 @@ impl ModelStoreClient for RealModelStoreClient {
                 bad.join("; ")
             )),
         }))
+    }
+
+    async fn verify_files_present(
+        &self,
+        family_id: &str,
+        _accelerator: Option<&str>,
+        selection: &nexus_extension_deps::FileSelection,
+    ) -> Result<Vec<String>, DepError> {
+        // Whole-repo selections can only be enumerated with a network call, which
+        // probe() forbids — report "all present" and lean on family_integrity for
+        // the post-install size audit instead.
+        if selection.is_unrestricted() {
+            return Ok(Vec::new());
+        }
+
+        let family = FamilyId::from(family_id);
+        let candidates: Vec<String> = if !selection.files.is_empty() {
+            selection.files.clone()
+        } else {
+            let rows = self
+                .install_map
+                .list_for_family(&family)
+                .await
+                .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
+            let known: Vec<String> = rows.into_iter().map(|r| r.filename).collect();
+            match selection.filter(known.iter().map(String::as_str)) {
+                Ok(matched) => matched.into_iter().map(str::to_owned).collect(),
+                // The glob matched nothing in the (sparse) install_map. For a
+                // verify that means the glob-declared files were never
+                // downloaded — report them ABSENT so probe() returns
+                // NotSatisfied and the step re-runs, NOT a fatal error.
+                // `filter`'s empty-match case is `Backend`; a bad glob is
+                // `InvalidSpec` and stays a real error.
+                Err(DepError::Backend(_)) => {
+                    let pattern = selection
+                        .include
+                        .first()
+                        .or_else(|| selection.exclude.first())
+                        .cloned()
+                        .unwrap_or_else(|| "<glob selection>".to_owned());
+                    return Ok(vec![format!("<unsatisfied glob: {pattern}>")]);
+                }
+                Err(other) => return Err(other),
+            }
+        };
+
+        let sink_root = self.orchestrator.sink_root();
+        let mut missing: Vec<String> = Vec::new();
+        for filename in candidates {
+            let artifact_id = ArtifactId::from(format!("{family_id}#{filename}"));
+            let row = self
+                .install_map
+                .find_by_artifact(&artifact_id)
+                .await
+                .map_err(|e| DepError::Backend(format!("install_map.find_by_artifact: {e}")))?;
+            let present = match row {
+                None => false,
+                Some(row) => {
+                    let path = row.install_path(sink_root);
+                    match tokio::fs::metadata(&path).await {
+                        Ok(meta) => meta.len() > 0,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "extension_install::model_artifact",
+                                path = %path.display(),
+                                error = %e,
+                                "verify_files_present: metadata failed (treating as absent)"
+                            );
+                            false
+                        }
+                    }
+                }
+            };
+            if !present {
+                missing.push(filename);
+            }
+        }
+        Ok(missing)
     }
 
     async fn record_reference(
@@ -1927,6 +2015,8 @@ mod tests {
         for migration in [
             include_str!("../../../migrations/013_model_store_download_jobs.sql"),
             include_str!("../../../migrations/014_model_store_installed_artifacts.sql"),
+            include_str!("../../../migrations/015_installed_artifact_extraction_metadata.sql"),
+            include_str!("../../../migrations/021_installed_artifact_moe_metadata.sql"),
             include_str!("../../../migrations/022_model_store_artifact_refs.sql"),
         ] {
             for stmt in migration.split(';') {
@@ -2233,6 +2323,238 @@ mod tests {
         };
         assert_eq!(t1, 5_000_000_000);
         assert!(c1 >= c0, "current_bytes monotonic: {c1} >= {c0}");
+    }
+
+    /// Seed an install-map row + write its on-disk file under the sink so
+    /// `verify_files_present` sees a "present" declared file.
+    async fn seed_present_file(
+        install_map: &InstallMap,
+        sink_root: &std::path::Path,
+        family_id: &str,
+        job_id: &nexus_models_store::ids::JobId,
+        filename: &str,
+        contents: &[u8],
+    ) {
+        use nexus_models_store::downloads::InstalledArtifactRecord;
+        use nexus_models_store::types::Format;
+        install_map
+            .record(InstalledArtifactRecord {
+                artifact_id: ArtifactId::from(format!("{family_id}#{filename}")),
+                family_id: FamilyId::from(family_id),
+                variant_id: None,
+                format: Format::Safetensors,
+                source_provider: "huggingface".into(),
+                source_repo: "Owner/Repo".into(),
+                source_revision: Some("main".into()),
+                filename: filename.into(),
+                job_id: *job_id,
+                sha256: None,
+                size_bytes: Some(contents.len() as u64),
+            })
+            .await
+            .unwrap();
+        let path = sink_root.join(job_id.to_string()).join(filename);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await.unwrap();
+        }
+        tokio::fs::write(path, contents).await.unwrap();
+    }
+
+    /// Unrestricted selections always report "all present" — enumerating a
+    /// whole-repo snapshot requires the network and is forbidden in probe().
+    #[tokio::test]
+    async fn verify_files_present_unrestricted_is_always_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
+        let missing = client
+            .verify_files_present(
+                "huggingface:Owner/Repo",
+                None,
+                &nexus_extension_deps::FileSelection::default(),
+            )
+            .await
+            .unwrap();
+        assert!(missing.is_empty(), "got {missing:?}");
+    }
+
+    /// An explicit `files[]` selection where every declared file is on disk
+    /// reports nothing missing.
+    #[tokio::test]
+    async fn verify_files_present_explicit_all_present_is_empty() {
+        use nexus_models_store::ids::JobId;
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        let job_id = JobId::new();
+        for f in ["i2v.safetensors", "t2v.safetensors"] {
+            seed_present_file(
+                &install_map,
+                sink_root,
+                "huggingface:Owner/Repo",
+                &job_id,
+                f,
+                b"weights",
+            )
+            .await;
+        }
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&["i2v.safetensors", "t2v.safetensors"], &[], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert!(
+            missing.is_empty(),
+            "all declared files present, got {missing:?}"
+        );
+    }
+
+    /// A declared file with no install-map row (never downloaded) is reported
+    /// missing — the partial-family-install root cause.
+    #[tokio::test]
+    async fn verify_files_present_reports_undownloaded_declared_file() {
+        use nexus_models_store::ids::JobId;
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        let job_id = JobId::new();
+        // Only the I2V file was ever downloaded; the T2V file is absent.
+        seed_present_file(
+            &install_map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            &job_id,
+            "i2v.safetensors",
+            b"weights",
+        )
+        .await;
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&["i2v.safetensors", "t2v.safetensors"], &[], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert_eq!(missing, vec!["t2v.safetensors"]);
+    }
+
+    /// A declared file whose row exists but whose on-disk bytes vanished (or
+    /// were truncated to zero) is reported missing.
+    #[tokio::test]
+    async fn verify_files_present_reports_zero_size_or_vanished_file() {
+        use nexus_models_store::ids::JobId;
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        let job_id = JobId::new();
+        seed_present_file(
+            &install_map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            &job_id,
+            "t2v.safetensors",
+            b"weights",
+        )
+        .await;
+        // Truncate to zero bytes on disk — row stays, file is empty.
+        tokio::fs::write(
+            sink_root.join(job_id.to_string()).join("t2v.safetensors"),
+            b"",
+        )
+        .await
+        .unwrap();
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&["t2v.safetensors"], &[], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert_eq!(missing, vec!["t2v.safetensors"]);
+    }
+
+    /// Glob-selection partial install: an `include` glob that matches nothing
+    /// in a sparse install_map must report the glob-declared files ABSENT (so
+    /// probe returns NotSatisfied and the step heals) — NOT propagate the
+    /// empty-match Backend error as a fatal failure out of probe().
+    #[tokio::test]
+    async fn verify_files_present_glob_no_matches_reports_missing_not_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        // install_map is empty — the T2V weights the glob targets were never
+        // downloaded, so there are no rows for the glob to match.
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&[], &["transformer/**"], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .expect("empty glob match must NOT be a fatal error");
+        assert!(
+            !missing.is_empty(),
+            "a glob matching no installed rows reports the declared files absent, got {missing:?}"
+        );
+    }
+
+    /// Glob-selection with all matched rows present on disk reports nothing
+    /// missing — the glob branch doesn't false-flag a complete install.
+    #[tokio::test]
+    async fn verify_files_present_glob_all_present_is_empty() {
+        use nexus_models_store::ids::JobId;
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        let job_id = JobId::new();
+        seed_present_file(
+            &install_map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            &job_id,
+            "transformer/model.safetensors",
+            b"weights",
+        )
+        .await;
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&[], &["transformer/**"], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert!(
+            missing.is_empty(),
+            "all glob-matched files present, got {missing:?}"
+        );
+    }
+
+    /// A genuinely invalid glob stays a real error — the empty-match rescue
+    /// must not swallow `InvalidSpec`.
+    #[tokio::test]
+    async fn verify_files_present_invalid_glob_is_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        // Seed a row so the install_map is non-empty (so the failure can only
+        // come from glob compilation, not the empty-match guard).
+        seed_present_file(
+            &install_map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            &nexus_models_store::ids::JobId::new(),
+            "transformer/model.safetensors",
+            b"weights",
+        )
+        .await;
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&[], &["transformer/["], &[]);
+        let err = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .expect_err("an uncompilable glob is a real InvalidSpec error");
+        assert!(matches!(err, DepError::InvalidSpec { .. }), "got {err:?}");
     }
 
     #[tokio::test]

@@ -3,6 +3,7 @@
 //! [`LeaseManager`] and returns the count.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -10,9 +11,11 @@ use axum::response::IntoResponse;
 use serde::Serialize;
 
 use nexus_backend_runtimes::generic::ids::RuntimeInstallId;
+use nexus_backend_runtimes::generic::leases::BackendRuntimeLease;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
+use crate::vram_gc::fan_out_release_memory;
 
 #[derive(Debug, Serialize)]
 pub struct StopResponse {
@@ -35,6 +38,27 @@ pub async fn stop(
             .into_response();
         }
     };
+
+    // Ask each live worker to free its VRAM (full model unload + CUDA
+    // cache empty) BEFORE we drain + kill it. Best-effort: a worker that
+    // errors or times out does not abort the stop — we proceed to drain
+    // unconditionally.
+    let handles: Vec<Arc<dyn BackendRuntimeLease>> = state
+        .lease_manager
+        .handles_for_install(&install_id)
+        .await
+        .into_iter()
+        .map(|h| h as Arc<dyn BackendRuntimeLease>)
+        .collect();
+    if !handles.is_empty() {
+        let (workers_notified, freed_mb) = fan_out_release_memory(handles).await;
+        tracing::info!(
+            install_id = %install_id,
+            workers_notified,
+            freed_mb,
+            "released worker VRAM before stop drain",
+        );
+    }
 
     let count = match state
         .lease_manager

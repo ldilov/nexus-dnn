@@ -252,3 +252,196 @@ export const queueDot = style({
     },
   },
 });
+
+/* ── Per-item progress grid (storyboard fan-out) ───────────────────
+   A 4-column grid — label | status pill | eta/spinner/duration |
+   failure — that shows one row per cast utterance while N concurrent
+   runs stream their per-segment events. Spectral-Graphite surfaces:
+   each row is a low-surface plinth with a left accent rail keyed to
+   its live status, so the eye can scan generating/done/failed at a
+   glance without reading text. */
+export const progressGrid = style({
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto auto auto",
+  columnGap: vars.space.md,
+  rowGap: vars.space.xs,
+  alignItems: "center",
+  padding: vars.space.md,
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceMuted,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+});
+
+export const progressGridHead = style({
+  gridColumn: "1 / -1",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.sm,
+  paddingBottom: vars.space.xs,
+  marginBottom: vars.space.xs,
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
+});
+
+export const progressGridTitle = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  color: vars.color.textFaint,
+});
+
+const inFlightPulse = keyframes({
+  "0%, 100%": { opacity: 1, transform: "scale(1)" },
+  "50%": { opacity: 0.5, transform: "scale(0.85)" },
+});
+
+export const inFlightBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.xs,
+  paddingInline: vars.space.sm,
+  height: "22px",
+  borderRadius: vars.radius.pill,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  fontWeight: 600,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  background: vars.color.surface,
+  color: vars.color.textMuted,
+  selectors: {
+    '&[data-tone="live"]': {
+      background: `color-mix(in oklab, ${vars.color.accent} 18%, transparent)`,
+      color: vars.color.text,
+    },
+  },
+});
+
+export const inFlightDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: "999px",
+  flexShrink: 0,
+  background: vars.color.textFaint,
+  selectors: {
+    [`${inFlightBadge}[data-tone="live"] &`]: {
+      background: vars.color.accent,
+      animation: `${inFlightPulse} 1.4s ease-in-out infinite`,
+    },
+  },
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
+});
+
+/* `display: contents` lets each row's four cells live directly on the
+   parent grid tracks while still scoping a per-row hover + status rail
+   on the cells. */
+export const progressGridRow = style({
+  display: "contents",
+});
+
+const cellBase = {
+  alignSelf: "center",
+  paddingBlock: vars.space.xs,
+  transition: `background ${vars.motion.fast}`,
+} as const;
+
+export const gridLabel = style({
+  ...cellBase,
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  paddingLeft: vars.space.sm,
+  paddingRight: vars.space.xs,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  fontWeight: 600,
+  letterSpacing: vars.tracking.label,
+  color: vars.color.textMuted,
+  borderRadius: `${vars.radius.sm} 0 0 ${vars.radius.sm}`,
+  // Left status rail — the accent edge that flips colour with state.
+  boxShadow: `inset 2px 0 0 ${vars.color.borderSubtle}`,
+  selectors: {
+    [`${progressGridRow}[data-status="generating"] &`]: {
+      color: vars.color.text,
+      boxShadow: `inset 2px 0 0 ${vars.color.accent}`,
+    },
+    [`${progressGridRow}[data-status="done"] &`]: {
+      boxShadow: `inset 2px 0 0 ${vars.color.success}`,
+    },
+    [`${progressGridRow}[data-status="failed"] &`]: {
+      color: vars.color.text,
+      boxShadow: `inset 2px 0 0 ${vars.color.danger}`,
+    },
+    [`${progressGridRow}[data-status="cancelled"] &`]: {
+      color: vars.color.textFaint,
+      boxShadow: `inset 2px 0 0 ${vars.color.textFaint}`,
+    },
+  },
+});
+
+export const gridStatus = style({ ...cellBase });
+
+export const gridMeta = style({
+  ...cellBase,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.xs,
+  justifyContent: "flex-end",
+  minWidth: 0,
+});
+
+export const gridDuration = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.success,
+});
+
+export const etaChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  paddingInline: vars.space.sm,
+  height: "20px",
+  borderRadius: vars.radius.pill,
+  background: vars.color.surface,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+  whiteSpace: "nowrap",
+});
+
+export const gridFailure = style({
+  ...cellBase,
+  paddingRight: vars.space.sm,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.danger,
+  borderRadius: `0 ${vars.radius.sm} ${vars.radius.sm} 0`,
+  textAlign: "right",
+});
+
+const spin = keyframes({
+  to: { transform: "rotate(360deg)" },
+});
+
+export const spinner = style({
+  width: "12px",
+  height: "12px",
+  borderRadius: "50%",
+  border: `2px solid color-mix(in oklab, ${vars.color.accent} 30%, transparent)`,
+  borderTopColor: vars.color.accent,
+  animation: `${spin} 0.7s linear infinite`,
+  flexShrink: 0,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+      borderTopColor: vars.color.accent,
+    },
+  },
+});

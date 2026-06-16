@@ -257,6 +257,19 @@ export async function restartInstall(
 }
 
 /**
+ * Broadcast a memory-release to every live runtime worker. Host-owned,
+ * extension-agnostic — returns the number of workers notified and the
+ * total VRAM reclaimed in MB.
+ */
+export async function freeAllMemory(): Promise<{
+  workers_notified: number;
+  total_freed_mb: number;
+}> {
+  const res = await fetch("/api/host/gc/free-all", { method: "POST" });
+  return unwrap<{ workers_notified: number; total_freed_mb: number }>(res);
+}
+
+/**
  * Phase-event payload matching the spec-032 PhaseEvent schema.
  * Consumed by the SSE progress stepper.
  */

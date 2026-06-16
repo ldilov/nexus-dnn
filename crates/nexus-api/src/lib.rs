@@ -7,6 +7,7 @@ pub mod frontend;
 pub mod handlers;
 pub mod mapping;
 pub mod router;
+mod vram_gc;
 mod ws;
 
 use std::path::PathBuf;

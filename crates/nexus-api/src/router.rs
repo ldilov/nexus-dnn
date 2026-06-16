@@ -604,7 +604,8 @@ pub fn build(state: AppState) -> Router {
             "/runs/buckets",
             get(host::run_events::get_run_events_buckets),
         )
-        .route("/metrics/stream", get(host::metrics_stream::stream_metrics));
+        .route("/metrics/stream", get(host::metrics_stream::stream_metrics))
+        .route("/gc/free-all", post(host::gc::free_all));
 
     Router::new()
         .nest("/api/v1", api_v1)

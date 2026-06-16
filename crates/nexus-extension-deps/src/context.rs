@@ -99,6 +99,23 @@ pub trait ModelStoreClient: Send + Sync {
     ) -> Result<Option<ArtifactIntegrity>, crate::DepError> {
         Ok(None)
     }
+
+    /// Returns declared files (from `selection.files`, or matched by include/exclude
+    /// against the family's known rows) that are absent from the install map OR
+    /// missing / zero-size on disk. Empty => all declared files present.
+    /// For unrestricted selections this MUST return `Ok(vec![])` (enumerating a
+    /// whole-repo snapshot needs a network call, forbidden in `probe()`).
+    ///
+    /// Default no-op: probe-only / test doubles that never persist files accept
+    /// the default. The host's real client overrides it to stat each declared file.
+    async fn verify_files_present(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+        _selection: &crate::FileSelection,
+    ) -> Result<Vec<String>, crate::DepError> {
+        Ok(vec![])
+    }
 }
 
 /// On-disk integrity verdict for an installed model family.

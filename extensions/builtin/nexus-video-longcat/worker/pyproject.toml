@@ -73,10 +73,12 @@ diffusers = [
   # monkey-patch. Keep installed for Ampere/Hopper hosts.
   "xformers>=0.0.35",
   # SageAttention v1 (int8 Triton-based). Works on Blackwell sm_120 via
-  # Triton JIT. Quality trade: ~2-4% numerical error vs bf16 SDPA. v2
-  # (FP8, GitHub-only) needs `pip install git+https://github.com/thu-ml/SageAttention`
-  # — pre-quant kernels with proper Blackwell support but not on PyPI.
-  "sageattention>=1.0.6",
+  # Triton JIT. Quality trade: ~2-4% numerical error vs bf16 SDPA. The PyPI
+  # 1.0.x release is a pure-Python `py3-none-any` wheel (kernels JIT-compile
+  # at runtime), so it installs prebuilt on linux x86_64/aarch64 + win — no
+  # vendored wheel needed. Capped <2.0: v2 (FP8, GitHub-only) is not on PyPI
+  # and ships an API break.
+  "sageattention>=1.0.6,<2.0",
 ]
 # TODO(longcat): flash-attn 2.x on Windows for torch 2.11+cu128 — NO clean
 # wheel today, AND the closest neighbor (bdashore3 v2.8.3 cu128 torch2.8)
@@ -144,6 +146,18 @@ allow-direct-references = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu132" }]
 torchvision = [{ index = "pytorch-cu132" }]
+flash-attn = [
+  # Prebuilt cp312 wheels from the repo-global binaries/ tree (torch 2.12 /
+  # cu132). Replaces the prior source build of `flash-attn>=2.6` on linux.
+  # Windows is intentionally excluded — no FA2 wheel loads on Blackwell +
+  # torch 2.11/2.12 (see TODO note above the diffusers extra); Windows falls
+  # back to SDPA. cp311 linux has no wheel either, so py3.11 linux installs
+  # fall back to SDPA as well.
+  # linux-amd64 (x86_64)
+  { path = "../../../../binaries/linux-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
+  # linux-aarch64 (GB10/CUDA13 generic 2.8.3, loads vs torch cu132)
+  { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu132"

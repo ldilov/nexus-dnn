@@ -5,6 +5,35 @@ export type AccentName = "primary" | "secondary" | "tertiary";
 
 export type JobStatus = "queued" | "rendering" | "ready" | "failed";
 
+/** Live per-item generation state derived from a run's SSE stream. One job maps
+ * to exactly one prebuilt segment inside one run; `runId` is null until the run
+ * the job belongs to has been created. */
+export interface RunProgress {
+  jobId: string;
+  runId: string | null;
+  status: "queued" | "generating" | "done" | "failed" | "cancelled";
+  queuePosition?: number | undefined;
+  queueTotal?: number | undefined;
+  etaMs?: number | undefined;
+  durationMs?: number | undefined;
+  failureCategory?: string | undefined;
+}
+
+/** Project a live `RunProgress` onto the carousel's `JobStatus` palette. The
+ * carousel has no "cancelled" surface, so cancelled falls back to queued. */
+export function runProgressToJobStatus(rp: RunProgress): JobStatus {
+  switch (rp.status) {
+    case "generating":
+      return "rendering";
+    case "done":
+      return "ready";
+    case "failed":
+      return "failed";
+    default:
+      return "queued";
+  }
+}
+
 export interface Voice {
   id: string;
   name: string;

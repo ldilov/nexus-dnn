@@ -86,25 +86,48 @@ impl StepHandler for ModelArtifactHandler {
     async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError> {
         let parsed = parse(spec)?;
         let accelerator = resolve_accelerator(&parsed, ctx);
-        let installed = ctx
+        let Some(path) = ctx
             .model_store
             .is_family_installed(&parsed.family_id, accelerator.as_deref())
-            .await?;
-        match installed {
-            Some(path) => Ok(ProbeResult::Satisfied {
-                artifact: StepArtifact {
-                    path: Some(path),
-                    bytes_placed: 0,
-                    summary: format!(
-                        "model {} ({})",
-                        parsed.family_id,
-                        accelerator.as_deref().unwrap_or("default")
-                    ),
-                    metadata: Value::Null,
-                },
-            }),
-            None => Ok(ProbeResult::NotSatisfied),
+            .await?
+        else {
+            return Ok(ProbeResult::NotSatisfied);
+        };
+
+        // An explicit `files[]`/include/exclude selection must have EVERY declared
+        // file on disk — `is_family_installed` flips green as soon as any one file
+        // of the family is present, which silently masks a never-downloaded file
+        // (the render then fails at load time instead of the install healing).
+        // Unrestricted selections keep the historical fast-path (no network probe).
+        if !parsed.selection.is_unrestricted() {
+            let missing = ctx
+                .model_store
+                .verify_files_present(&parsed.family_id, accelerator.as_deref(), &parsed.selection)
+                .await?;
+            if !missing.is_empty() {
+                tracing::warn!(
+                    target: "extension_install::model_artifact",
+                    family_id = %parsed.family_id,
+                    missing_count = missing.len(),
+                    missing = ?missing,
+                    "model_artifact: family present but declared files missing — re-download needed"
+                );
+                return Ok(ProbeResult::NotSatisfied);
+            }
         }
+
+        Ok(ProbeResult::Satisfied {
+            artifact: StepArtifact {
+                path: Some(path),
+                bytes_placed: 0,
+                summary: format!(
+                    "model {} ({})",
+                    parsed.family_id,
+                    accelerator.as_deref().unwrap_or("default")
+                ),
+                metadata: Value::Null,
+            },
+        })
     }
 
     async fn integrity(
@@ -154,6 +177,8 @@ impl StepHandler for ModelArtifactHandler {
                 .purge_family(ctx.extension_id, &parsed.family_id, accelerator.as_deref())
                 .await?;
         }
+        // Partial-install heal without force: a Downloaded job is terminal (never a
+        // duplicate), so start_download fetches missing files via a fresh/resumed job.
         let job_id = ctx
             .model_store
             .start_download(&parsed.family_id, accelerator.as_deref(), &parsed.selection)
@@ -268,6 +293,39 @@ impl StepHandler for ModelArtifactHandler {
                             "model_artifact: failed to record ownership ref (install still ok)"
                         );
                     }
+
+                    // Fail LOUD if a declared file never materialised: a job can
+                    // report Completed while a selected file is still absent. Only
+                    // explicit selections are verifiable here (whole-repo needs a
+                    // network call, forbidden in this no-network gate).
+                    if !parsed.selection.is_unrestricted() {
+                        let missing = ctx
+                            .model_store
+                            .verify_files_present(
+                                &parsed.family_id,
+                                accelerator.as_deref(),
+                                &parsed.selection,
+                            )
+                            .await?;
+                        if !missing.is_empty() {
+                            tracing::error!(
+                                target: "extension_install::model_artifact",
+                                family_id = %parsed.family_id,
+                                job_id = %job_id,
+                                missing_count = missing.len(),
+                                missing = ?missing,
+                                "model_artifact: post-download verify FAILED — declared files absent"
+                            );
+                            return Err(DepError::Backend(format!(
+                                "model_artifact post-download verify failed for {}: {} file(s) \
+                                 still absent after download: {}",
+                                parsed.family_id,
+                                missing.len(),
+                                missing.join(", ")
+                            )));
+                        }
+                    }
+
                     // Terminal `done` at 100% so the row settles full, not at
                     // whatever the last in-progress poll reported (AC-2.1).
                     ctx.progress_sink.emit(ProgressEvent::step_progress(
@@ -426,6 +484,43 @@ mod tests {
         }
     }
 
+    /// Store whose family is "installed" (so the `is_family_installed` fast
+    /// path returns `Some`) but whose per-file verify reports a configurable
+    /// missing list — models a partial HuggingFace family install where one
+    /// declared file (e.g. a T2V pair) was never downloaded.
+    struct PartialFileStore {
+        missing: Vec<String>,
+    }
+    #[async_trait]
+    impl crate::ModelStoreClient for PartialFileStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(Some(PathBuf::from("/tmp/model")))
+        }
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
+            unreachable!()
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            unreachable!()
+        }
+        async fn verify_files_present(
+            &self,
+            _family_id: &str,
+            _accelerator: Option<&str>,
+            _selection: &crate::FileSelection,
+        ) -> Result<Vec<String>, DepError> {
+            Ok(self.missing.clone())
+        }
+    }
+
     fn ctx_with_store<'a>(
         store: Arc<dyn crate::ModelStoreClient>,
         dir: &'a Path,
@@ -525,6 +620,96 @@ mod tests {
         let last = progress.last().expect("at least one event");
         assert_eq!(last.0, "done");
         assert_eq!(last.3, Some(100.0));
+    }
+
+    /// Store whose download "completes" but whose post-download per-file verify
+    /// still reports a missing declared file — models the failure mode where the
+    /// orchestrator reports Completed yet a declared file never materialised.
+    struct PostDownloadMissingStore {
+        missing: Vec<String>,
+    }
+    #[async_trait]
+    impl crate::ModelStoreClient for PostDownloadMissingStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
+            Ok("job-postverify".to_owned())
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            Ok(crate::ModelDownloadProgress::Completed {
+                path: PathBuf::from("/tmp/model"),
+                bytes_placed: 10,
+            })
+        }
+        async fn verify_files_present(
+            &self,
+            _family_id: &str,
+            _accelerator: Option<&str>,
+            _selection: &crate::FileSelection,
+        ) -> Result<Vec<String>, DepError> {
+            Ok(self.missing.clone())
+        }
+    }
+
+    /// A download that reports Completed but leaves a declared file absent must
+    /// fail LOUD — the install errors at install time, not silently at render
+    /// time (the partial-family-install root cause).
+    #[tokio::test]
+    async fn run_fails_loud_when_files_still_missing_after_download() {
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PostDownloadMissingStore {
+            missing: vec!["t2v.safetensors".to_owned()],
+        });
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({
+            "family_id": "huggingface:Owner/Repo",
+            "files": ["i2v.safetensors", "t2v.safetensors"],
+        });
+
+        let err = ModelArtifactHandler::new()
+            .run(&ctx, &spec)
+            .await
+            .expect_err("run must fail when a declared file is still absent");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("post-download verify failed"),
+            "expected a loud post-download verify error, got: {msg}"
+        );
+        assert!(
+            msg.contains("t2v.safetensors"),
+            "error must name the missing file, got: {msg}"
+        );
+    }
+
+    /// A download that completes with every declared file present succeeds —
+    /// the post-download verify gate does not regress the happy path.
+    #[tokio::test]
+    async fn run_succeeds_when_post_download_verify_clean() {
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PostDownloadMissingStore {
+            missing: Vec::new(),
+        });
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({
+            "family_id": "huggingface:Owner/Repo",
+            "files": ["i2v.safetensors", "t2v.safetensors"],
+        });
+        ModelArtifactHandler::new()
+            .run(&ctx, &spec)
+            .await
+            .expect("clean post-download verify must succeed");
     }
 
     /// Model store that scripts polls AND captures the `record_reference` call
@@ -833,5 +1018,52 @@ mod tests {
         ] {
             assert!(handler.validate(&spec).is_ok(), "should accept {spec}");
         }
+    }
+
+    /// With an explicit `files[]` selection and every declared file present on
+    /// disk, probe returns `Satisfied` — the family is genuinely complete.
+    #[tokio::test]
+    async fn probe_satisfied_when_all_declared_files_present() {
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PartialFileStore {
+            missing: Vec::new(),
+        });
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({
+            "family_id": "huggingface:Owner/Repo",
+            "files": ["i2v.safetensors", "t2v.safetensors"],
+        });
+        let result = ModelArtifactHandler::new()
+            .probe(&ctx, &spec)
+            .await
+            .expect("probe ok");
+        assert!(matches!(result, ProbeResult::Satisfied { .. }));
+    }
+
+    /// With an explicit `files[]` selection where the family looks installed
+    /// (`is_family_installed` → Some) but a declared file is missing, probe
+    /// returns `NotSatisfied` so `run()` re-downloads it instead of letting the
+    /// render fail at load time (the partial-family-install root cause).
+    #[tokio::test]
+    async fn probe_not_satisfied_when_declared_file_missing() {
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PartialFileStore {
+            missing: vec!["t2v.safetensors".to_owned()],
+        });
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({
+            "family_id": "huggingface:Owner/Repo",
+            "files": ["i2v.safetensors", "t2v.safetensors"],
+        });
+        let result = ModelArtifactHandler::new()
+            .probe(&ctx, &spec)
+            .await
+            .expect("probe ok");
+        assert!(
+            matches!(result, ProbeResult::NotSatisfied),
+            "a missing declared file must flip probe to NotSatisfied, got {result:?}"
+        );
     }
 }

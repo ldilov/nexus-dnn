@@ -350,6 +350,36 @@ class _PipelineState:
 _STATE: Optional[_PipelineState] = None
 
 
+def release_resident_models() -> None:
+    """Evict the module-level resident pipeline and drop the global.
+
+    Runs the canonical VRAM drop sequence (`vram.evict_models`) over the
+    cached `_PipelineState` — moving the pipeline to CPU, dropping
+    sub-modules, gc + empty_cache. No-op when no pipeline is resident.
+    Torch-absent-safe via `vram`.
+    """
+    global _STATE
+    from . import vram
+
+    state = _STATE
+    _STATE = None
+    if state is None:
+        vram.evict_models(object())
+        return
+    # `evict_models` operates on `state.pipe`; the resident state stores the
+    # pipeline under `pipeline`, so alias it before the drop sequence.
+    try:
+        state.pipe = state.pipeline
+    except Exception:
+        pass
+    vram.evict_models(state)
+    for attr in ("pipeline", "dit", "vae", "text_encoder", "scheduler", "tokenizer", "lora_network"):
+        try:
+            setattr(state, attr, None)
+        except Exception:
+            pass
+
+
 def _resolve_paths(host_data_dir: Optional[str] = None) -> tuple[Path, Path]:
     root_str = host_data_dir or os.environ.get("NEXUS_HOST_DATA_DIR")
     if not root_str:
@@ -2355,9 +2385,25 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 "message": str(exc),
             }
 
+    async def _release_memory(_params: dict[str, Any]) -> dict[str, int]:
+        # REQUIRED: every nexus worker implements runtime.release_memory.
+        # Evict the resident pipeline first, then the generic gc +
+        # empty_cache sweep measures + reports remaining allocation.
+        from .main import _cuda_memory_mb, base_release_memory
+
+        before, _ = _cuda_memory_mb()
+        release_resident_models()
+        result = base_release_memory()
+        if result["freed_mb"] == 0 and before > result["vram_used_mb"]:
+            result["freed_mb"] = before - result["vram_used_mb"]
+        return result
+
     worker.register("longcat.video.render.start", _render_start)
     worker.register("longcat.video.plan.validate", _plan_validate)
     worker.register("longcat.video.plan.expand", _plan_expand)
     worker.register("longcat.video.output_profiles.list", _output_profiles_list)
     worker.register("longcat.video.scene_presets.list", _scene_presets_list)
     worker.register("longcat.video.scene_presets.get", _scene_presets_get)
+    from .main import RELEASE_MEMORY as _RELEASE_MEMORY
+
+    worker.register(_RELEASE_MEMORY, _release_memory, replace=True)
