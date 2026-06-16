@@ -778,11 +778,25 @@ impl ModelStoreClient for RealModelStoreClient {
                 .await
                 .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
             let known: Vec<String> = rows.into_iter().map(|r| r.filename).collect();
-            selection
-                .filter(known.iter().map(String::as_str))?
-                .into_iter()
-                .map(str::to_owned)
-                .collect()
+            match selection.filter(known.iter().map(String::as_str)) {
+                Ok(matched) => matched.into_iter().map(str::to_owned).collect(),
+                // The glob matched nothing in the (sparse) install_map. For a
+                // verify that means the glob-declared files were never
+                // downloaded — report them ABSENT so probe() returns
+                // NotSatisfied and the step re-runs, NOT a fatal error.
+                // `filter`'s empty-match case is `Backend`; a bad glob is
+                // `InvalidSpec` and stays a real error.
+                Err(DepError::Backend(_)) => {
+                    let pattern = selection
+                        .include
+                        .first()
+                        .or_else(|| selection.exclude.first())
+                        .cloned()
+                        .unwrap_or_else(|| "<glob selection>".to_owned());
+                    return Ok(vec![format!("<unsatisfied glob: {pattern}>")]);
+                }
+                Err(other) => return Err(other),
+            }
         };
 
         let sink_root = self.orchestrator.sink_root();
@@ -796,10 +810,22 @@ impl ModelStoreClient for RealModelStoreClient {
                 .map_err(|e| DepError::Backend(format!("install_map.find_by_artifact: {e}")))?;
             let present = match row {
                 None => false,
-                Some(row) => match tokio::fs::metadata(row.install_path(sink_root)).await {
-                    Ok(meta) => meta.len() > 0,
-                    Err(_) => false,
-                },
+                Some(row) => {
+                    let path = row.install_path(sink_root);
+                    match tokio::fs::metadata(&path).await {
+                        Ok(meta) => meta.len() > 0,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "extension_install::model_artifact",
+                                path = %path.display(),
+                                error = %e,
+                                "verify_files_present: metadata failed (treating as absent)"
+                            );
+                            false
+                        }
+                    }
+                }
             };
             if !present {
                 missing.push(filename);
@@ -2327,11 +2353,11 @@ mod tests {
             })
             .await
             .unwrap();
-        let dir = sink_root.join(job_id.to_string());
-        tokio::fs::create_dir_all(&dir).await.unwrap();
-        tokio::fs::write(dir.join(filename), contents)
-            .await
-            .unwrap();
+        let path = sink_root.join(job_id.to_string()).join(filename);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await.unwrap();
+        }
+        tokio::fs::write(path, contents).await.unwrap();
     }
 
     /// Unrestricted selections always report "all present" — enumerating a
@@ -2447,6 +2473,88 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(missing, vec!["t2v.safetensors"]);
+    }
+
+    /// Glob-selection partial install: an `include` glob that matches nothing
+    /// in a sparse install_map must report the glob-declared files ABSENT (so
+    /// probe returns NotSatisfied and the step heals) — NOT propagate the
+    /// empty-match Backend error as a fatal failure out of probe().
+    #[tokio::test]
+    async fn verify_files_present_glob_no_matches_reports_missing_not_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        // install_map is empty — the T2V weights the glob targets were never
+        // downloaded, so there are no rows for the glob to match.
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&[], &["transformer/**"], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .expect("empty glob match must NOT be a fatal error");
+        assert!(
+            !missing.is_empty(),
+            "a glob matching no installed rows reports the declared files absent, got {missing:?}"
+        );
+    }
+
+    /// Glob-selection with all matched rows present on disk reports nothing
+    /// missing — the glob branch doesn't false-flag a complete install.
+    #[tokio::test]
+    async fn verify_files_present_glob_all_present_is_empty() {
+        use nexus_models_store::ids::JobId;
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        let job_id = JobId::new();
+        seed_present_file(
+            &install_map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            &job_id,
+            "transformer/model.safetensors",
+            b"weights",
+        )
+        .await;
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&[], &["transformer/**"], &[]);
+        let missing = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert!(
+            missing.is_empty(),
+            "all glob-matched files present, got {missing:?}"
+        );
+    }
+
+    /// A genuinely invalid glob stays a real error — the empty-match rescue
+    /// must not swallow `InvalidSpec`.
+    #[tokio::test]
+    async fn verify_files_present_invalid_glob_is_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+        // Seed a row so the install_map is non-empty (so the failure can only
+        // come from glob compilation, not the empty-match guard).
+        seed_present_file(
+            &install_map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            &nexus_models_store::ids::JobId::new(),
+            "transformer/model.safetensors",
+            b"weights",
+        )
+        .await;
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&[], &["transformer/["], &[]);
+        let err = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .expect_err("an uncompilable glob is a real InvalidSpec error");
+        assert!(matches!(err, DepError::InvalidSpec { .. }), "got {err:?}");
     }
 
     #[tokio::test]
