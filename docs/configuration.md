@@ -108,6 +108,7 @@ cargo host
 
 ## Where To Look For More
 
+- [environment-variables.md](environment-variables.md) — full reference of every env var (host, extensions, workers, frontend, tooling)
 - [getting-started.md](getting-started.md)
 - [architecture.md](architecture.md)
 - [requirements.md](requirements.md)
