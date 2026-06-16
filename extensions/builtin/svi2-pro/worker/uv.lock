@@ -590,7 +590,8 @@ rtx-upscale = [
     { name = "nvidia-vfx", marker = "sys_platform == 'win32'" },
 ]
 sage = [
-    { name = "sageattn3", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "sageattn3", version = "1.0.0", source = { path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "sageattn3", version = "1.0.0+cu132torch2.12.thuml", source = { path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl" }, marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
 test = [
     { name = "jsonschema" },
@@ -626,6 +627,7 @@ requires-dist = [
     { name = "regex", marker = "extra == 'diffusers'", specifier = ">=2024.0" },
     { name = "safetensors", marker = "extra == 'diffusers'", specifier = ">=0.4" },
     { name = "safetensors", marker = "extra == 'test'", specifier = ">=0.4" },
+    { name = "sageattn3", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'sage'", path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl" },
     { name = "sageattn3", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'sage'", path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl" },
     { name = "sentencepiece", marker = "extra == 'diffusers'", specifier = ">=0.2" },
     { name = "torch", marker = "extra == 'diffusers'", specifier = ">=2.12", index = "https://download.pytorch.org/whl/cu132" },
@@ -640,6 +642,8 @@ version = "1.13.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/43/73/79a0b22fc731989c708068427579e840a6cf4e937fe7ae5c5d0b7356ac22/ninja-1.13.0.tar.gz", hash = "sha256:4a40ce995ded54d9dc24f8ea37ff3bf62ad192b547f6c7126e7e25045e76f978", size = 242558, upload-time = "2025-08-11T15:10:19.421Z" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/de/6e1cd6b84b412ac1ef327b76f0641aeb5dcc01e9d3f9eee0286d0c34fd93/ninja-1.13.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:3d00c692fb717fd511abeb44b8c5d00340c36938c12d6538ba989fe764e79630", size = 177467, upload-time = "2025-08-11T15:09:52.767Z" },
+    { url = "https://files.pythonhosted.org/packages/31/bf/0d7808af695ceddc763cf251b84a9892cd7f51622dc8b4c89d5012779f06/ninja-1.13.0-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:11be2d22027bde06f14c343f01d31446747dbb51e72d00decca2eb99be911e2f", size = 552388, upload-time = "2025-08-11T15:10:03.349Z" },
     { url = "https://files.pythonhosted.org/packages/95/97/51359c77527d45943fe7a94d00a3843b81162e6c4244b3579fe8fc54cb9c/ninja-1.13.0-py3-none-win32.whl", hash = "sha256:8cfbb80b4a53456ae8a39f90ae3d7a2129f45ea164f43fadfa15dc38c4aef1c9", size = 267201, upload-time = "2025-08-11T15:10:15.158Z" },
     { url = "https://files.pythonhosted.org/packages/29/45/c0adfbfb0b5895aa18cec400c535b4f7ff3e52536e0403602fc1a23f7de9/ninja-1.13.0-py3-none-win_amd64.whl", hash = "sha256:fb8ee8719f8af47fed145cced4a85f0755dd55d45b2bddaf7431fa89803c5f3e", size = 309975, upload-time = "2025-08-11T15:10:16.697Z" },
     { url = "https://files.pythonhosted.org/packages/df/93/a7b983643d1253bb223234b5b226e69de6cda02b76cdca7770f684b795f5/ninja-1.13.0-py3-none-win_arm64.whl", hash = "sha256:3c0b40b1f0bba764644385319028650087b4c1b18cdfa6f45cb39a3669b81aa9", size = 290806, upload-time = "2025-08-11T15:10:18.018Z" },
@@ -1190,6 +1194,9 @@ wheels = [
 name = "sageattn3"
 version = "1.0.0"
 source = { path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'win32'",
+]
 dependencies = [
     { name = "einops", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
     { name = "ninja", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
@@ -1198,6 +1205,31 @@ dependencies = [
 ]
 wheels = [
     { filename = "sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl", hash = "sha256:4620fa1844d54dfe6b46d66c1219d11611670a12fa955af5fd07c486d2df1be8" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "einops" },
+    { name = "ninja" },
+    { name = "packaging" },
+    { name = "torch" },
+]
+
+[[package]]
+name = "sageattn3"
+version = "1.0.0+cu132torch2.12.thuml"
+source = { path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl" }
+resolution-markers = [
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "einops", marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "ninja", marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "packaging", marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "torch", marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+]
+wheels = [
+    { filename = "sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl", hash = "sha256:0c020ec37ba38e3fd21fbdaf4acdd33c54fc665ba12fe230cef6c4bcf08e957a" },
 ]
 
 [package.metadata]

@@ -40,7 +40,7 @@ sage = [
   # DGX build (see [tool.uv.sources] below). Triton JIT makes it
   # cu-version-agnostic at runtime, so the cu131-tagged win wheel loads
   # against the cu132 torch this worker installs.
-  "sageattn3 ; sys_platform == 'win32' and python_version == '3.12'",
+  "sageattn3 ; python_version == '3.12' and (sys_platform == 'win32' or (sys_platform == 'linux' and platform_machine == 'aarch64'))",
 ]
 rtx-upscale = [
   "nvidia-vfx ; sys_platform == 'win32'",
@@ -83,15 +83,15 @@ flash-attn = [
   { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
 ]
 sageattn3 = [
-  # SageAttention v3 — vendored, not on PyPI. Distribution name is `sageattn3`
-  # (per wheel METADATA). cp312-only; Triton JIT → cu-version-agnostic at
-  # runtime (cu131-tagged wheel loads vs cu132 torch).
+  # SageAttention v3 (FP4, Blackwell) — vendored, not on PyPI. Distribution name
+  # `sageattn3` (per wheel METADATA). cp312-only. Compiled fp4 CUDA extensions
+  # (.so/.pyd) + triton at runtime; cu131/cu132 ABI-compatible (win=cu131, linux=cu132).
   # windows-amd64
   { path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.12'" },
   # linux-amd64 (x86_64) — TODO: no cu132 x86_64 GPU build host yet (deferred).
   # { path = "../../../../binaries/linux-amd64/<sageattn3-linux-x86_64-cp312.whl>", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
-  # linux-aarch64 — TODO: controller builds on the DGX (GB10/CUDA13), then wires this slot.
-  # { path = "../../../../binaries/linux-aarch64/<sageattn3-linux-aarch64-cp312.whl>", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+  # linux-aarch64 (GB10/sm_121, built from thu-ml SageAttention sageattention3_blackwell)
+  { path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
 ]
 
 [[tool.uv.index]]
