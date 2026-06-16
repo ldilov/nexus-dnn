@@ -103,6 +103,9 @@ export function RenderRequestProvider({
   const stallTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const renderRef = useRef<RenderState>(render);
   renderRef.current = render;
+  const reconnecting = useRef<boolean>(false);
+  const lastReconnectAt = useRef<number>(0);
+  const reconnectRef = useRef<((jobId: string) => void) | null>(null);
 
   const stopWatchdog = useCallback(() => {
     if (stallTimer.current !== null) {
@@ -114,20 +117,18 @@ export function RenderRequestProvider({
   const startWatchdog = useCallback(() => {
     stopWatchdog();
     stallTimer.current = setInterval(() => {
-      setRender((prev) => {
-        if (prev.phase !== "running" || prev.lastFrameAt === null) return prev;
-        const elapsed = Date.now() - prev.lastFrameAt;
-        if (elapsed >= STALL_LOST_MS) {
-          streamCleanup.current?.();
-          streamCleanup.current = null;
-          stopWatchdog();
-          return connectionLostState(prev);
-        }
-        if (elapsed >= STALL_WARN_MS) {
-          return markStalled(prev);
-        }
-        return prev;
-      });
+      const current = renderRef.current;
+      if (current.phase !== "running" || current.lastFrameAt === null) return;
+      if (reconnecting.current) return;
+      const elapsed = Date.now() - current.lastFrameAt;
+      const sinceReconnect = Date.now() - lastReconnectAt.current;
+      if (elapsed >= STALL_LOST_MS && sinceReconnect >= STALL_LOST_MS) {
+        if (current.jobId) reconnectRef.current?.(current.jobId);
+        return;
+      }
+      if (elapsed >= STALL_WARN_MS) {
+        setRender((prev) => markStalled(prev));
+      }
     }, STALL_TICK_MS);
   }, [stopWatchdog]);
 
@@ -147,6 +148,39 @@ export function RenderRequestProvider({
     },
     [startWatchdog],
   );
+
+  const reconnectOrGiveUp = useCallback(
+    (jobId: string) => {
+      if (reconnecting.current) return;
+      reconnecting.current = true;
+      lastReconnectAt.current = Date.now();
+      subscribeToJob(jobId);
+      setRender((prev) =>
+        prev.phase === "running" ? { ...prev, lastFrameAt: Date.now() } : prev,
+      );
+      const giveUp = (next: RenderState) => {
+        streamCleanup.current?.();
+        streamCleanup.current = null;
+        stopWatchdog();
+        setRender(next);
+      };
+      void getRenderJob(jobId)
+        .then((job) => {
+          if (job.status === "succeeded" || job.status === "failed" || job.status === "cancelled") {
+            giveUp(renderStateFromJob(job));
+          }
+        })
+        .catch(() => {
+          giveUp(connectionLostState(renderRef.current));
+        })
+        .finally(() => {
+          reconnecting.current = false;
+        });
+    },
+    [subscribeToJob, stopWatchdog],
+  );
+
+  reconnectRef.current = reconnectOrGiveUp;
 
   const applyPresetById = useCallback(
     (preset: PresetSummary) => {
@@ -226,6 +260,7 @@ export function RenderRequestProvider({
 
   const startRenderJob = useCallback(async () => {
     streamCleanup.current?.();
+    lastReconnectAt.current = 0;
     const { jobId } = await startRender({ presetId, params });
     setRender(startedState(jobId, qwenEdit.enabled));
     subscribeToJob(jobId);
