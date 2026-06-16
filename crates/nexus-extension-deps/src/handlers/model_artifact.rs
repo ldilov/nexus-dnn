@@ -177,6 +177,8 @@ impl StepHandler for ModelArtifactHandler {
                 .purge_family(ctx.extension_id, &parsed.family_id, accelerator.as_deref())
                 .await?;
         }
+        // Partial-install heal without force: a Downloaded job is terminal (never a
+        // duplicate), so start_download fetches missing files via a fresh/resumed job.
         let job_id = ctx
             .model_store
             .start_download(&parsed.family_id, accelerator.as_deref(), &parsed.selection)
