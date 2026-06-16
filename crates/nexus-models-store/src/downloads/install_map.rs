@@ -467,14 +467,27 @@ impl InstallMap {
         let mut dir = match tokio::fs::read_dir(sink_root).await {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(report),
-            Err(e) => {
-                return Err(crate::downloads::store::JobStoreError::Db(sqlx::Error::Io(
-                    e,
-                )));
-            }
+            Err(e) => return Err(e.into()),
         };
 
-        while let Ok(Some(entry)) = dir.next_entry().await {
+        loop {
+            let entry = match dir.next_entry().await {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                // A mid-walk read error truncates the scan rather than silently
+                // logging "complete"; mark it so callers can tell incomplete
+                // from empty, and stop (a failing dir handle won't recover).
+                Err(e) => {
+                    report.scan_truncated = true;
+                    tracing::warn!(
+                        target: "model_store",
+                        error = %e,
+                        "backfill: sink dir read error — scan may be incomplete"
+                    );
+                    break;
+                }
+            };
+
             let job_path = entry.path();
             if !entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
@@ -511,6 +524,8 @@ impl InstallMap {
             recorded = report.recorded,
             skipped_existing = report.skipped_existing,
             skipped_no_sidecar = report.skipped_no_sidecar,
+            skipped_non_uuid = report.skipped_non_uuid,
+            scan_truncated = report.scan_truncated,
             "backfill: sink-scan adopt-from-disk complete"
         );
         Ok(report)
@@ -527,6 +542,7 @@ impl InstallMap {
         report: &mut BackfillReport,
     ) -> JobStoreResult<()> {
         let Ok(uuid) = uuid::Uuid::parse_str(job_id_str) else {
+            report.skipped_non_uuid += 1;
             tracing::warn!(
                 target: "model_store",
                 job_id = %job_id_str,
@@ -537,7 +553,25 @@ impl InstallMap {
         let job_id = JobId::from_uuid(uuid);
 
         for filename in &manifest.files {
-            let path = sink_root.join(job_id_str).join(filename);
+            // `filename` is arbitrary JSON from the sidecar — reject anything
+            // that isn't a plain relative path so a `../` entry can't stat (or
+            // record a row for) bytes outside the sink. `job_id_str` is already
+            // UUID-validated above.
+            let fname = std::path::Path::new(filename.as_str());
+            if fname
+                .components()
+                .any(|c| !matches!(c, std::path::Component::Normal(_)))
+            {
+                tracing::warn!(
+                    target: "model_store",
+                    job_id = %job_id_str,
+                    filename = %filename,
+                    "backfill: sidecar filename is not a plain relative path — skipping"
+                );
+                continue;
+            }
+
+            let path = sink_root.join(job_id_str).join(fname);
             let size = match tokio::fs::metadata(&path).await {
                 Ok(meta) => meta.len(),
                 Err(_) => continue,
@@ -593,10 +627,17 @@ async fn read_sidecar(
 /// Derive the `source_provider` from a `{provider}:{repo}` family id, defaulting
 /// to `"huggingface"` when the family id carries no provider prefix.
 fn provider_from_family(family_id: &str) -> String {
-    family_id
-        .split_once(':')
-        .map(|(p, _)| p.to_owned())
-        .unwrap_or_else(|| "huggingface".to_owned())
+    match family_id.split_once(':') {
+        Some((p, _)) => p.to_owned(),
+        None => {
+            tracing::debug!(
+                target: "model_store",
+                family_id = %family_id,
+                "backfill: family has no provider prefix, defaulting to huggingface"
+            );
+            "huggingface".to_owned()
+        }
+    }
 }
 
 /// Result of [`InstallMap::prune_missing`] — a revalidate sweep summary.
@@ -610,16 +651,26 @@ pub struct PruneReport {
 
 /// Result of [`InstallMap::backfill_install_map_from_sink`] — a sink-scan
 /// adopt-from-disk summary.
+///
+/// Job dirs are partitioned exactly: every counted dir lands in exactly one of
+/// `skipped_no_sidecar`, `skipped_non_uuid`, or "had a readable sidecar +
+/// UUID" (whose files then split across `recorded` / `skipped_existing`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackfillReport {
     /// Job dirs found under the sink root and inspected.
     pub scanned_jobs: usize,
     /// Job dirs skipped because their sidecar was absent or unreadable.
     pub skipped_no_sidecar: usize,
+    /// Job dirs skipped because the dir name was not a job UUID.
+    pub skipped_non_uuid: usize,
     /// On-disk files (size>0) that lacked a row and were re-recorded.
     pub recorded: usize,
     /// On-disk files that already had a row and were left untouched.
     pub skipped_existing: usize,
+    /// True when a mid-walk directory-read error cut the scan short — the
+    /// counts reflect only what was inspected before the error, so callers can
+    /// distinguish "nothing to adopt" from "scan incomplete".
+    pub scan_truncated: bool,
 }
 
 /// Result of [`InstallMap::gc_artifact_if_unreferenced`].
@@ -1577,5 +1628,126 @@ mod tests {
             .is_none(),
             "declared-but-absent file must not be fabricated"
         );
+    }
+
+    /// A sidecar filename with a `..` (or absolute) component is rejected: no
+    /// row is recorded and no metadata() is performed outside the sink.
+    #[tokio::test]
+    async fn backfill_rejects_path_traversal_filename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().join("sink");
+        tokio::fs::create_dir_all(&sink_root).await.unwrap();
+        // A real "secret" file one level above the sink that a `../` entry
+        // would otherwise reach.
+        tokio::fs::write(tmp.path().join("secret.bin"), b"do-not-adopt")
+            .await
+            .unwrap();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        // Sidecar declares a traversal path plus a legitimate sibling file.
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("good.safetensors"), b"weights")
+            .await
+            .unwrap();
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec!["../secret.bin".into(), "good.safetensors".into()],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        crate::downloads::legibility::write_manifest(&sink_root, JOB_A, &manifest)
+            .await
+            .unwrap();
+
+        let report = map
+            .backfill_install_map_from_sink(&sink_root)
+            .await
+            .unwrap();
+        assert_eq!(report.recorded, 1, "only the in-sink file is adopted");
+        // The traversal entry produced no row under any plausible artifact id.
+        assert!(
+            map.find_by_artifact(&ArtifactId::from("huggingface:Owner/Repo#../secret.bin"))
+                .await
+                .unwrap()
+                .is_none(),
+            "traversal filename must not be recorded"
+        );
+        assert!(
+            map.find_by_artifact(&ArtifactId::from("huggingface:Owner/Repo#good.safetensors"))
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    /// A sink dir whose name is not a job UUID is counted as `skipped_non_uuid`
+    /// (not silently dropped), keeping the report self-consistent:
+    /// `scanned_jobs == skipped_no_sidecar + skipped_non_uuid + jobs-processed`.
+    #[tokio::test]
+    async fn backfill_counts_non_uuid_dir_and_report_is_self_consistent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        // A non-UUID dir that nonetheless has a valid sidecar (so it passes the
+        // sidecar gate and reaches the UUID check).
+        let bad_dir = sink_root.join("not-a-uuid");
+        tokio::fs::create_dir_all(&bad_dir).await.unwrap();
+        tokio::fs::write(bad_dir.join("x.safetensors"), b"weights")
+            .await
+            .unwrap();
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec!["x.safetensors".into()],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        crate::downloads::legibility::write_manifest(sink_root, "not-a-uuid", &manifest)
+            .await
+            .unwrap();
+
+        // A valid orphaned job alongside it.
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            &[("t2v.safetensors", b"weights")],
+        )
+        .await;
+
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(report.scanned_jobs, 2);
+        assert_eq!(report.skipped_non_uuid, 1, "the non-uuid dir is counted");
+        assert_eq!(report.recorded, 1, "the valid job is adopted");
+        assert!(!report.scan_truncated, "clean scan is not truncated");
+        // Partition invariant: every scanned dir is accounted for exactly once.
+        // The valid job had a readable sidecar + UUID (1 processed dir); the
+        // other was non-uuid. None were skipped-no-sidecar here.
+        let processed_dirs =
+            report.scanned_jobs - report.skipped_no_sidecar - report.skipped_non_uuid;
+        assert_eq!(processed_dirs, 1, "exactly one dir reached file processing");
+    }
+
+    /// A clean scan reports `scan_truncated = false`.
+    #[tokio::test]
+    async fn backfill_clean_scan_is_not_truncated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            &[("t2v.safetensors", b"weights")],
+        )
+        .await;
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert!(!report.scan_truncated);
     }
 }
