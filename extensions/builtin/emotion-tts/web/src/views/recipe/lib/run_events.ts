@@ -1,5 +1,6 @@
 export const TRIGGER_GENERATE = "emotion-tts:trigger-generate" as const;
 export const RUN_STATE = "emotion-tts:run-state" as const;
+export const RUN_COMPLETED = "emotion-tts:run-completed" as const;
 
 export interface RunStateDetail {
   busy: boolean;
@@ -31,4 +32,17 @@ export function subscribeRunState(
   };
   window.addEventListener(RUN_STATE, handler);
   return () => window.removeEventListener(RUN_STATE, handler);
+}
+
+/** Fired once a run reaches a SUCCESSFUL terminal state (completed or partial)
+ * — never on failed/cancelled, so listeners can safely retire produced work. */
+export function dispatchRunCompleted(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(RUN_COMPLETED));
+}
+
+export function subscribeRunCompleted(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(RUN_COMPLETED, listener);
+  return () => window.removeEventListener(RUN_COMPLETED, listener);
 }

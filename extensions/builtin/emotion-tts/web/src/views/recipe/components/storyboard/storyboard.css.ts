@@ -608,55 +608,6 @@ export const emptyCopy = style({
   color: onSurfaceMuted,
 });
 
-export const footer = style({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  flexWrap: "wrap",
-  gap: vars.space.md,
-  // audit-allow: px — footer divider spacing fixed to design spec
-  marginTop: "22px",
-  paddingTop: "16px",
-  borderTop: `1px solid ${hairline}`,
-});
-
-export const libRow = style({
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  flexWrap: "wrap",
-});
-
-export const libChips = style({ display: "flex", gap: vars.space.sm, flexWrap: "wrap" });
-
-export const libChip = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  // audit-allow: px — library chip padding fixed to design spec
-  padding: "5px 11px",
-  borderRadius: vars.radius.pill,
-  background: vars.color.surfaceHigh,
-});
-
-export const libName = style({
-  fontFamily: vars.font.mono,
-  // audit-allow: px — library chip label scale fixed to design spec
-  fontSize: "11.5px",
-});
-
-export const footerHint = style({
-  // audit-allow: px — hint scale fixed to design spec
-  fontSize: "11.5px",
-  color: onSurfaceMuted,
-  fontFamily: vars.font.body,
-});
-
-globalStyle(`${footerHint} strong`, {
-  color: vars.color.text,
-  fontWeight: 600,
-});
-
 globalStyle(`${root} .material-symbols-outlined`, {
   fontFamily: '"Material Symbols Outlined"',
   fontWeight: "normal",

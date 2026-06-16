@@ -10,6 +10,7 @@ import {
   useScrollPastThreshold,
 } from "../hooks/use_scroll_past_threshold";
 import {
+  dispatchRunCompleted,
   dispatchRunState,
   subscribeTriggerGenerate,
 } from "../lib/run_events";
@@ -91,6 +92,7 @@ export function RunPanel(props: Props): JSX.Element {
     (terminalRun: Run): void => {
       const status = terminalRun.status;
       if (status === "completed" || status === "partial") {
+        dispatchRunCompleted();
         toast.success(
           status === "completed"
             ? "Run complete — open the Artifacts tab to download"

@@ -36,6 +36,7 @@ import {
   type JobStatus,
   type Voice,
 } from "./storyboard_data";
+import { subscribeRunCompleted } from "../../lib/run_events";
 import * as css from "./storyboard.css";
 
 interface StoryboardProps {
@@ -119,6 +120,33 @@ export function Storyboard({
       return kept.length === prev.length ? prev : kept;
     });
   }, [paragraphs]);
+
+  // Retire the cast queue once a generation run finishes successfully — the
+  // produced segments live in the Artifacts tab now, so the storyboard starts
+  // fresh instead of re-queueing the same phrases on the next Generate.
+  useEffect(() => subscribeRunCompleted(() => setJobs([])), []);
+
+  // Voices load async (after mount), so the draft voice can be seeded as "".
+  // Re-point it at a real voice once they arrive — otherwise a cast made
+  // before the voice list resolves stores an empty voiceId and the card
+  // false-flags "voice removed". When there's exactly one voice, also heal any
+  // already-cast jobs that point at a missing/empty voice (unambiguous).
+  useEffect(() => {
+    if (voices.length === 0) return;
+    setDraftVoice((cur) => (voices.some((v) => v.id === cur) ? cur : (voices[0] as Voice).id));
+    if (voices.length === 1) {
+      const only = (voices[0] as Voice).id;
+      setJobs((prev) => {
+        let changed = false;
+        const next = prev.map((j) => {
+          if (voices.some((v) => v.id === j.voiceId)) return j;
+          changed = true;
+          return { ...j, voiceId: only };
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [voices]);
 
   const voiceIds = useMemo(() => new Set(voices.map((v) => v.id)), [voices]);
   const isVoiceMissing = useCallback(
@@ -387,12 +415,20 @@ export function Storyboard({
         >
           {paragraphs.map((p) => (
             <p key={p.id} className={css.paragraph}>
-              {p.segs.map((seg) => {
+              {p.segs.map((seg, si) => {
                 const job = jobBySeg.get(seg.id);
                 const selected = selection.includes(seg.id);
                 const hovered = !!job && (hoveredJobId === job.id || focusedJobId === job.id);
                 const showMarker = !!job && firstSegByJob.get(job.id) === seg.id;
                 const v = job ? voiceById(voices, job.voiceId) : null;
+                // Highlight runs continuously: a contiguous span of words sharing
+                // one job (or one selection) is rounded only at its ends so it
+                // reads as one phrase, not per-word pills.
+                const groupKey = groupKeyOf(seg.id, jobBySeg, selection);
+                const prevKey = groupKeyOf(p.segs[si - 1]?.id, jobBySeg, selection);
+                const nextKey = groupKeyOf(p.segs[si + 1]?.id, jobBySeg, selection);
+                const runStart = groupKey != null && prevKey !== groupKey;
+                const runEnd = groupKey != null && nextKey !== groupKey;
                 return (
                   <span key={seg.id}>
                     {showMarker && v && (
@@ -409,7 +445,7 @@ export function Storyboard({
                       aria-pressed={selected || !!job}
                       aria-label={job ? `${v?.name ?? "voice"} · ${seg.text.trim()}` : seg.text.trim()}
                       className={css.seg}
-                      style={segStyle(selected, v, hovered, seg.kind)}
+                      style={segStyle(selected, v, hovered, seg.kind, runStart, runEnd)}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSegInteract(seg.id, e.currentTarget, e.shiftKey);
@@ -591,10 +627,6 @@ export function Storyboard({
             {summary && <span className={css.summary}>{summary}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span aria-live="polite" style={LIVE_CHIP}>
-              <span style={LIVE_DOT} />
-              Live
-            </span>
             <button type="button" className={css.navBtn} aria-label="Scroll segments left" onClick={() => scrollCar(-1)} disabled={jobs.length === 0}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">chevron_left</span>
             </button>
@@ -688,48 +720,56 @@ export function Storyboard({
           )}
         </div>
       </div>
-
-      <div className={css.footer}>
-        <div className={css.libRow}>
-          <span className={css.caption} style={{ fontSize: 9.5, marginBottom: 0 }}>Voices</span>
-          <div className={css.libChips}>
-            {voices.map((v) => {
-              const used = jobs.some((j) => j.voiceId === v.id);
-              return (
-                <span key={v.id} className={css.libChip} style={{ border: `1px solid ${used ? `rgba(${v.rgb},0.35)` : "rgba(70,72,74,0.3)"}` }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: v.color, boxShadow: used ? `0 0 8px rgba(${v.rgb},0.7)` : "none", flexShrink: 0 }} />
-                  <span className={css.libName} style={{ color: used ? "var(--on-surface)" : "var(--on-surface-variant)" }}>{v.lib}</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-        <span className={css.footerHint}>Cast every phrase, then <strong>Generate</strong> from the top bar.</span>
-      </div>
     </div>
   );
 }
 
 const HEADER_ROW: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 };
-const LIVE_CHIP: CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 10px",
-  borderRadius: 999, fontFamily: "var(--font-ui)", fontSize: 11, fontWeight: 500, color: "#b8f0c8",
-  background: "var(--surface-highest, #232629)",
-};
-const LIVE_DOT: CSSProperties = { width: 6, height: 6, borderRadius: 999, background: "var(--acid-green, #22c55e)", boxShadow: "0 0 8px rgba(34,197,94,0.7)" };
 const TEXTAREA_STYLE: CSSProperties = {
   width: "100%", minHeight: 220, padding: 14, background: "var(--surface-floor, #000)",
   border: "1px solid rgba(70,72,74,0.3)", borderRadius: 12, color: "var(--on-surface)",
   fontFamily: "var(--font-mono)", fontSize: 14, lineHeight: 1.7, resize: "vertical", outline: "none",
 };
 
-function segStyle(selected: boolean, voice: Voice | null, hovered: boolean, kind: "narration" | "dialogue"): CSSProperties {
-  const base: CSSProperties = { borderRadius: 4, padding: "1.5px 1px", cursor: "pointer", WebkitBoxDecorationBreak: "clone", boxDecorationBreak: "clone" };
+/** Identity of the contiguous-highlight run a segment belongs to: its job id,
+ * the selection bucket, or null when the word is plain (unhighlighted). */
+function groupKeyOf(
+  segId: string | undefined,
+  jobBySeg: ReadonlyMap<string, Job>,
+  selection: readonly string[],
+): string | null {
+  if (segId == null) return null;
+  const job = jobBySeg.get(segId);
+  if (job) return `job:${job.id}`;
+  return selection.includes(segId) ? "sel" : null;
+}
+
+function runRadius(runStart: boolean, runEnd: boolean): CSSProperties {
+  return {
+    borderTopLeftRadius: runStart ? 4 : 0,
+    borderBottomLeftRadius: runStart ? 4 : 0,
+    borderTopRightRadius: runEnd ? 4 : 0,
+    borderBottomRightRadius: runEnd ? 4 : 0,
+  };
+}
+
+function segStyle(
+  selected: boolean,
+  voice: Voice | null,
+  hovered: boolean,
+  kind: "narration" | "dialogue",
+  runStart: boolean,
+  runEnd: boolean,
+): CSSProperties {
+  // No horizontal padding so adjacent words in a run touch — the trailing
+  // whitespace carried in each word's text bridges the fill into one phrase.
+  const base: CSSProperties = { padding: "2px 0", cursor: "pointer", WebkitBoxDecorationBreak: "clone", boxDecorationBreak: "clone" };
   const aRGB = "186,158,255";
-  if (selected) return { ...base, background: `rgba(${aRGB},0.18)`, boxShadow: `inset 0 0 0 1px rgba(${aRGB},0.55)`, color: "var(--on-surface)" };
+  if (selected) {
+    return { ...base, ...runRadius(runStart, runEnd), background: `rgba(${aRGB},0.16)`, boxShadow: `inset 0 -2px 0 rgba(${aRGB},0.7)`, color: "var(--on-surface)" };
+  }
   if (voice) {
-    const ring = hovered ? `, inset 0 0 0 1px rgba(${voice.rgb},0.8)` : "";
-    return { ...base, background: `rgba(${voice.rgb},${hovered ? 0.22 : 0.12})`, boxShadow: `inset 0 -2px 0 ${voice.color}${ring}`, color: "var(--on-surface)" };
+    return { ...base, ...runRadius(runStart, runEnd), background: `rgba(${voice.rgb},${hovered ? 0.2 : 0.11})`, boxShadow: `inset 0 -2px 0 ${voice.color}`, color: "var(--on-surface)" };
   }
   return { ...base, color: kind === "dialogue" ? "var(--on-surface)" : "var(--on-surface-variant)" };
 }
