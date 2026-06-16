@@ -445,6 +445,158 @@ impl InstallMap {
             freed_bytes,
         })
     }
+
+    /// Adopt store-sink bytes back into the install map (the complement of
+    /// [`Self::prune_missing`]). Walks every `<sink_root>/<job_id>/` dir, reads
+    /// its legibility sidecar for `family_id`/`source_repo`, and re-records an
+    /// [`InstalledArtifactRecord`] for each on-disk file (size>0) that lacks a
+    /// row. The recorded `artifact_id` is `{family_id}#{filename}` — the same
+    /// form the download path and `find_by_artifact` use, so per-file presence
+    /// checks see the file without a re-download.
+    ///
+    /// Store-authoritative and byte-safe: it never moves, deletes, or fabricates
+    /// bytes (a declared-but-absent file is not recorded) and only touches
+    /// `model_store_installed_artifacts`. Idempotent — a second run records
+    /// nothing. A job dir with no/unreadable sidecar is skipped (logged), never
+    /// failing the whole scan.
+    pub async fn backfill_install_map_from_sink(
+        &self,
+        sink_root: &std::path::Path,
+    ) -> JobStoreResult<BackfillReport> {
+        let mut report = BackfillReport::default();
+        let mut dir = match tokio::fs::read_dir(sink_root).await {
+            Ok(d) => d,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(report),
+            Err(e) => {
+                return Err(crate::downloads::store::JobStoreError::Db(sqlx::Error::Io(
+                    e,
+                )));
+            }
+        };
+
+        while let Ok(Some(entry)) = dir.next_entry().await {
+            let job_path = entry.path();
+            if !entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let Some(job_id) = job_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(str::to_owned)
+            else {
+                continue;
+            };
+            report.scanned_jobs += 1;
+
+            let manifest = match read_sidecar(&job_path).await {
+                Some(m) => m,
+                None => {
+                    report.skipped_no_sidecar += 1;
+                    tracing::warn!(
+                        target: "model_store",
+                        job_id = %job_id,
+                        "backfill: job dir has no readable manifest.json sidecar — skipping"
+                    );
+                    continue;
+                }
+            };
+
+            self.backfill_one_job(sink_root, &job_id, &manifest, &mut report)
+                .await?;
+        }
+
+        tracing::info!(
+            target: "model_store",
+            scanned_jobs = report.scanned_jobs,
+            recorded = report.recorded,
+            skipped_existing = report.skipped_existing,
+            skipped_no_sidecar = report.skipped_no_sidecar,
+            "backfill: sink-scan adopt-from-disk complete"
+        );
+        Ok(report)
+    }
+
+    /// Re-record any present-on-disk file declared by one job's sidecar that
+    /// lacks a row. Files the sidecar declares but that are absent (or zero
+    /// size) on disk are left alone — backfill adopts bytes, never fabricates.
+    async fn backfill_one_job(
+        &self,
+        sink_root: &std::path::Path,
+        job_id_str: &str,
+        manifest: &crate::downloads::legibility::ManifestSidecar,
+        report: &mut BackfillReport,
+    ) -> JobStoreResult<()> {
+        let Ok(uuid) = uuid::Uuid::parse_str(job_id_str) else {
+            tracing::warn!(
+                target: "model_store",
+                job_id = %job_id_str,
+                "backfill: sink dir name is not a job UUID — skipping"
+            );
+            return Ok(());
+        };
+        let job_id = JobId::from_uuid(uuid);
+
+        for filename in &manifest.files {
+            let path = sink_root.join(job_id_str).join(filename);
+            let size = match tokio::fs::metadata(&path).await {
+                Ok(meta) => meta.len(),
+                Err(_) => continue,
+            };
+            if size == 0 {
+                continue;
+            }
+
+            let artifact_id = ArtifactId::from(format!("{}#{filename}", manifest.family_id));
+            if self.find_by_artifact(&artifact_id).await?.is_some() {
+                report.skipped_existing += 1;
+                continue;
+            }
+
+            self.record(InstalledArtifactRecord {
+                artifact_id,
+                family_id: FamilyId::from(manifest.family_id.clone()),
+                variant_id: None,
+                format: crate::normalize::classify::classify_format(filename),
+                source_provider: provider_from_family(&manifest.family_id),
+                source_repo: manifest.source_repo.clone(),
+                source_revision: None,
+                filename: filename.clone(),
+                job_id,
+                sha256: None,
+                size_bytes: Some(size),
+            })
+            .await?;
+            report.recorded += 1;
+            tracing::info!(
+                target: "model_store",
+                family_id = %manifest.family_id,
+                job_id = %job_id_str,
+                filename = %filename,
+                size_bytes = size,
+                "backfill: adopted orphaned sink file into install map"
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Read and parse `<job_path>/manifest.json`. Returns `None` when the sidecar
+/// is absent or unparseable so the caller can skip the job without failing.
+async fn read_sidecar(
+    job_path: &std::path::Path,
+) -> Option<crate::downloads::legibility::ManifestSidecar> {
+    let path = job_path.join(crate::downloads::legibility::MANIFEST_FILENAME);
+    let bytes = tokio::fs::read(&path).await.ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Derive the `source_provider` from a `{provider}:{repo}` family id, defaulting
+/// to `"huggingface"` when the family id carries no provider prefix.
+fn provider_from_family(family_id: &str) -> String {
+    family_id
+        .split_once(':')
+        .map(|(p, _)| p.to_owned())
+        .unwrap_or_else(|| "huggingface".to_owned())
 }
 
 /// Result of [`InstallMap::prune_missing`] — a revalidate sweep summary.
@@ -454,6 +606,20 @@ pub struct PruneReport {
     pub checked: usize,
     /// Rows whose file was missing and were deleted (with their refs).
     pub pruned: usize,
+}
+
+/// Result of [`InstallMap::backfill_install_map_from_sink`] — a sink-scan
+/// adopt-from-disk summary.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackfillReport {
+    /// Job dirs found under the sink root and inspected.
+    pub scanned_jobs: usize,
+    /// Job dirs skipped because their sidecar was absent or unreadable.
+    pub skipped_no_sidecar: usize,
+    /// On-disk files (size>0) that lacked a row and were re-recorded.
+    pub recorded: usize,
+    /// On-disk files that already had a row and were left untouched.
+    pub skipped_existing: usize,
 }
 
 /// Result of [`InstallMap::gc_artifact_if_unreferenced`].
@@ -1169,5 +1335,247 @@ mod tests {
         let second = map.prune_missing(sink_root).await.unwrap();
         assert_eq!(second.checked, 1, "kept row remains");
         assert_eq!(second.pruned, 0, "idempotent — nothing left to prune");
+    }
+
+    /// Write a job dir with files on disk and a valid `manifest.json` sidecar
+    /// but NO install-map rows — the "bytes survived, rows lost" state the
+    /// backfill heals.
+    async fn seed_orphan_sink_job(
+        sink_root: &std::path::Path,
+        family: &str,
+        job_id: &str,
+        files: &[(&str, &[u8])],
+    ) {
+        let dir = sink_root.join(job_id);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        for (name, contents) in files {
+            let path = dir.join(name);
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await.unwrap();
+            }
+            tokio::fs::write(&path, contents).await.unwrap();
+        }
+        let repo = family.split_once(':').map(|(_, r)| r).unwrap_or(family);
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: family.to_owned(),
+            source_repo: repo.to_owned(),
+            accelerator: None,
+            files: files.iter().map(|(n, _)| (*n).to_owned()).collect(),
+            created_at: "2026-06-16T00:00:00Z".to_owned(),
+        };
+        crate::downloads::legibility::write_manifest(sink_root, job_id, &manifest)
+            .await
+            .unwrap();
+    }
+
+    /// Backfill re-records an install-map row for an on-disk sink file that has
+    /// no row, deriving family/repo from the sidecar and size from disk. The
+    /// artifact_id matches the `{family_id}#{filename}` form `find_by_artifact`
+    /// (and the verify path) queries.
+    #[tokio::test]
+    async fn backfill_records_row_for_orphaned_sink_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            &[("t2v.safetensors", b"weights-bytes")],
+        )
+        .await;
+
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(report.recorded, 1, "one orphaned file adopted");
+        assert!(report.scanned_jobs >= 1);
+
+        let row = map
+            .find_by_artifact(&ArtifactId::from("huggingface:Owner/Repo#t2v.safetensors"))
+            .await
+            .unwrap()
+            .expect("backfill recorded a row");
+        assert_eq!(row.family_id, "huggingface:Owner/Repo");
+        assert_eq!(row.source_repo, "Owner/Repo");
+        assert_eq!(row.filename, "t2v.safetensors");
+        assert_eq!(row.job_id, JOB_A);
+        assert_eq!(row.size_bytes, Some(b"weights-bytes".len() as u64));
+    }
+
+    /// Backfill is idempotent — a second run records nothing.
+    #[tokio::test]
+    async fn backfill_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            &[("t2v.safetensors", b"weights")],
+        )
+        .await;
+
+        let first = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(first.recorded, 1);
+        let second = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(second.recorded, 0, "idempotent — nothing new to record");
+        assert_eq!(second.skipped_existing, 1, "the file already has a row");
+    }
+
+    /// A file that already has an install-map row is left untouched (not
+    /// re-recorded), even when re-running the backfill.
+    #[tokio::test]
+    async fn backfill_leaves_existing_rows_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        // A genuine prior install: row + file + sidecar all present.
+        seed_install(
+            &map,
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            "i2v.safetensors",
+            b"i2v-weights",
+        )
+        .await;
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec!["i2v.safetensors".into()],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        crate::downloads::legibility::write_manifest(sink_root, JOB_A, &manifest)
+            .await
+            .unwrap();
+
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(report.recorded, 0, "existing row not re-recorded");
+        assert_eq!(report.skipped_existing, 1);
+    }
+
+    /// A job dir with no sidecar (or a corrupt one) is skipped without failing
+    /// the whole scan — other valid jobs still get backfilled.
+    #[tokio::test]
+    async fn backfill_skips_jobs_without_or_with_corrupt_sidecar() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        // Job with no sidecar at all.
+        let job_no_sidecar = "00000000-0000-7000-8000-00000000000b";
+        let dir = sink_root.join(job_no_sidecar);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("loose.safetensors"), b"x")
+            .await
+            .unwrap();
+
+        // Job with a corrupt sidecar.
+        let job_corrupt = "00000000-0000-7000-8000-00000000000c";
+        let dir_c = sink_root.join(job_corrupt);
+        tokio::fs::create_dir_all(&dir_c).await.unwrap();
+        tokio::fs::write(dir_c.join("loose.safetensors"), b"x")
+            .await
+            .unwrap();
+        tokio::fs::write(
+            dir_c.join(crate::downloads::legibility::MANIFEST_FILENAME),
+            b"{ this is not valid json",
+        )
+        .await
+        .unwrap();
+
+        // A valid job alongside the broken ones.
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            &[("t2v.safetensors", b"weights")],
+        )
+        .await;
+
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(report.recorded, 1, "only the valid job is adopted");
+        assert_eq!(
+            report.skipped_no_sidecar, 2,
+            "missing + corrupt sidecars both skipped"
+        );
+        // The valid job's row exists; the broken jobs' files have no rows.
+        assert!(
+            map.find_by_artifact(&ArtifactId::from("huggingface:Owner/Repo#t2v.safetensors"))
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    /// A zero-size on-disk file is NOT adopted (a truncated/empty file is not a
+    /// real install).
+    #[tokio::test]
+    async fn backfill_ignores_zero_size_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            JOB_A,
+            &[("empty.safetensors", b"")],
+        )
+        .await;
+
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(report.recorded, 0, "zero-size file is not a real install");
+        assert!(
+            map.find_by_artifact(&ArtifactId::from(
+                "huggingface:Owner/Repo#empty.safetensors"
+            ))
+            .await
+            .unwrap()
+            .is_none()
+        );
+    }
+
+    /// A sidecar that declares a file which is NOT on disk does not fabricate a
+    /// row — backfill only adopts bytes that physically exist.
+    #[tokio::test]
+    async fn backfill_does_not_record_declared_but_absent_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        // Sidecar declares two files but only one is on disk.
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("present.safetensors"), b"weights")
+            .await
+            .unwrap();
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec!["present.safetensors".into(), "absent.safetensors".into()],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        crate::downloads::legibility::write_manifest(sink_root, JOB_A, &manifest)
+            .await
+            .unwrap();
+
+        let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
+        assert_eq!(report.recorded, 1, "only the present file is adopted");
+        assert!(
+            map.find_by_artifact(&ArtifactId::from(
+                "huggingface:Owner/Repo#absent.safetensors"
+            ))
+            .await
+            .unwrap()
+            .is_none(),
+            "declared-but-absent file must not be fabricated"
+        );
     }
 }
