@@ -22,7 +22,27 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      // Purge caches left by any previous (precaching) worker version so a
+      // stale app shell can never be served after an update.
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+      await self.clients.claim();
+      // Reload every controlled window so a freshly-activated worker shows the
+      // new build immediately — even pages whose JS predates the
+      // controllerchange-reload listener. `activate` only fires on a real
+      // update (new worker bytes), so this cannot loop on ordinary loads.
+      const wins = await self.clients.matchAll({ type: "window" });
+      await Promise.all(
+        wins.map((client) =>
+          "navigate" in client
+            ? (client as WindowClient).navigate(client.url).catch(() => undefined)
+            : Promise.resolve(undefined),
+        ),
+      );
+    })(),
+  );
 });
 
 self.addEventListener("fetch", (event) => {
