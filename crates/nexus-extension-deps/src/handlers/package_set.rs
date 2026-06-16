@@ -224,11 +224,25 @@ impl StepHandler for PackageSetHandler {
             .join(".uv-cache");
         tokio::fs::create_dir_all(&uv_cache).await?;
 
-        let mut cmd = Command::new(&uv_bin);
-        cmd.arg("sync");
-        for extra in &parsed.extras {
-            cmd.arg("--extra").arg(extra);
+        // Plain `uv sync` skips re-materializing a package whose `.dist-info`
+        // RECORD exists, so a prior partial install can never self-heal.
+        // Surgically force-reinstall only the broken packages — a healthy venv
+        // adds zero flags and keeps the fast path.
+        let reinstall_packages = if venv.exists() {
+            venv_partial_install_packages(&venv)
+        } else {
+            Vec::new()
+        };
+        if !reinstall_packages.is_empty() {
+            tracing::warn!(
+                target: "extension_install::package_set",
+                packages = ?reinstall_packages,
+                "partial uv install detected — re-materializing broken packages"
+            );
         }
+
+        let mut cmd = Command::new(&uv_bin);
+        cmd.args(build_sync_args(&parsed.extras, &reinstall_packages));
         cmd.arg("--project")
             .arg(&project_dir)
             .arg("--no-progress")
@@ -591,6 +605,24 @@ async fn dir_size(path: &Path) -> Result<u64, DepError> {
 /// healthy package needs at most one present payload to clear; a broken one is
 /// flagged on the first missing payload.
 const RECORD_PAYLOAD_SAMPLE: usize = 2;
+
+/// Assemble the ordered `uv sync`-onward args: the `sync` verb, an `--extra
+/// <name>` per declared extra, then a `--reinstall-package <name>` per package
+/// flagged as partially installed. A healthy re-sync (`reinstall_packages`
+/// empty) adds zero reinstall flags, so the fast path stays untouched.
+fn build_sync_args(extras: &[String], reinstall_packages: &[String]) -> Vec<String> {
+    let mut args = Vec::with_capacity(1 + extras.len() * 2 + reinstall_packages.len() * 2);
+    args.push("sync".to_owned());
+    for extra in extras {
+        args.push("--extra".to_owned());
+        args.push(extra.clone());
+    }
+    for package in reinstall_packages {
+        args.push("--reinstall-package".to_owned());
+        args.push(package.clone());
+    }
+    args
+}
 
 /// Resolve the venv's `site-packages` directory across POSIX/Windows layouts.
 /// Returns the first candidate that exists, or `None` when neither does.
@@ -1114,6 +1146,37 @@ mod tests {
             "partial install must force re-sync, got {result:?}"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn build_sync_args_adds_reinstall_package_flags() {
+        let args = build_sync_args(&[], &["nvidia-cudnn-cu13".to_owned()]);
+        let pos = args
+            .iter()
+            .position(|a| a == "--reinstall-package")
+            .expect("flag present");
+        assert_eq!(
+            args.get(pos + 1).map(String::as_str),
+            Some("nvidia-cudnn-cu13")
+        );
+        assert_eq!(args.first().map(String::as_str), Some("sync"));
+    }
+
+    #[test]
+    fn build_sync_args_healthy_resync_adds_no_reinstall() {
+        let args = build_sync_args(&["diffusers".to_owned()], &[]);
+        assert!(
+            !args.iter().any(|a| a == "--reinstall-package"),
+            "healthy re-sync must add zero reinstall flags: {args:?}"
+        );
+        let extra_pos = args
+            .iter()
+            .position(|a| a == "--extra")
+            .expect("extra preserved");
+        assert_eq!(
+            args.get(extra_pos + 1).map(String::as_str),
+            Some("diffusers")
+        );
     }
 
     mod stubs {
