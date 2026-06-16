@@ -6,11 +6,13 @@ import type { StoryboardJob } from "../../src/views/recipe/components/run_panel_
 
 const createRunMock = vi.fn();
 const createRunsMock = vi.fn();
-const subscribeMock = vi.fn();
 const cancelRunMock = vi.fn();
 const getRuntimeHealthMock = vi.fn();
+const dispatchRunCompletedMock = vi.fn();
 
 // Per-run SSE callback registry so the test can drive events into each stream.
+// `streams.delete` runs on unsubscribe, so `streams.size` doubles as a
+// teardown probe (0 == all SSE connections closed).
 const streams = new Map<string, (event: ProgressEvent) => void>();
 
 vi.mock("../../src/services/runs_client", async () => {
@@ -36,6 +38,16 @@ vi.mock("../../src/services/runs_client", async () => {
 vi.mock("../../src/services/runtime_client", () => ({
   getRuntimeHealth: (...args: unknown[]) => getRuntimeHealthMock(...args),
 }));
+
+vi.mock("../../src/views/recipe/lib/run_events", async () => {
+  const actual = await vi.importActual<typeof import("../../src/views/recipe/lib/run_events")>(
+    "../../src/views/recipe/lib/run_events",
+  );
+  return {
+    ...actual,
+    dispatchRunCompleted: () => dispatchRunCompletedMock(),
+  };
+});
 
 // Import AFTER the mocks are registered.
 import { RunPanel } from "../../src/views/recipe/components/run_panel";
@@ -173,9 +185,13 @@ describe("RunPanel storyboard fan-out", () => {
     });
     const last = progressSnapshots[progressSnapshots.length - 1]!;
     expect([...last.values()].every((v) => v.status === "done")).toBe(true);
+    // Terminal must tear down every SSE connection (no leak) and broadcast
+    // run-completed exactly once despite N runs each crossing the threshold.
+    expect(streams.size).toBe(0);
+    expect(dispatchRunCompletedMock).toHaveBeenCalledTimes(1);
   });
 
-  it("cancel cancels every run id, ignoring conflicts", async () => {
+  it("cancel cancels every run id (ignoring conflicts), settles items to cancelled + terminal, tears down streams", async () => {
     createRunsMock.mockResolvedValue([
       { runId: "runA", queuePosition: 0, preflight: { unresolvedCharacters: [], predictedFilenames: [], parserWarnings: [] } },
       { runId: "runB", queuePosition: 0, preflight: { unresolvedCharacters: [], predictedFilenames: [], parserWarnings: [] } },
@@ -183,12 +199,29 @@ describe("RunPanel storyboard fan-out", () => {
     ]);
     cancelRunMock.mockRejectedValue(new Error("409 conflict"));
 
-    renderPanel();
+    const progressSnapshots: Array<Map<string, { status: string }>> = [];
+    renderPanel({
+      onJobProgressChange: (m) => progressSnapshots.push(m as Map<string, { status: string }>),
+    });
     const button = await screen.findByRole("button", { name: /Generate/i });
     await act(async () => {
       button.click();
     });
     await waitFor(() => expect(streams.size).toBe(3));
+
+    // One job already started, one already finished — cancel must settle the
+    // rest to cancelled, NOT touch the terminal ones.
+    await act(async () => {
+      streams.get("runA")?.({ type: "segment_started", runId: "runA", globalIndex: 1 });
+      streams.get("runB")?.({
+        type: "segment_completed",
+        runId: "runB",
+        globalIndex: 1,
+        durationMs: 50,
+        cacheHit: false,
+        audioArtifactRef: "ref",
+      });
+    });
 
     const cancel = screen.getByRole("button", { name: /Cancel all running segments/i });
     await act(async () => {
@@ -200,6 +233,53 @@ describe("RunPanel storyboard fan-out", () => {
     });
     const cancelled = cancelRunMock.mock.calls.map((c) => c[1]);
     expect(cancelled.sort()).toEqual(["runA", "runB", "runC"]);
+
+    // Phase is terminal (Generate re-enabled), streams torn down, and every
+    // non-terminal item flipped to cancelled while the done one stayed done.
+    await waitFor(() => {
+      const regen = screen.getByRole("button", { name: /^Generate$/i }) as HTMLButtonElement;
+      expect(regen.disabled).toBe(false);
+    });
+    expect(streams.size).toBe(0);
+    const last = progressSnapshots[progressSnapshots.length - 1]!;
+    expect(last.get("j2")?.status).toBe("done");
+    expect([...last.values()].filter((v) => v.status === "cancelled")).toHaveLength(5);
+  });
+
+  it("does not broadcast run-completed more than once when N runs all cross terminal", async () => {
+    createRunsMock.mockResolvedValue([
+      { runId: "runA", queuePosition: 0, preflight: { unresolvedCharacters: [], predictedFilenames: [], parserWarnings: [] } },
+      { runId: "runB", queuePosition: 0, preflight: { unresolvedCharacters: [], predictedFilenames: [], parserWarnings: [] } },
+      { runId: "runC", queuePosition: 0, preflight: { unresolvedCharacters: [], predictedFilenames: [], parserWarnings: [] } },
+    ]);
+
+    renderPanel();
+    const button = await screen.findByRole("button", { name: /Generate/i });
+    await act(async () => {
+      button.click();
+    });
+    await waitFor(() => expect(streams.size).toBe(3));
+
+    const done = (runId: string, idx: number): ProgressEvent => ({
+      type: "segment_completed",
+      runId,
+      globalIndex: idx,
+      durationMs: 10,
+      cacheHit: false,
+      audioArtifactRef: "ref",
+    });
+    await act(async () => {
+      streams.get("runA")?.(done("runA", 1));
+      streams.get("runA")?.(done("runA", 2));
+      streams.get("runB")?.(done("runB", 1));
+      streams.get("runB")?.(done("runB", 2));
+      streams.get("runC")?.(done("runC", 1));
+      streams.get("runC")?.(done("runC", 2));
+    });
+
+    await waitFor(() => {
+      expect(dispatchRunCompletedMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("with workersActive=1 issues a single chunk containing all jobs (single-batch mode)", async () => {

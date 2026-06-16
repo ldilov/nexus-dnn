@@ -357,6 +357,7 @@ export const gridLabel = style({
   alignItems: "center",
   gap: vars.space.sm,
   paddingLeft: vars.space.sm,
+  paddingRight: vars.space.xs,
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
   fontWeight: 600,
@@ -376,6 +377,10 @@ export const gridLabel = style({
     [`${progressGridRow}[data-status="failed"] &`]: {
       color: vars.color.text,
       boxShadow: `inset 2px 0 0 ${vars.color.danger}`,
+    },
+    [`${progressGridRow}[data-status="cancelled"] &`]: {
+      color: vars.color.textFaint,
+      boxShadow: `inset 2px 0 0 ${vars.color.textFaint}`,
     },
   },
 });

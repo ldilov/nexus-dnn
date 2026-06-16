@@ -156,9 +156,41 @@ describe("withQueueMetrics", () => {
       audioArtifactRef: "ref",
     });
     items = withQueueMetrics(items, chunks);
-    // j1 is position 1 of run A's remaining queue → ~2000ms; j3 position 2 → ~4000ms.
-    expect(items.get("j1")?.etaMs).toBe(2000);
-    expect(items.get("j3")?.etaMs).toBe(4000);
+    // ETA counts only the items AHEAD (already in flight): j1 is the head of
+    // run A's remaining queue → 0ms; j3 has one item ahead → 2000ms.
+    expect(items.get("j1")?.etaMs).toBe(0);
+    expect(items.get("j3")?.etaMs).toBe(2000);
+    expect(items.get("j1")?.queuePosition).toBe(1);
+    expect(items.get("j3")?.queuePosition).toBe(2);
+  });
+});
+
+describe("applyEvent — terminal items are sticky", () => {
+  it("a late segment_started does NOT regress a completed item back to generating", () => {
+    const completed: ProgressEvent = {
+      type: "segment_completed",
+      runId: "runA",
+      globalIndex: 1,
+      durationMs: 500,
+      cacheHit: false,
+      audioArtifactRef: "ref",
+    };
+    let items = applyEvent(initialItems(jobs), chunks, completed);
+    items = applyEvent(items, chunks, { type: "segment_started", runId: "runA", globalIndex: 1 });
+    expect(items.get("j0")?.status).toBe("done");
+  });
+
+  it("a late segment_started does NOT regress a failed item", () => {
+    const failed: ProgressEvent = {
+      type: "segment_failed",
+      runId: "runA",
+      globalIndex: 1,
+      failureCategory: "synthesis_failed",
+      failureDetail: "boom",
+    };
+    let items = applyEvent(initialItems(jobs), chunks, failed);
+    items = applyEvent(items, chunks, { type: "segment_started", runId: "runA", globalIndex: 1 });
+    expect(items.get("j0")?.status).toBe("failed");
   });
 });
 
@@ -168,7 +200,7 @@ describe("toRunProgressMap + countByStatus", () => {
     expect(rp.get("j0")).toMatchObject({ jobId: "j0", status: "queued", runId: null });
   });
 
-  it("counts statuses (1-based indices)", () => {
+  it("counts statuses (1-based indices) with an explicit cancelled bucket", () => {
     let items = initialItems(jobs);
     items = applyEvent(items, chunks, { type: "segment_started", runId: "runA", globalIndex: 1 });
     items = applyEvent(items, chunks, {
@@ -179,6 +211,13 @@ describe("toRunProgressMap + countByStatus", () => {
       cacheHit: false,
       audioArtifactRef: "ref",
     });
-    expect(countByStatus(items)).toEqual({ queued: 2, generating: 1, done: 1, failed: 0 });
+    expect(countByStatus(items)).toEqual({ queued: 2, generating: 1, done: 1, failed: 0, cancelled: 0 });
+  });
+
+  it("counts cancelled items separately from queued", () => {
+    const items = new Map(initialItems(jobs));
+    items.set("j0", { ...items.get("j0")!, status: "cancelled" });
+    items.set("j1", { ...items.get("j1")!, status: "cancelled" });
+    expect(countByStatus(items)).toEqual({ queued: 2, generating: 0, done: 0, failed: 0, cancelled: 2 });
   });
 });

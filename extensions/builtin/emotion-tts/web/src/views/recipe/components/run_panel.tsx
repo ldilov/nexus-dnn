@@ -23,6 +23,7 @@ import {
   withQueueMetrics,
   type ItemState,
   type RunChunk,
+  type StatusCounts,
   type StoryboardJob,
 } from "./run_panel_items";
 import {
@@ -91,6 +92,9 @@ export function RunPanel(props: Props): JSX.Element {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const multiUnsubRef = useRef<Array<() => void>>([]);
   const chunksRef = useRef<RunChunk[]>([]);
+  // Guards the run-completed broadcast: allTerminal is checked inside the
+  // per-event updater across N runs, so without this it can fire repeatedly.
+  const completedFiredRef = useRef<boolean>(false);
 
   useEffect(() => {
     chunksRef.current = chunks;
@@ -169,6 +173,7 @@ export function RunPanel(props: Props): JSX.Element {
     setSegments(new Map());
     setRun(null);
     setRunId(null);
+    completedFiredRef.current = false;
     teardownStreams();
 
     const workers = Math.max(1, health?.workersActive ?? 1);
@@ -197,7 +202,9 @@ export function RunPanel(props: Props): JSX.Element {
             setItems((prev) => {
               const merged = applyEvent(prev, chunksRef.current, event);
               const withMetrics = withQueueMetrics(merged, chunksRef.current);
-              if (allTerminal(withMetrics)) {
+              if (allTerminal(withMetrics) && !completedFiredRef.current) {
+                completedFiredRef.current = true;
+                teardownStreams();
                 setPhase("terminal");
                 dispatchRunCompleted();
               }
@@ -279,6 +286,25 @@ export function RunPanel(props: Props): JSX.Element {
           cancelRun(props.deploymentId, id).catch(() => undefined),
         ),
       );
+      // Stop listening and settle the UI: any item still queued/generating is
+      // now cancelled, so the grid leaves its spinners instead of hanging.
+      completedFiredRef.current = true;
+      teardownStreams();
+      setItems((prev) => {
+        const next = new Map(prev);
+        for (const [jobId, it] of prev) {
+          if (it.status === "queued" || it.status === "generating") {
+            next.set(jobId, {
+              ...it,
+              status: "cancelled",
+              queuePosition: undefined,
+              etaMs: undefined,
+            });
+          }
+        }
+        return next;
+      });
+      setPhase("terminal");
       return;
     }
     if (!runId) return;
@@ -287,7 +313,7 @@ export function RunPanel(props: Props): JSX.Element {
     } catch (err) {
       setError(extractMessage(err));
     }
-  }, [isStoryboard, props.deploymentId, runId]);
+  }, [isStoryboard, props.deploymentId, runId, teardownStreams]);
 
   const segmentList = Array.from(segments.values()).sort((a, b) => a.globalIndex - b.globalIndex);
   const itemList = useMemo(
@@ -309,7 +335,7 @@ export function RunPanel(props: Props): JSX.Element {
     : phase === "starting" || phase === "running" || segmentList.length > 0;
 
   const failedSegments = segmentList.filter((s) => s.status === "failed");
-  const dominantFailure = (() => {
+  const dominantFailure = useMemo(() => {
     if (phase !== "terminal") return null;
     const cats = isStoryboard
       ? itemList.filter((it) => it.status === "failed").map((it) => it.failureCategory ?? "unknown")
@@ -327,7 +353,8 @@ export function RunPanel(props: Props): JSX.Element {
     }
     const total = isStoryboard ? itemList.length : segmentList.length;
     return { category: topCategory, count: topCount, total };
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, isStoryboard, itemList, failedSegments, segmentList]);
   const failureHelp: Record<string, string> = {
     missing_voice_mapping:
       "One or more characters in the script have no voice mapping. " +
@@ -600,32 +627,42 @@ function itemLabel(status: ItemState["status"]): string {
 
 interface ItemProgressGridProps {
   items: readonly ItemState[];
-  counts: { queued: number; generating: number; done: number; failed: number };
+  counts: StatusCounts;
+}
+
+function headSummary(counts: StatusCounts): string {
+  if (counts.generating > 0) return `${counts.generating} generating`;
+  const parts: string[] = [`${counts.done} done`];
+  if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+  if (counts.cancelled > 0) parts.push(`${counts.cancelled} cancelled`);
+  return parts.join(" · ");
 }
 
 function ItemProgressGrid({ items, counts }: ItemProgressGridProps): JSX.Element {
   return (
-    <div className={panel.progressGrid} role="table" aria-label="Per-segment generation progress">
+    <div className={panel.progressGrid} role="list" aria-label="Per-segment generation progress">
       <div className={panel.progressGridHead}>
         <span className={panel.progressGridTitle}>Segments</span>
         <span className={panel.inFlightBadge} data-tone={counts.generating > 0 ? "live" : "idle"}>
           <span className={panel.inFlightDot} aria-hidden="true" />
-          {counts.generating > 0
-            ? `${counts.generating} generating`
-            : counts.failed > 0
-              ? `${counts.done} done · ${counts.failed} failed`
-              : `${counts.done} done`}
+          {headSummary(counts)}
         </span>
       </div>
       {items.map((it) => (
-        <div key={it.jobId} className={panel.progressGridRow} role="row" data-status={it.status}>
-          <span className={panel.gridLabel} role="cell">{it.label}</span>
-          <span className={panel.gridStatus} role="cell">
+        <div
+          key={it.jobId}
+          className={panel.progressGridRow}
+          role="listitem"
+          data-status={it.status}
+          aria-label={`${it.label} — ${itemLabel(it.status)}`}
+        >
+          <span className={panel.gridLabel}>{it.label}</span>
+          <span className={panel.gridStatus}>
             <StatusPill tone={itemTone(it.status)} pulse={it.status === "generating"}>
               {itemLabel(it.status)}
             </StatusPill>
           </span>
-          <span className={panel.gridMeta} role="cell">
+          <span className={panel.gridMeta}>
             {it.status === "generating" && (
               <span className={panel.spinner} aria-hidden="true" />
             )}
@@ -640,7 +677,7 @@ function ItemProgressGrid({ items, counts }: ItemProgressGridProps): JSX.Element
               <span className={panel.etaChip}>working…</span>
             ) : null}
           </span>
-          <span className={panel.gridFailure} role="cell">
+          <span className={panel.gridFailure}>
             {it.status === "failed" ? it.failureCategory ?? "error" : ""}
           </span>
         </div>

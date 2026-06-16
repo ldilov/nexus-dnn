@@ -78,6 +78,9 @@ export function applyEvent(
   const next = new Map(prev);
   switch (event.type) {
     case "segment_started":
+      // A late started event must never regress a finished item back to
+      // generating (out-of-order SSE / replay after completed/failed).
+      if (current.status !== "queued") break;
       next.set(jobId, { ...current, runId: event.runId, status: "generating" });
       break;
     case "segment_completed":
@@ -132,7 +135,8 @@ function estimateItemMs(items: ReadonlyMap<string, ItemState>): number {
 
 /** Recompute queue position/total + a best-effort ETA for every still-queued
  * item, scoped to its own run. Position is 1-based among the run's not-yet-
- * started items; ETA = position × mean-item-duration. Returns a new map. */
+ * started items; ETA only counts the items AHEAD in the queue (the items ahead
+ * are already running), so the head item reads ~0. Returns a new map. */
 export function withQueueMetrics(
   items: ReadonlyMap<string, ItemState>,
   chunks: readonly RunChunk[],
@@ -149,7 +153,7 @@ export function withQueueMetrics(
         ...it,
         queuePosition: idx + 1,
         queueTotal: total,
-        etaMs: Math.round((idx + 1) * perItemMs),
+        etaMs: Math.max(0, Math.round(idx * perItemMs)),
       });
     });
   }
@@ -177,18 +181,18 @@ export function toRunProgressMap(
   return out;
 }
 
-export function countByStatus(
-  items: ReadonlyMap<string, ItemState>,
-): { queued: number; generating: number; done: number; failed: number } {
-  let queued = 0;
-  let generating = 0;
-  let done = 0;
-  let failed = 0;
+export interface StatusCounts {
+  queued: number;
+  generating: number;
+  done: number;
+  failed: number;
+  cancelled: number;
+}
+
+export function countByStatus(items: ReadonlyMap<string, ItemState>): StatusCounts {
+  const counts: StatusCounts = { queued: 0, generating: 0, done: 0, failed: 0, cancelled: 0 };
   for (const it of items.values()) {
-    if (it.status === "generating") generating += 1;
-    else if (it.status === "done") done += 1;
-    else if (it.status === "failed") failed += 1;
-    else queued += 1;
+    counts[it.status] += 1;
   }
-  return { queued, generating, done, failed };
+  return counts;
 }
