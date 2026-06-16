@@ -2,7 +2,8 @@
 //!
 //! `GET /runtime/health` — proxies to the worker's `health` RPC.
 //! `GET /runtime/handshake` — returns the cached handshake record.
-//! `POST /runtime/start` — eager spawn (normally auto-spawned by first task).
+//! `POST /runtime/start` — eager spawn (normally auto-spawned by first task);
+//!   optional `{ numWorkers }` sets the concurrent-worker cap for the session.
 //! `POST /runtime/stop` — release the shared lease and cancel every queued run.
 //! `POST /runtime/restart` — stop + spawn fresh.
 //!
@@ -59,6 +60,8 @@ async fn health(State(state): State<RuntimeState>) -> Response {
 }
 
 async fn health_impl(state: &RuntimeState) -> Result<Value> {
+    let workers_ceiling = crate::dispatcher::worker_ceiling();
+    let workers_active = state.queue.current_max_in_flight();
     let Some(client) = state.provider.current().await else {
         return Ok(json!({
             "badge": "stopped",
@@ -67,10 +70,21 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
             "vramUsedMb": 0,
             "vramTotalMb": 0,
             "lastErrorCategory": null,
+            "workersCeiling": workers_ceiling,
+            "workersActive": workers_active,
         }));
     };
-    let resp: Value = client.call(methods::HEALTH, &json!({})).await?;
+    // The badge is derived from the lease state, which lives in the host and
+    // survives a browser reload. The worker HEALTH rpc is best-effort: while
+    // the model is still loading the worker can't answer it yet, and letting
+    // that error propagate would wipe the "Starting" badge on reload (the
+    // action bar reverts to "Start runtime"). Fall back to a lease-only
+    // snapshot when the call fails.
     let badge = lease_state_to_badge(client.lease().state());
+    let resp: Value = client
+        .call(methods::HEALTH, &json!({}))
+        .await
+        .unwrap_or(Value::Null);
     Ok(json!({
         "badge": badge,
         "modelLoaded": resp.get("model_loaded").and_then(Value::as_bool).unwrap_or(false),
@@ -78,6 +92,8 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
         "vramUsedMb": resp.get("vram_used_mb").and_then(Value::as_i64).unwrap_or(0),
         "vramTotalMb": resp.get("vram_total_mb").and_then(Value::as_i64).unwrap_or(0),
         "lastErrorCategory": resp.get("last_error_category").cloned().unwrap_or(Value::Null),
+        "workersCeiling": workers_ceiling,
+        "workersActive": workers_active,
     }))
 }
 
@@ -126,9 +142,31 @@ fn normalize_handshake(raw: &Value) -> Value {
     })
 }
 
-async fn start(State(state): State<RuntimeState>) -> Response {
+/// Optional `POST /runtime/start` body. `numWorkers` selects how many TTS
+/// workers may run concurrently this session (each a full resident model,
+/// ~N× VRAM), clamped to `[1, EMOTIONTTS_MAX_WORKERS]`. Absent ⇒ 1.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartRequest {
+    #[serde(default)]
+    num_workers: Option<usize>,
+}
+
+async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest>>) -> Response {
+    let req = body.map(|Json(b)| b).unwrap_or_default();
+    let ceiling = crate::dispatcher::worker_ceiling();
+    let requested = req.num_workers.unwrap_or(1).clamp(1, ceiling);
+    let active = state.queue.set_max_in_flight(requested);
     match state.provider.spawn_if_needed().await {
-        Ok(_) => (StatusCode::ACCEPTED, Json(json!({ "status": "started" }))).into_response(),
+        Ok(_) => (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "status": "started",
+                "workers": active,
+                "workersCeiling": ceiling,
+            })),
+        )
+            .into_response(),
         Err(err) => err.into_response(),
     }
 }
@@ -143,7 +181,7 @@ async fn stop(State(state): State<RuntimeState>) -> Response {
 async fn stop_impl(state: &RuntimeState) -> Result<Value> {
     let snapshot = state.queue.snapshot().await;
     let mut cancelled: Vec<String> = Vec::new();
-    if let Some(id) = &snapshot.in_flight {
+    for id in &snapshot.in_flight {
         if state.queue.cancel(id).await {
             cancelled.push(id.as_str().to_string());
         }

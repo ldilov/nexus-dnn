@@ -227,7 +227,7 @@ impl EmotionTtsRouterProvider {
             }
             _ => Arc::new(StubLeaseFactory),
         };
-        let provider = Arc::new(LeaseProvider::new(lease_factory));
+        let provider = Arc::new(LeaseProvider::new(lease_factory.clone()));
         let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
@@ -247,16 +247,23 @@ impl EmotionTtsRouterProvider {
                     .join("runs")
             },
         );
-        drop(crate::dispatcher::spawn_dispatcher(
+        // Pool sized to the worker ceiling (EMOTIONTTS_MAX_WORKERS, default 1);
+        // extra providers stay cold until parallel runs reach them.
+        let pool = Arc::new(crate::dispatcher::LeaseProviderPool::with_ceiling(
+            lease_factory,
+            provider.clone(),
+            crate::dispatcher::worker_ceiling(),
+        ));
+        drop(crate::dispatcher::spawn_dispatcher_pooled(
             queue.clone(),
             repos.clone(),
-            provider.clone(),
+            pool.clone(),
             run_channels.clone(),
             artifact_store_for_dispatcher,
             EXTENSION_VERSION,
             output_root_base,
         ));
-        drop(crate::dispatcher::spawn_idle_watcher(provider.clone()));
+        drop(crate::dispatcher::spawn_idle_watcher_pooled(pool));
         let artifact_store = self.resources.artifact_store.clone();
         Ok(crate::router::build_router_with_families(
             repos,

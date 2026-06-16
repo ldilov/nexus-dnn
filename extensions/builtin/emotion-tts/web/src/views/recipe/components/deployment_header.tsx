@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { Deployment } from "../../../services/deployments_client";
 import { ExtensionApiError } from "../../../services/http";
 import {
@@ -6,6 +6,7 @@ import {
   getRuntimeHealth,
   type RuntimeHealth,
 } from "../../../services/runtime_client";
+import { setDesiredWorkers } from "../../../services/worker_pref";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
 import { StatusPill } from "../../../components/status_pill";
@@ -19,6 +20,10 @@ const HEALTH_POLL_MS = 4000;
 export function DeploymentHeader({ deployment }: Props): JSX.Element {
   const [health, setHealth] = useState<RuntimeHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Desired worker count for the *next* start. Seeded from the active cap the
+  // first time health reports it, then user-owned.
+  const [workers, setWorkers] = useState(1);
+  const seededWorkers = useState({ done: false })[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -41,8 +46,20 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const active = health?.workersActive;
+    if (active != null && !seededWorkers.done) {
+      seededWorkers.done = true;
+      setWorkers(active);
+      setDesiredWorkers(active);
+    }
+  }, [health?.workersActive, seededWorkers]);
+
   const badge = health?.badge ?? "not_installed";
   const modelMissing = error?.includes("model_missing") ?? false;
+  const workersCeiling = health?.workersCeiling ?? 1;
+  const workersActive = health?.workersActive ?? 1;
+  const runtimeUp = badge === "ready" || badge === "running" || badge === "starting";
 
   return (
     <output className={css.controlRow} aria-live="polite">
@@ -65,6 +82,35 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
         </>
       )}
 
+      {workersCeiling > 1 && (
+        <>
+          <span className={css.label}>Workers</span>
+          <span style={WORKERS_WRAP}>
+            <select
+              value={workers}
+              aria-label="Concurrent workers for the next runtime start"
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setWorkers(n);
+                setDesiredWorkers(n);
+              }}
+              style={WORKERS_SELECT}
+            >
+              {Array.from({ length: workersCeiling }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <span style={WORKERS_HINT}>
+              {runtimeUp && workers !== workersActive
+                ? `restart to apply · active ${workersActive}`
+                : `~${workers}× model VRAM`}
+            </span>
+          </span>
+        </>
+      )}
+
       {modelMissing && (
         <Banner severity="warning">
           <strong>IndexTTS-2 model is not installed.</strong>{" "}
@@ -75,6 +121,30 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
     </output>
   );
 }
+
+const WORKERS_WRAP: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const WORKERS_SELECT: CSSProperties = {
+  height: 24,
+  padding: "0 6px",
+  background: "var(--surface-floor, #0c0e10)",
+  border: "1px solid rgba(70,72,74,0.4)",
+  borderRadius: 6,
+  color: "var(--on-surface)",
+  fontFamily: "var(--font-mono)",
+  fontSize: 12,
+  outline: "none",
+  cursor: "pointer",
+};
+
+const WORKERS_HINT: CSSProperties = {
+  fontSize: 11,
+  color: "var(--on-surface-variant, #c4c7c5)",
+};
 
 function toneFor(badge: string): "success" | "accent" | "danger" | "neutral" {
   switch (badge) {

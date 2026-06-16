@@ -1,12 +1,16 @@
 //! Runtime-lease queue (FR-026, FR-141).
 //!
-//! One batch at a time. FIFO for regular runs; test-line requests jump to
-//! the head and occupy a single priority slot. Cancellation is cooperative
-//! and observable via the `CancellationToken`.
+//! FIFO for regular runs; test-line requests jump to the head and occupy a
+//! single priority slot. Up to `max_in_flight` runs execute concurrently
+//! (default 1 — the historical single-batch behaviour). The worker-count
+//! control raises the cap so the dispatcher can fan runs out across a
+//! `LeaseProvider` pool. Cancellation is cooperative and observable via the
+//! `CancellationToken`.
 
 pub mod resume;
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -34,25 +38,66 @@ pub struct QueuedRun {
 pub struct RuntimeQueue {
     state: Mutex<QueueState>,
     notify: Notify,
+    /// Max runs allowed in flight at once. Held as a shared atomic so the
+    /// runtime-start route can raise it (clamped to the worker ceiling)
+    /// without rebuilding the queue. Defaults to 1 — identical to the
+    /// historical single-in-flight behaviour.
+    max_in_flight: Arc<AtomicUsize>,
 }
 
 struct QueueState {
     pending: VecDeque<QueuedRun>,
     test_slot: Option<QueuedRun>,
-    in_flight: Option<QueuedRun>,
+    in_flight: Vec<QueuedRun>,
 }
 
 impl RuntimeQueue {
     #[must_use]
     pub fn new() -> Self {
+        Self::with_max_in_flight(Arc::new(AtomicUsize::new(1)))
+    }
+
+    /// Construct sharing an external concurrency cap. The atomic is coerced
+    /// to at least 1 so a stray `0` can never deadlock the dispatcher.
+    #[must_use]
+    pub fn with_max_in_flight(max_in_flight: Arc<AtomicUsize>) -> Self {
+        if max_in_flight.load(Ordering::Relaxed) == 0 {
+            max_in_flight.store(1, Ordering::Relaxed);
+        }
         Self {
             state: Mutex::new(QueueState {
                 pending: VecDeque::new(),
                 test_slot: None,
-                in_flight: None,
+                in_flight: Vec::new(),
             }),
             notify: Notify::new(),
+            max_in_flight,
         }
+    }
+
+    /// Shared handle to the concurrency cap.
+    #[must_use]
+    pub fn max_in_flight_handle(&self) -> Arc<AtomicUsize> {
+        self.max_in_flight.clone()
+    }
+
+    /// Current concurrency cap (≥ 1).
+    #[must_use]
+    pub fn current_max_in_flight(&self) -> usize {
+        self.max_in_flight.load(Ordering::Relaxed).max(1)
+    }
+
+    /// Raise/lower the concurrency cap (coerced to ≥ 1). Wakes any parked
+    /// `pop_next` so a raise takes effect immediately. Returns the applied value.
+    pub fn set_max_in_flight(&self, n: usize) -> usize {
+        let v = n.max(1);
+        self.max_in_flight.store(v, Ordering::Relaxed);
+        self.notify.notify_waiters();
+        v
+    }
+
+    fn cap(&self) -> usize {
+        self.max_in_flight.load(Ordering::Relaxed).max(1)
     }
 
     pub async fn enqueue_batch(
@@ -108,13 +153,14 @@ impl RuntimeQueue {
         loop {
             {
                 let mut state = self.state.lock().await;
-                if state.in_flight.is_some() {
-                    drop(state);
+                if state.in_flight.len() >= self.cap() {
+                    // At capacity — fall through and wait for a completion
+                    // (or a cap raise) to free a slot.
                 } else if let Some(test) = state.test_slot.take() {
-                    state.in_flight = Some(test.clone());
+                    state.in_flight.push(test.clone());
                     return Some(test);
                 } else if let Some(next) = state.pending.pop_front() {
-                    state.in_flight = Some(next.clone());
+                    state.in_flight.push(next.clone());
                     return Some(next);
                 } else {
                     return None;
@@ -126,22 +172,16 @@ impl RuntimeQueue {
 
     pub async fn complete_in_flight(&self, run_id: &RunId) {
         let mut state = self.state.lock().await;
-        if let Some(cur) = &state.in_flight {
-            if cur.run_id == *run_id {
-                state.in_flight = None;
-            }
-        }
+        state.in_flight.retain(|q| q.run_id != *run_id);
         drop(state);
         self.notify.notify_waiters();
     }
 
     pub async fn cancel(&self, run_id: &RunId) -> bool {
         let mut state = self.state.lock().await;
-        if let Some(cur) = &state.in_flight {
-            if cur.run_id == *run_id {
-                cur.cancel.cancel();
-                return true;
-            }
+        if let Some(cur) = state.in_flight.iter().find(|q| q.run_id == *run_id) {
+            cur.cancel.cancel();
+            return true;
         }
         if let Some(test) = &state.test_slot {
             if test.run_id == *run_id {
@@ -165,7 +205,7 @@ impl RuntimeQueue {
     pub async fn snapshot(&self) -> QueueSnapshot {
         let state = self.state.lock().await;
         QueueSnapshot {
-            in_flight: state.in_flight.as_ref().map(|q| q.run_id.clone()),
+            in_flight: state.in_flight.iter().map(|q| q.run_id.clone()).collect(),
             test_slot: state.test_slot.as_ref().map(|q| q.run_id.clone()),
             pending: state.pending.iter().map(|q| q.run_id.clone()).collect(),
         }
@@ -173,25 +213,22 @@ impl RuntimeQueue {
 
     pub async fn position_of(&self, run_id: &RunId) -> Option<i64> {
         let state = self.state.lock().await;
-        if state
-            .in_flight
-            .as_ref()
-            .is_some_and(|q| q.run_id == *run_id)
-        {
-            return Some(0);
+        if let Some(idx) = state.in_flight.iter().position(|q| q.run_id == *run_id) {
+            return Some(idx as i64);
         }
+        let base = state.in_flight.len() as i64;
         if state
             .test_slot
             .as_ref()
             .is_some_and(|q| q.run_id == *run_id)
         {
-            return Some(1);
+            return Some(base);
         }
         state
             .pending
             .iter()
             .position(|q| q.run_id == *run_id)
-            .map(|idx| (idx as i64) + 2)
+            .map(|idx| base + 1 + idx as i64)
     }
 }
 
@@ -203,7 +240,7 @@ impl Default for RuntimeQueue {
 
 #[derive(Debug, Clone)]
 pub struct QueueSnapshot {
-    pub in_flight: Option<RunId>,
+    pub in_flight: Vec<RunId>,
     pub test_slot: Option<RunId>,
     pub pending: Vec<RunId>,
 }
@@ -298,5 +335,50 @@ mod tests {
         let q = RuntimeQueue::new();
         let unknown = RunId::new();
         assert!(q.position_of(&unknown).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn respects_max_in_flight_cap() {
+        let q = RuntimeQueue::with_max_in_flight(Arc::new(AtomicUsize::new(2)));
+        let a = RunId::new();
+        let b = RunId::new();
+        let c = RunId::new();
+        q.enqueue_batch(a.clone(), "d").await;
+        q.enqueue_batch(b.clone(), "d").await;
+        q.enqueue_batch(c.clone(), "d").await;
+
+        let r1 = q.pop_next().await.unwrap();
+        let r2 = q.pop_next().await.unwrap();
+        assert_eq!(r1.run_id, a);
+        assert_eq!(r2.run_id, b);
+        // Two in flight at cap=2 — the third stays pending until one completes.
+        assert_eq!(q.snapshot().await.in_flight.len(), 2);
+        q.complete_in_flight(&a).await;
+        let r3 = q.pop_next().await.unwrap();
+        assert_eq!(r3.run_id, c);
+    }
+
+    #[tokio::test]
+    async fn set_max_in_flight_takes_effect_live() {
+        let q = RuntimeQueue::new(); // cap 1
+        let a = RunId::new();
+        let b = RunId::new();
+        q.enqueue_batch(a.clone(), "d").await;
+        q.enqueue_batch(b.clone(), "d").await;
+        let _r1 = q.pop_next().await.unwrap();
+        assert_eq!(q.current_max_in_flight(), 1);
+        assert_eq!(q.set_max_in_flight(2), 2);
+        let r2 = q.pop_next().await.unwrap();
+        assert_eq!(r2.run_id, b);
+        assert_eq!(q.snapshot().await.in_flight.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn zero_cap_coerced_to_one() {
+        let q = RuntimeQueue::with_max_in_flight(Arc::new(AtomicUsize::new(0)));
+        assert_eq!(q.current_max_in_flight(), 1);
+        let a = RunId::new();
+        q.enqueue_batch(a.clone(), "d").await;
+        assert_eq!(q.pop_next().await.unwrap().run_id, a);
     }
 }

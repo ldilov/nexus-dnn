@@ -192,7 +192,9 @@ pub async fn register(
 ) -> crate::domain::Result<ExtensionHandle> {
     let repos = crate::storage::build_repos(pool).await?;
     let queue = Arc::new(RuntimeQueue::new());
-    let provider = lease_factory.map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f)));
+    let provider = lease_factory
+        .as_ref()
+        .map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f.clone())));
     let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
     // The dispatcher only runs when a LeaseProvider is wired in. Without
     // a lease there is no worker to talk to, so any enqueued run would
@@ -200,7 +202,7 @@ pub async fn register(
     // must accept that runs cannot complete — the SSE handler will
     // observe the 5-minute "no channel registered" timeout and emit a
     // synthetic run_terminal/failed.
-    if let Some(p) = provider.clone() {
+    if let (Some(p), Some(f)) = (provider.clone(), lease_factory.clone()) {
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
         // This entry point predates `host_data_dir` plumbing — fall back to
@@ -209,16 +211,23 @@ pub async fn register(
         // `EmotionTtsRouterProvider::build_router_inner_async`, which uses
         // the host data dir when available.
         let output_root_base = std::env::temp_dir().join(crate::FALLBACK_RUNS_DIR);
-        drop(crate::dispatcher::spawn_dispatcher(
+        // Pool sized to the worker ceiling (EMOTIONTTS_MAX_WORKERS, default 1);
+        // extras stay cold until parallel runs hit them.
+        let pool = Arc::new(crate::dispatcher::LeaseProviderPool::with_ceiling(
+            f,
+            p.clone(),
+            crate::dispatcher::worker_ceiling(),
+        ));
+        drop(crate::dispatcher::spawn_dispatcher_pooled(
             queue.clone(),
             repos.clone(),
-            p.clone(),
+            pool.clone(),
             run_channels.clone(),
             artifact_store.clone(),
             EXTENSION_VERSION,
             output_root_base,
         ));
-        drop(crate::dispatcher::spawn_idle_watcher(p));
+        drop(crate::dispatcher::spawn_idle_watcher_pooled(pool));
     }
     let router = router::build_router_with_families(
         repos,

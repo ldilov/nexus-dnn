@@ -17,6 +17,10 @@ export interface RuntimeHealth {
   vramUsedMb: number;
   vramTotalMb: number;
   lastErrorCategory: string | null;
+  // Worker pool (Spec: EMOTIONTTS_MAX_WORKERS). `workersCeiling` is the hard
+  // max selectable; `workersActive` is the current concurrent-run cap.
+  workersCeiling?: number;
+  workersActive?: number;
 }
 
 export interface HandshakeInfo {
@@ -40,8 +44,11 @@ export async function getRuntimeHandshake(): Promise<HandshakeInfo> {
   return apiFetch("/runtime/handshake");
 }
 
-export async function startRuntime(): Promise<void> {
-  await apiFetch("/runtime/start", { method: "POST" });
+export async function startRuntime(numWorkers?: number): Promise<void> {
+  await apiFetch("/runtime/start", {
+    method: "POST",
+    ...(numWorkers != null ? { body: JSON.stringify({ numWorkers }) } : {}),
+  });
 }
 
 export async function stopRuntime(): Promise<{ cancelledRunIds: string[] }> {
