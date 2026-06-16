@@ -23999,8 +23999,10 @@ function RO(t) {
   return a;
 }
 function _O(t, a, s) {
-  const i = t.find((o) => o.runId === a);
-  return i ? i.jobs[s]?.jobId ?? null : null;
+  const i = t.find((u) => u.runId === a);
+  if (!i) return null;
+  const o = s - 1;
+  return o < 0 || o >= i.jobs.length ? null : i.jobs[o]?.jobId ?? null;
 }
 function MO(t, a, s) {
   if (s.type === "run_terminal") return t;
