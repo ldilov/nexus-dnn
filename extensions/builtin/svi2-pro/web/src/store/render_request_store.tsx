@@ -170,6 +170,7 @@ export function RenderRequestProvider({
           setRender((prev) => reduceRenderFrame(prev, frame));
         },
         () => {
+          if (reconnecting.current) return;
           setRender((prev) => markStalled(prev));
         },
       );
@@ -181,13 +182,17 @@ export function RenderRequestProvider({
   const reconnectOrGiveUp = useCallback(
     (jobId: string) => {
       if (reconnecting.current) return;
+      const activeJobId = jobId;
       reconnecting.current = true;
       lastReconnectAt.current = Date.now();
       subscribeToJob(jobId);
       setRender((prev) =>
         prev.phase === "running" ? { ...prev, lastFrameAt: Date.now() } : prev,
       );
+      const stillActive = () =>
+        renderRef.current.jobId === activeJobId && renderRef.current.phase === "running";
       const giveUp = (next: RenderState) => {
+        if (!stillActive()) return;
         streamCleanup.current?.();
         streamCleanup.current = null;
         stopWatchdog();

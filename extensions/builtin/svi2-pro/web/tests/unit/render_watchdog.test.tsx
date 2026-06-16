@@ -118,4 +118,62 @@ describe("watchdog reconnects before declaring connection lost", () => {
     expect(getRenderJob).toHaveBeenCalledTimes(1);
     expect(subscribeRenderStream).toHaveBeenCalledTimes(2);
   });
+
+  test("a user cancel mid-reconnect is not clobbered by a late terminal status", async () => {
+    cancelRender.mockResolvedValue({ status: "cancelled" });
+    let resolveJob: ((job: RenderJob) => void) | null = null;
+    getRenderJob.mockReturnValue(
+      new Promise<RenderJob>((resolve) => {
+        resolveJob = resolve;
+      }),
+    );
+
+    await startThenStall();
+    expect(getRenderJob).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await captured?.cancelRenderJob();
+    });
+    expect(captured?.render.phase).toBe("cancelled");
+
+    await act(async () => {
+      resolveJob?.(jobOf("succeeded"));
+      await Promise.resolve();
+    });
+
+    expect(captured?.render.phase).toBe("cancelled");
+  });
+
+  test("a done frame mid-reconnect is not clobbered by a late status rejection", async () => {
+    let onFrame: ((frame: unknown) => void) | null = null;
+    subscribeRenderStream.mockImplementation((_jobId, frameCb) => {
+      onFrame = frameCb as (frame: unknown) => void;
+      return vi.fn();
+    });
+    let rejectJob: ((err: Error) => void) | null = null;
+    getRenderJob.mockReturnValue(
+      new Promise<RenderJob>((_resolve, reject) => {
+        rejectJob = reject;
+      }),
+    );
+
+    await startThenStall();
+    expect(getRenderJob).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      onFrame?.({
+        method: "svi2.video.done",
+        params: { output_path: "out.mp4", render_report: { frames: 10 } },
+      });
+    });
+    expect(captured?.render.phase).toBe("done");
+
+    await act(async () => {
+      rejectJob?.(new Error("transient"));
+      await Promise.resolve();
+    });
+
+    expect(captured?.render.phase).toBe("done");
+    expect(captured?.render.outputPath).toBe("out.mp4");
+  });
 });
