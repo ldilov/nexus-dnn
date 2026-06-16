@@ -251,10 +251,7 @@ impl LeaseManager {
     /// Spawn the background reaper task. Returns a `JoinHandle` so the
     /// host can abort it on shutdown. Ticks every `interval` and reaps
     /// idle leases; emits a `tracing::info` per reaped id.
-    pub fn start_reaper_task(
-        self: Arc<Self>,
-        interval: Duration,
-    ) -> tokio::task::JoinHandle<()> {
+    pub fn start_reaper_task(self: Arc<Self>, interval: Duration) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -337,6 +334,20 @@ impl LeaseManager {
             .collect()
     }
 
+    /// Snapshot every live lease handle, regardless of install. Returned
+    /// clones are independent of the manager's internal lock — callers may
+    /// await against each lease without holding registry state. Used by the
+    /// host-wide GC endpoint to fan a `runtime.release_memory` RPC across
+    /// every worker.
+    pub async fn all_live_handles(&self) -> Vec<Arc<StdioLease>> {
+        self.entries
+            .lock()
+            .await
+            .values()
+            .map(|e| e.lease.clone())
+            .collect()
+    }
+
     /// Non-authoritative live count — useful for deciding whether a
     /// `DELETE /install/:id` uninstall should 409.
     pub async fn live_count_for_install(&self, install_id: &RuntimeInstallId) -> usize {
@@ -400,50 +411,90 @@ mod tests {
     fn reaps_when_idle_past_timeout() {
         let now = t0();
         let last = now - Duration::from_secs(60);
-        assert!(LeaseManager::should_reap(true, 0, last, Duration::from_secs(30), now));
+        assert!(LeaseManager::should_reap(
+            true,
+            0,
+            last,
+            Duration::from_secs(30),
+            now
+        ));
     }
 
     #[test]
     fn skips_when_in_flight_nonzero() {
         let now = t0();
         let last = now - Duration::from_secs(60);
-        assert!(!LeaseManager::should_reap(true, 1, last, Duration::from_secs(30), now));
+        assert!(!LeaseManager::should_reap(
+            true,
+            1,
+            last,
+            Duration::from_secs(30),
+            now
+        ));
     }
 
     #[test]
     fn skips_when_not_idle_reapable() {
         let now = t0();
         let last = now - Duration::from_secs(60);
-        assert!(!LeaseManager::should_reap(false, 0, last, Duration::from_secs(30), now));
+        assert!(!LeaseManager::should_reap(
+            false,
+            0,
+            last,
+            Duration::from_secs(30),
+            now
+        ));
     }
 
     #[test]
     fn skips_when_timeout_zero() {
         let now = t0();
         let last = now - Duration::from_secs(3600);
-        assert!(!LeaseManager::should_reap(true, 0, last, Duration::ZERO, now));
+        assert!(!LeaseManager::should_reap(
+            true,
+            0,
+            last,
+            Duration::ZERO,
+            now
+        ));
     }
 
     #[test]
     fn skips_when_within_timeout_window() {
         let now = t0();
         let last = now - Duration::from_secs(10);
-        assert!(!LeaseManager::should_reap(true, 0, last, Duration::from_secs(30), now));
+        assert!(!LeaseManager::should_reap(
+            true,
+            0,
+            last,
+            Duration::from_secs(30),
+            now
+        ));
     }
 
     #[test]
     fn boundary_exactly_at_timeout_reaps() {
         let now = t0();
         let last = now - Duration::from_secs(30);
-        assert!(LeaseManager::should_reap(true, 0, last, Duration::from_secs(30), now));
+        assert!(LeaseManager::should_reap(
+            true,
+            0,
+            last,
+            Duration::from_secs(30),
+            now
+        ));
     }
 
     #[tokio::test]
     async fn idle_timeout_setter_removes_zero() {
         let mgr = LeaseManager::new();
         let install_id = RuntimeInstallId::new();
-        mgr.set_idle_timeout(install_id, Duration::from_secs(30)).await;
-        assert_eq!(mgr.idle_timeout(&install_id).await, Some(Duration::from_secs(30)));
+        mgr.set_idle_timeout(install_id, Duration::from_secs(30))
+            .await;
+        assert_eq!(
+            mgr.idle_timeout(&install_id).await,
+            Some(Duration::from_secs(30))
+        );
         mgr.set_idle_timeout(install_id, Duration::ZERO).await;
         assert_eq!(mgr.idle_timeout(&install_id).await, None);
     }
@@ -477,5 +528,12 @@ mod tests {
         // Must not panic / underflow on missing entry.
         mgr.activity_start(&id).await;
         mgr.activity_end(&id).await;
+    }
+
+    #[tokio::test]
+    async fn all_live_handles_matches_live_count_when_empty() {
+        let mgr = LeaseManager::new();
+        assert_eq!(mgr.all_live_handles().await.len(), mgr.live_count().await);
+        assert_eq!(mgr.all_live_handles().await.len(), 0);
     }
 }
