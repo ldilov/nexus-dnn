@@ -156,9 +156,8 @@ impl StepHandler for PackageSetHandler {
         if recorded_extras != parsed.extras {
             return Ok(ProbeResult::NotSatisfied);
         }
-        // A matching marker still lies if the venv was only partially
-        // materialized — recorded `.dist-info/RECORD` whose payloads never
-        // landed. Force a re-sync so run() can re-materialize them.
+        // A matching marker still lies if the venv was partially materialized
+        // (dist-info recorded but payload absent) — force a re-sync.
         let broken = venv_partial_install_packages(&venv);
         if !broken.is_empty() {
             tracing::warn!(
@@ -224,10 +223,8 @@ impl StepHandler for PackageSetHandler {
             .join(".uv-cache");
         tokio::fs::create_dir_all(&uv_cache).await?;
 
-        // Plain `uv sync` skips re-materializing a package whose `.dist-info`
-        // RECORD exists, so a prior partial install can never self-heal.
-        // Surgically force-reinstall only the broken packages — a healthy venv
-        // adds zero flags and keeps the fast path.
+        // Plain `uv sync` skips a package whose `.dist-info` RECORD exists, so a
+        // partial install never self-heals — force-reinstall only the broken ones.
         let reinstall_packages = if venv.exists() {
             venv_partial_install_packages(&venv)
         } else {
@@ -660,6 +657,35 @@ fn dist_info_to_package_name(dir_name: &str) -> Option<String> {
     Some(collapsed.to_lowercase())
 }
 
+/// Extract the path (first CSV field) from one `RECORD` line. PEP 376 RECORD is
+/// CSV: a path containing a comma is double-quoted with `""` escaping an inner
+/// quote (`"a,b/c.py",sha,123`). Returns `None` for a blank line.
+fn record_path(line: &str) -> Option<String> {
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    if let Some(rest) = trimmed.strip_prefix('"') {
+        let mut out = String::new();
+        let mut chars = rest.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    out.push('"');
+                } else {
+                    break;
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        return Some(out);
+    }
+    let field = trimmed.split(',').next().unwrap_or("").trim();
+    if field.is_empty() {
+        return None;
+    }
+    Some(field.to_owned())
+}
+
 /// True when the recorded `RECORD` path is a payload file worth sampling: not
 /// the package's own metadata, not an out-of-tree script (`../`), not a `.pyc`.
 fn is_sampleable_payload(record_path: &str, own_dist_info_prefix: &str) -> bool {
@@ -670,9 +696,11 @@ fn is_sampleable_payload(record_path: &str, own_dist_info_prefix: &str) -> bool 
         && !record_path.ends_with(".pyc")
 }
 
-/// True when `<site_packages>/<record_path>` is present and non-empty. Guards
-/// against `..` traversal escaping site-packages by rejecting any path whose
-/// components are not plain names.
+/// True when `<site_packages>/<record_path>` exists on disk. A partial uv
+/// install leaves payloads ABSENT, not truncated — so size is no signal and a
+/// zero-size check would false-flag legitimately empty markers (`py.typed`,
+/// empty `__init__.py`). Guards against `..` traversal escaping site-packages
+/// by rejecting any path whose components are not plain names.
 fn payload_present(site_packages: &Path, record_path: &str) -> bool {
     let rel = Path::new(record_path);
     if rel
@@ -682,9 +710,7 @@ fn payload_present(site_packages: &Path, record_path: &str) -> bool {
         return false;
     }
     let resolved = site_packages.join(rel);
-    std::fs::metadata(&resolved)
-        .map(|m| m.len() > 0)
-        .unwrap_or(false)
+    std::fs::metadata(&resolved).is_ok()
 }
 
 /// Scan a venv for packages with a recorded `.dist-info/RECORD` whose payload
@@ -724,12 +750,14 @@ pub(crate) fn venv_partial_install_packages(venv: &Path) -> Vec<String> {
             if sampled >= RECORD_PAYLOAD_SAMPLE {
                 break;
             }
-            let record_path = line.split(',').next().unwrap_or("").trim();
-            if !is_sampleable_payload(record_path, &own_prefix) {
+            let Some(path) = record_path(line) else {
+                continue;
+            };
+            if !is_sampleable_payload(&path, &own_prefix) {
                 continue;
             }
             sampled += 1;
-            if !payload_present(&site_packages, record_path) {
+            if !payload_present(&site_packages, &path) {
                 broken.push(package);
                 break;
             }
@@ -1019,6 +1047,47 @@ mod tests {
         let broken = venv_partial_install_packages(&venv);
         assert!(broken.is_empty(), "empty venv must be clean: {broken:?}");
         let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_clean_when_first_payload_is_empty_marker() {
+        let (venv, site) = temp_venv_site_packages("emptymarker");
+        let pkg = site.join("typedpkg");
+        std::fs::create_dir_all(&pkg).expect("create pkg dir");
+        std::fs::write(pkg.join("py.typed"), b"").expect("write empty marker");
+        std::fs::write(pkg.join("__init__.py"), b"x = 1\n").expect("write module");
+        write_record(
+            &site,
+            "typedpkg-1.0.0.dist-info",
+            &[
+                "typedpkg/py.typed,,0",
+                "typedpkg/__init__.py,,7",
+                "typedpkg-1.0.0.dist-info/RECORD,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert!(
+            broken.is_empty(),
+            "0-byte py.typed marker must not flag a present package: {broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn record_path_handles_quoted_and_plain_fields() {
+        assert_eq!(
+            record_path("foo/bar/baz.py,sha256=abc,123").as_deref(),
+            Some("foo/bar/baz.py")
+        );
+        assert_eq!(
+            record_path("\"foo,bar/baz.py\",sha256=abc,123").as_deref(),
+            Some("foo,bar/baz.py")
+        );
+        assert_eq!(
+            record_path("\"weird\"\"name.py\",,0").as_deref(),
+            Some("weird\"name.py")
+        );
+        assert_eq!(record_path("").as_deref(), None);
     }
 
     #[test]
