@@ -39,6 +39,8 @@ import { PreFlightBlock } from "./components/pre_flight_block";
 import { RecentRuns } from "./components/recent_runs";
 import { RecentGenerationsCard } from "./components/recent_generations_card";
 import { RunPanel } from "./components/run_panel";
+import type { StoryboardJob } from "./components/run_panel_items";
+import type { RunProgress } from "./components/storyboard/storyboard_data";
 import { ScriptSection } from "./components/script_section/script_section";
 import type { EditorMode } from "./components/editor_mode_toggle/editor_mode_toggle";
 import { buildDiagnostics } from "./lib/build_diagnostics";
@@ -187,6 +189,10 @@ export function RecipeView(): JSX.Element {
   }, []);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
   const [prebuiltSegments, setPrebuiltSegments] = useState<PrebuiltSegment[]>([]);
+  const [storyboardJobs, setStoryboardJobs] = useState<StoryboardJob[]>([]);
+  const [jobProgress, setJobProgress] = useState<ReadonlyMap<string, RunProgress>>(
+    () => new Map(),
+  );
 
   const scriptRef = useRef(script);
   const rowsRefMode = useRef(rows);
@@ -658,6 +664,8 @@ export function RecipeView(): JSX.Element {
             createPayload={createPayload}
             canGenerate={canGenerate}
             diagnostics={legacyDiagnostics}
+            storyboardJobs={editorMode === "storyboard" ? storyboardJobs : undefined}
+            onJobProgressChange={setJobProgress}
           />
         }
         recentGenerations={
@@ -685,6 +693,8 @@ export function RecipeView(): JSX.Element {
             presets={vectorPresets}
             voiceAssets={voiceAssets}
             onQueueChange={setPrebuiltSegments}
+            onStoryboardJobsChange={setStoryboardJobs}
+            jobProgress={editorMode === "storyboard" ? jobProgress : undefined}
           />
         }
         parsedDialogueSection={

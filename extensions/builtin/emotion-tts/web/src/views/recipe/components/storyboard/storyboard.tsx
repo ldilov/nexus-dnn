@@ -24,6 +24,7 @@ import {
   presetVectorForEmotionId,
   rangeIsFree,
   rangeText,
+  runProgressToJobStatus,
   segmentLabels,
   segmentScript,
   segsInRange,
@@ -34,8 +35,10 @@ import {
   type EmotionOption,
   type Job,
   type JobStatus,
+  type RunProgress,
   type Voice,
 } from "./storyboard_data";
+import type { StoryboardJob } from "../run_panel_items";
 import { subscribeRunCompleted } from "../../lib/run_events";
 import * as css from "./storyboard.css";
 
@@ -47,6 +50,12 @@ interface StoryboardProps {
   // Deployment character mappings for the cast popover's "Characters" tab.
   mappings?: ReadonlyMap<string, CharacterMapping>;
   onQueueChange?: ((segments: PrebuiltSegment[]) => void) | undefined;
+  // Emits the same queue as stably-identified, labelled jobs so the run panel
+  // can fan them out across workers and stream per-item progress back.
+  onJobsChange?: ((jobs: StoryboardJob[]) => void) | undefined;
+  // Live per-job progress (keyed by job id) streamed back from the run panel;
+  // drives the carousel card status without a refetch.
+  jobProgress?: ReadonlyMap<string, RunProgress> | undefined;
 }
 
 type CastMode = "voice" | "character";
@@ -63,6 +72,8 @@ export function Storyboard({
   onStoryTextChange,
   mappings,
   onQueueChange,
+  onJobsChange,
+  jobProgress,
 }: StoryboardProps): JSX.Element {
   const voices = useMemo(() => buildVoices(voiceAssets), [voiceAssets]);
   const emotions = useMemo(() => buildEmotions(presets), [presets]);
@@ -301,7 +312,11 @@ export function Storyboard({
   }, [jobs]);
 
   const sortedJobs = useMemo(() => jobsInScriptOrder(paragraphs, jobs), [paragraphs, jobs]);
-  const queueSegments = useMemo<PrebuiltSegment[]>(
+  const labels = useMemo(() => segmentLabels(paragraphs, jobs), [paragraphs, jobs]);
+  // The runnable queue, in script order, carried as stably-identified jobs so
+  // the run panel can fan them out and stream per-item progress back. A job is
+  // runnable only when its voice still exists and its range has text.
+  const queueJobs = useMemo<StoryboardJob[]>(
     () =>
       sortedJobs
         .filter((j) => voices.some((v) => v.id === j.voiceId))
@@ -309,13 +324,21 @@ export function Storyboard({
         .map((j) => {
           const vec = presetVectorForEmotionId(presets, j.emotion);
           return {
-            text: rangeText(paragraphs, j.segIds),
-            voice_asset_id: j.voiceId,
-            speaker_label: (voiceById(voices, j.voiceId) ?? FALLBACK_VOICE).name,
-            emotion: vec ? { mode: "emotion_vector", vector: vec } : null,
+            jobId: j.id,
+            label: labels[j.id] ?? j.id,
+            segment: {
+              text: rangeText(paragraphs, j.segIds),
+              voice_asset_id: j.voiceId,
+              speaker_label: (voiceById(voices, j.voiceId) ?? FALLBACK_VOICE).name,
+              emotion: vec ? { mode: "emotion_vector", vector: vec } : null,
+            },
           };
         }),
-    [sortedJobs, paragraphs, voices, presets],
+    [sortedJobs, paragraphs, voices, presets, labels],
+  );
+  const queueSegments = useMemo<PrebuiltSegment[]>(
+    () => queueJobs.map((j) => j.segment),
+    [queueJobs],
   );
   const lastQueueJsonRef = useRef<string | null>(null);
   useEffect(() => {
@@ -324,6 +347,13 @@ export function Storyboard({
     lastQueueJsonRef.current = json;
     onQueueChange?.(queueSegments);
   }, [queueSegments, onQueueChange]);
+  const lastJobsJsonRef = useRef<string | null>(null);
+  useEffect(() => {
+    const json = JSON.stringify(queueJobs);
+    if (json === lastJobsJsonRef.current) return;
+    lastJobsJsonRef.current = json;
+    onJobsChange?.(queueJobs);
+  }, [queueJobs, onJobsChange]);
   const firstSegByJob = useMemo(() => {
     const m = new Map<string, string>();
     for (const j of jobs) {
@@ -332,7 +362,6 @@ export function Storyboard({
     }
     return m;
   }, [jobs, orderOf]);
-  const labels = useMemo(() => segmentLabels(paragraphs, jobs), [paragraphs, jobs]);
   const assignedCount = useMemo(() => {
     const s = new Set<string>();
     for (const j of jobs) for (const id of j.segIds) s.add(id);
@@ -640,7 +669,12 @@ export function Storyboard({
           {sortedJobs.map((j) => {
             const v = voiceById(voices, j.voiceId) ?? FALLBACK_VOICE;
             const voiceMissing = isVoiceMissing(j);
-            const meta = STATUS_META[j.status];
+            // Live run progress (if any) drives the VISUAL status so cards flip
+            // queued → rendering → ready/failed without a refetch; the cast
+            // editor's own summary keeps using j.status.
+            const live = jobProgress?.get(j.id);
+            const visualStatus: JobStatus = live ? runProgressToJobStatus(live) : j.status;
+            const meta = STATUS_META[visualStatus];
             const active = focusedJobId === j.id || hoveredJobId === j.id;
             const playing = playingJobId === j.id;
             const text = rangeText(paragraphs, j.segIds);
@@ -673,7 +707,7 @@ export function Storyboard({
                   <span style={emotionChipStyle(v)}>{emotionLabel(emotions, j.emotion)}</span>
                   <span className={css.statusWrap}>
                     <span style={statusDotStyle(meta)} />
-                    <span style={statusLabelStyle(meta, j.status)}>{meta.label}</span>
+                    <span style={statusLabelStyle(meta, visualStatus)}>{meta.label}</span>
                   </span>
                 </div>
                 {voiceMissing && (

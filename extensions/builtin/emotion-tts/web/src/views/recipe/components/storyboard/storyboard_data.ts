@@ -12,11 +12,11 @@ export interface RunProgress {
   jobId: string;
   runId: string | null;
   status: "queued" | "generating" | "done" | "failed" | "cancelled";
-  queuePosition?: number;
-  queueTotal?: number;
-  etaMs?: number;
-  durationMs?: number;
-  failureCategory?: string;
+  queuePosition?: number | undefined;
+  queueTotal?: number | undefined;
+  etaMs?: number | undefined;
+  durationMs?: number | undefined;
+  failureCategory?: string | undefined;
 }
 
 /** Project a live `RunProgress` onto the carousel's `JobStatus` palette. The

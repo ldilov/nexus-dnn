@@ -1,10 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ExtensionApiError } from "../../../services/http";
-import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
+import {
+  cancelRun,
+  createRun,
+  createRuns,
+  chunkJobs,
+  getRun,
+  resumeRun,
+  subscribeRunProgress,
+} from "../../../services/runs_client";
 import { getRuntimeHealth, type RuntimeHealth } from "../../../services/runtime_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
+import type { RunProgress } from "./storyboard/storyboard_data";
+import {
+  allTerminal,
+  applyEvent,
+  countByStatus,
+  initialItems,
+  toRunProgressMap,
+  withQueueMetrics,
+  type ItemState,
+  type RunChunk,
+  type StoryboardJob,
+} from "./run_panel_items";
 import {
   STICKY_BAR_THRESHOLD,
   useScrollPastThreshold,
@@ -46,23 +66,48 @@ interface Props {
   createPayload: CreateRunRequest;
   canGenerate: boolean;
   diagnostics?: DiagnosticItem[];
+  /** Storyboard mode only: the ordered, stably-identified utterances. When
+   * present (length > 0) Generate fans the jobs out into `workersActive`
+   * concurrent runs and renders a per-item progress grid. */
+  storyboardJobs?: readonly StoryboardJob[] | undefined;
+  /** Storyboard mode only: live per-job state pushed up so the carousel cards
+   * can flip queued → rendering → ready/failed without a refresh. */
+  onJobProgressChange?: ((progress: Map<string, RunProgress>) => void) | undefined;
 }
 
 export function RunPanel(props: Props): JSX.Element {
   const navigate = useNavigate();
+  const storyboardJobs = props.storyboardJobs;
+  const isStoryboard = (storyboardJobs?.length ?? 0) > 0;
+
   const [phase, setPhase] = useState<Phase>("idle");
   const [runId, setRunId] = useState<string | null>(null);
   const [segments, setSegments] = useState<Map<number, SegmentState>>(new Map());
+  const [items, setItems] = useState<Map<string, ItemState>>(new Map());
+  const [chunks, setChunks] = useState<RunChunk[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [health, setHealth] = useState<RuntimeHealth | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const multiUnsubRef = useRef<Array<() => void>>([]);
+  const chunksRef = useRef<RunChunk[]>([]);
+
+  useEffect(() => {
+    chunksRef.current = chunks;
+  }, [chunks]);
+
+  const teardownStreams = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    for (const off of multiUnsubRef.current) off();
+    multiUnsubRef.current = [];
+  }, []);
 
   useEffect(() => {
     return () => {
-      unsubscribeRef.current?.();
+      teardownStreams();
     };
-  }, []);
+  }, [teardownStreams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +133,12 @@ export function RunPanel(props: Props): JSX.Element {
     dispatchRunState({ busy: phase === "starting" || phase === "running" });
   }, [phase]);
 
+  // Push the live per-item map up to the carousel whenever it changes.
+  useEffect(() => {
+    if (!props.onJobProgressChange) return;
+    props.onJobProgressChange(toRunProgressMap(items));
+  }, [items, props.onJobProgressChange]);
+
   const handleRunTerminal = useCallback(
     (terminalRun: Run): void => {
       const status = terminalRun.status;
@@ -111,7 +162,65 @@ export function RunPanel(props: Props): JSX.Element {
     [navigate, props.deploymentId],
   );
 
-  const startRun = useCallback(async () => {
+  const startStoryboardRuns = useCallback(async () => {
+    const jobs = storyboardJobs ?? [];
+    setPhase("starting");
+    setError(null);
+    setSegments(new Map());
+    setRun(null);
+    setRunId(null);
+    teardownStreams();
+
+    const workers = Math.max(1, health?.workersActive ?? 1);
+    const jobChunks = chunkJobs([...jobs], workers);
+    const payloads: CreateRunRequest[] = jobChunks.map((chunk) => ({
+      ...props.createPayload,
+      prebuiltSegments: chunk.map((j) => j.segment),
+    }));
+
+    try {
+      const created = await createRuns(props.deploymentId, payloads);
+      const runChunks: RunChunk[] = created.map((res, i) => ({
+        runId: res.runId,
+        jobs: jobChunks[i] ?? [],
+      }));
+      chunksRef.current = runChunks;
+      setChunks(runChunks);
+      setItems(withQueueMetrics(initialItems(jobs), runChunks));
+      setPhase("running");
+
+      const offs = runChunks.map((chunk) =>
+        subscribeRunProgress(
+          props.deploymentId,
+          chunk.runId,
+          (event) => {
+            setItems((prev) => {
+              const merged = applyEvent(prev, chunksRef.current, event);
+              const withMetrics = withQueueMetrics(merged, chunksRef.current);
+              if (allTerminal(withMetrics)) {
+                setPhase("terminal");
+                dispatchRunCompleted();
+              }
+              return withMetrics;
+            });
+          },
+          () => setPhase("error"),
+        ),
+      );
+      multiUnsubRef.current = offs;
+    } catch (err) {
+      setPhase("error");
+      setError(extractMessage(err));
+    }
+  }, [
+    storyboardJobs,
+    health?.workersActive,
+    props.deploymentId,
+    props.createPayload,
+    teardownStreams,
+  ]);
+
+  const startSingleRun = useCallback(async () => {
     setPhase("starting");
     setError(null);
     setSegments(new Map());
@@ -120,7 +229,7 @@ export function RunPanel(props: Props): JSX.Element {
       const created = await createRun(props.deploymentId, props.createPayload);
       setRunId(created.runId);
       setPhase("running");
-      unsubscribeRef.current?.();
+      teardownStreams();
       unsubscribeRef.current = subscribeRunProgress(
         props.deploymentId,
         created.runId,
@@ -142,7 +251,15 @@ export function RunPanel(props: Props): JSX.Element {
       setPhase("error");
       setError(extractMessage(err));
     }
-  }, [props.deploymentId, props.createPayload, handleRunTerminal]);
+  }, [props.deploymentId, props.createPayload, handleRunTerminal, teardownStreams]);
+
+  const startRun = useCallback(async () => {
+    if (isStoryboard) {
+      await startStoryboardRuns();
+    } else {
+      await startSingleRun();
+    }
+  }, [isStoryboard, startStoryboardRuns, startSingleRun]);
 
   // Sticky action bar bridge — listen for "trigger-generate" events fired by
   // the floating toolbar and start a run when we're idle/terminal/error.
@@ -155,30 +272,51 @@ export function RunPanel(props: Props): JSX.Element {
   }, [phase, startRun]);
 
   const cancel = useCallback(async () => {
+    if (isStoryboard) {
+      const ids = chunksRef.current.map((c) => c.runId);
+      await Promise.all(
+        ids.map((id) =>
+          cancelRun(props.deploymentId, id).catch(() => undefined),
+        ),
+      );
+      return;
+    }
     if (!runId) return;
     try {
       await cancelRun(props.deploymentId, runId);
     } catch (err) {
       setError(extractMessage(err));
     }
-  }, [props.deploymentId, runId]);
+  }, [isStoryboard, props.deploymentId, runId]);
 
   const segmentList = Array.from(segments.values()).sort((a, b) => a.globalIndex - b.globalIndex);
+  const itemList = useMemo(
+    () => (storyboardJobs ?? []).map((j) => items.get(j.jobId)).filter((it): it is ItemState => it != null),
+    [storyboardJobs, items],
+  );
+  const itemCounts = useMemo(() => countByStatus(items), [items]);
   const canCancel = phase === "starting" || phase === "running";
   const isPartial = run?.status === "partial";
-  const inFlightCount = segmentList.filter((s) => s.status === "running").length;
-  const completedCount = segmentList.filter((s) => s.status === "completed").length;
-  const showQueueChip =
-    phase === "starting" || phase === "running" || segmentList.length > 0;
+
+  const inFlightCount = isStoryboard
+    ? itemCounts.generating
+    : segmentList.filter((s) => s.status === "running").length;
+  const completedCount = isStoryboard
+    ? itemCounts.done
+    : segmentList.filter((s) => s.status === "completed").length;
+  const showQueueChip = isStoryboard
+    ? phase === "starting" || phase === "running" || itemList.length > 0
+    : phase === "starting" || phase === "running" || segmentList.length > 0;
 
   const failedSegments = segmentList.filter((s) => s.status === "failed");
   const dominantFailure = (() => {
-    if (phase !== "terminal" || failedSegments.length === 0) return null;
+    if (phase !== "terminal") return null;
+    const cats = isStoryboard
+      ? itemList.filter((it) => it.status === "failed").map((it) => it.failureCategory ?? "unknown")
+      : failedSegments.map((s) => s.failureCategory ?? "unknown");
+    if (cats.length === 0) return null;
     const counts = new Map<string, number>();
-    for (const s of failedSegments) {
-      const cat = s.failureCategory ?? "unknown";
-      counts.set(cat, (counts.get(cat) ?? 0) + 1);
-    }
+    for (const cat of cats) counts.set(cat, (counts.get(cat) ?? 0) + 1);
     let topCategory = "unknown";
     let topCount = 0;
     for (const [cat, n] of counts) {
@@ -187,7 +325,7 @@ export function RunPanel(props: Props): JSX.Element {
         topCount = n;
       }
     }
-    const total = segmentList.length;
+    const total = isStoryboard ? itemList.length : segmentList.length;
     return { category: topCategory, count: topCount, total };
   })();
   const failureHelp: Record<string, string> = {
@@ -212,14 +350,20 @@ export function RunPanel(props: Props): JSX.Element {
   const badge = health?.badge ?? "not_installed";
   const runtimeReady = badge === "ready" || badge === "running";
 
+  const totalJobs = storyboardJobs?.length ?? 0;
+  const generateBlockedReason = !runtimeReady
+    ? "Start runtime to generate"
+    : !props.canGenerate
+      ? "Nothing to generate yet"
+      : null;
   const generateLabel =
     phase === "starting"
       ? "Starting…"
       : phase === "running"
-        ? "Generating…"
-        : !runtimeReady
-          ? "Start runtime to generate"
-          : "Generate";
+        ? isStoryboard
+          ? `Generating ${totalJobs} segment${totalJobs === 1 ? "" : "s"}…`
+          : "Generating…"
+        : generateBlockedReason ?? "Generate";
   const generateDisabled = !props.canGenerate || canCancel || !runtimeReady;
   const isRunning = phase === "starting" || phase === "running";
   // "idle" (breathing halo) only when we're truly ready to fire — otherwise
@@ -247,7 +391,7 @@ export function RunPanel(props: Props): JSX.Element {
               <span className={panel.queueChip}>
                 <span className={panel.queueDot} aria-hidden="true" />
                 {inFlightCount > 0
-                  ? `${inFlightCount} in flight`
+                  ? `${inFlightCount} generating`
                   : `${completedCount} done`}
               </span>
             )}
@@ -281,6 +425,7 @@ export function RunPanel(props: Props): JSX.Element {
               onClick={startRun}
               disabled={generateDisabled}
               loading={isRunning}
+              title={generateBlockedReason ?? undefined}
             >
               {!isRunning && (
                 <span className={panel.ctaIcon} aria-hidden="true">
@@ -300,7 +445,7 @@ export function RunPanel(props: Props): JSX.Element {
               variant="ghost"
               size="xs"
               onClick={cancel}
-              aria-label="Cancel current run"
+              aria-label={isStoryboard ? "Cancel all running segments" : "Cancel current run"}
             >
               Cancel
             </Button>
@@ -370,7 +515,7 @@ export function RunPanel(props: Props): JSX.Element {
                 setSegments(new Map());
                 setRun(null);
                 setPhase("running");
-                unsubscribeRef.current?.();
+                teardownStreams();
                 unsubscribeRef.current = subscribeRunProgress(
                   props.deploymentId,
                   resumed.runId,
@@ -388,7 +533,11 @@ export function RunPanel(props: Props): JSX.Element {
         </Banner>
       )}
 
-      {segmentList.length > 0 && (
+      {isStoryboard && itemList.length > 0 && (
+        <ItemProgressGrid items={itemList} counts={itemCounts} />
+      )}
+
+      {!isStoryboard && segmentList.length > 0 && (
         <table className={css.progressTable}>
           <thead>
             <tr>
@@ -412,6 +561,90 @@ export function RunPanel(props: Props): JSX.Element {
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+function formatEta(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return `~${s}s`;
+}
+
+function itemTone(status: ItemState["status"]): "success" | "accent" | "danger" | "neutral" {
+  switch (status) {
+    case "done":
+      return "success";
+    case "generating":
+      return "accent";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function itemLabel(status: ItemState["status"]): string {
+  switch (status) {
+    case "done":
+      return "Ready";
+    case "generating":
+      return "Generating";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Queued";
+  }
+}
+
+interface ItemProgressGridProps {
+  items: readonly ItemState[];
+  counts: { queued: number; generating: number; done: number; failed: number };
+}
+
+function ItemProgressGrid({ items, counts }: ItemProgressGridProps): JSX.Element {
+  return (
+    <div className={panel.progressGrid} role="table" aria-label="Per-segment generation progress">
+      <div className={panel.progressGridHead}>
+        <span className={panel.progressGridTitle}>Segments</span>
+        <span className={panel.inFlightBadge} data-tone={counts.generating > 0 ? "live" : "idle"}>
+          <span className={panel.inFlightDot} aria-hidden="true" />
+          {counts.generating > 0
+            ? `${counts.generating} generating`
+            : counts.failed > 0
+              ? `${counts.done} done · ${counts.failed} failed`
+              : `${counts.done} done`}
+        </span>
+      </div>
+      {items.map((it) => (
+        <div key={it.jobId} className={panel.progressGridRow} role="row" data-status={it.status}>
+          <span className={panel.gridLabel} role="cell">{it.label}</span>
+          <span className={panel.gridStatus} role="cell">
+            <StatusPill tone={itemTone(it.status)} pulse={it.status === "generating"}>
+              {itemLabel(it.status)}
+            </StatusPill>
+          </span>
+          <span className={panel.gridMeta} role="cell">
+            {it.status === "generating" && (
+              <span className={panel.spinner} aria-hidden="true" />
+            )}
+            {it.status === "done" && typeof it.durationMs === "number" ? (
+              <span className={panel.gridDuration}>{(it.durationMs / 1000).toFixed(1)}s</span>
+            ) : it.status === "queued" && typeof it.etaMs === "number" ? (
+              <span className={panel.etaChip}>
+                {it.queuePosition && it.queueTotal ? `#${it.queuePosition} · ` : ""}
+                {formatEta(it.etaMs)}
+              </span>
+            ) : it.status === "generating" ? (
+              <span className={panel.etaChip}>working…</span>
+            ) : null}
+          </span>
+          <span className={panel.gridFailure} role="cell">
+            {it.status === "failed" ? it.failureCategory ?? "error" : ""}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

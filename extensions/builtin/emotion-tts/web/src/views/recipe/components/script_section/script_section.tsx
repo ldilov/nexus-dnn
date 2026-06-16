@@ -3,6 +3,8 @@ import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { VectorPreset } from "../../../../services/presets_client";
 import type { VoiceAsset } from "../../../../services/voice_assets_client";
 import type { OutputFormat, PrebuiltSegment } from "../../../../services/types";
+import type { RunProgress } from "../storyboard/storyboard_data";
+import type { StoryboardJob } from "../run_panel_items";
 import { Storyboard } from "../storyboard/storyboard";
 import { QuickVoicePicker } from "../quick_voice_picker";
 import { ScriptEditor } from "../script_editor";
@@ -35,6 +37,8 @@ interface ScriptSectionProps {
   presets: readonly VectorPreset[];
   voiceAssets: readonly VoiceAsset[];
   onQueueChange?: ((segments: PrebuiltSegment[]) => void) | undefined;
+  onStoryboardJobsChange?: ((jobs: StoryboardJob[]) => void) | undefined;
+  jobProgress?: ReadonlyMap<string, RunProgress> | undefined;
 }
 
 export function ScriptSection({
@@ -55,6 +59,8 @@ export function ScriptSection({
   presets,
   voiceAssets,
   onQueueChange,
+  onStoryboardJobsChange,
+  jobProgress,
 }: ScriptSectionProps): JSX.Element {
   const isQuick = editorMode === "quick";
   const isRows = editorMode === "rows";
@@ -120,6 +126,8 @@ export function ScriptSection({
           onStoryTextChange={onStoryTextChange}
           mappings={mappingsByLower}
           onQueueChange={onQueueChange}
+          onJobsChange={onStoryboardJobsChange}
+          jobProgress={jobProgress}
         />
       ) : isRows ? (
         <CharacterRowsEditor
