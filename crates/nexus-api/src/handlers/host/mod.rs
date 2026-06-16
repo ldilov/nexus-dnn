@@ -7,6 +7,7 @@
 
 pub mod cpu_cores;
 pub mod events_sse;
+pub mod gc;
 pub mod metrics_stream;
 pub mod models_metadata;
 pub mod models_revalidate;

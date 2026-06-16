@@ -906,6 +906,29 @@ async fn drain_completes_within_sc_007_budget() {
     assert_eq!(h.state.lease_manager.live_count().await, 0);
 }
 
+#[tokio::test]
+async fn free_all_on_empty_manager_returns_zeros() {
+    let h = lifecycle_harness().await;
+    assert_eq!(h.state.lease_manager.live_count().await, 0);
+
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/host/gc/free-all")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_to_json(resp.into_body()).await;
+    assert_eq!(body["data"]["workers_notified"], 0);
+    assert_eq!(body["data"]["total_freed_mb"], 0);
+}
+
 #[allow(dead_code)]
 fn _keep_duration_import() -> Duration {
     Duration::from_secs(0)
