@@ -264,6 +264,57 @@ def _notify(worker: Any, method: str, params: dict[str, Any]) -> None:
         pass
 
 
+class _ProgressHeartbeat:
+    """Re-emit a progress notification on a timer while a long, frame-silent
+    blocking step runs (multi-GB expert / text-encoder loads emit a single
+    stage frame then go dark for tens of seconds). Without this the frontend
+    stall watchdog (90s) falsely flags "no progress — connection may be lost"
+    during a normal load. Emits via the thread-safe notify_from_thread path.
+    Usable as a context manager or via explicit start()/stop() (stop() is
+    idempotent, so it is safe to also stop from an on-step callback once real
+    per-step frames take over)."""
+
+    def __init__(
+        self, worker: Any, stage: str, fraction: float, interval: float = 12.0
+    ) -> None:
+        self._worker = worker
+        self._stage = stage
+        self._fraction = fraction
+        self._interval = interval
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+
+        def _beat() -> None:
+            while not self._stop.wait(self._interval):
+                _notify(
+                    self._worker,
+                    "svi2.video.progress",
+                    {"fraction": self._fraction, "stage": self._stage},
+                )
+
+        self._thread = threading.Thread(
+            target=_beat, name=f"svi2-heartbeat-{self._stage}", daemon=True
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join(timeout=1.0)
+
+    def __enter__(self) -> "_ProgressHeartbeat":
+        self.start()
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        self.stop()
+
+
 def register_svi2_handlers(worker: Any) -> None:
     cancel_event = threading.Event()
 
@@ -753,9 +804,12 @@ def _run_render(
     blocks_to_swap: int = params["blocks_to_swap"]
 
     _notify(worker, "svi2.video.progress", {"fraction": 0.01, "stage": "loading_text_encoder"})
-    text_encoder = prebuilt.text_encoder if prebuilt is not None else _build_text_encoder(params)
-    if device == "cuda":
-        text_encoder.to_cuda()
+    with _ProgressHeartbeat(worker, "loading_text_encoder", 0.01):
+        text_encoder = (
+            prebuilt.text_encoder if prebuilt is not None else _build_text_encoder(params)
+        )
+        if device == "cuda":
+            text_encoder.to_cuda()
     _notify(worker, "svi2.video.progress", {"fraction": 0.03, "stage": "encoding_prompts"})
     unique_prompts = list(dict.fromkeys(prompts[i % len(prompts)] for i in range(num_clips)))
     ctx_cache = {p: text_encoder.encode_text(p).to("cpu") for p in unique_prompts}
@@ -781,26 +835,35 @@ def _run_render(
     # before the i2v experts load), then seed the chain from its last frame.
     if generate_seed_clip:
         _notify(worker, "svi2.video.progress", {"fraction": 0.02, "stage": "loading_t2v_experts"})
+        # Heartbeat covers the silent T2V-expert load inside _generate_t2v_clip0;
+        # the first denoise step (on_step) means the load is done, so stop it
+        # there to hand the stage label cleanly over to t2v_seed_clip.
+        t2v_load_hb = _ProgressHeartbeat(worker, "loading_t2v_experts", 0.02)
+        t2v_load_hb.start()
         first_prompt = prompts[0]
         seed_ctx_posi = ctx_cache[first_prompt].to(device)
         seed_ctx_nega = neg_context.to(device) if neg_context is not None else seed_ctx_posi
 
         def _t2v_seed_on_step(step_idx: int, num_steps: int, _sigma: float) -> None:
+            t2v_load_hb.stop()
             frac = 0.02 + 0.03 * ((step_idx + 1) / max(num_steps, 1))
             _notify(worker, "svi2.video.progress", {"fraction": round(frac, 4), "stage": "t2v_seed_clip"})
 
-        t2v_clip = _generate_t2v_clip0(
-            params,
-            context_posi=seed_ctx_posi,
-            context_nega=seed_ctx_nega,
-            vae=vae,
-            scheduler=scheduler,
-            timesteps=timesteps,
-            device=device,
-            build_t2v_experts=build_t2v_experts,
-            on_step=_t2v_seed_on_step,
-            cancel_event=cancel_event,
-        )
+        try:
+            t2v_clip = _generate_t2v_clip0(
+                params,
+                context_posi=seed_ctx_posi,
+                context_nega=seed_ctx_nega,
+                vae=vae,
+                scheduler=scheduler,
+                timesteps=timesteps,
+                device=device,
+                build_t2v_experts=build_t2v_experts,
+                on_step=_t2v_seed_on_step,
+                cancel_event=cancel_event,
+            )
+        finally:
+            t2v_load_hb.stop()
         seed_clip_frames = t2v_clip.frames
         seed_clip_last_latent = t2v_clip.last_latent
         t2v_audit = t2v_clip.audit
@@ -833,7 +896,8 @@ def _run_render(
         high, low = prebuilt.high, prebuilt.low
         audit = prebuilt.audit
     else:
-        high, low = _build_experts(params)
+        with _ProgressHeartbeat(worker, "loading_experts", 0.06):
+            high, low = _build_experts(params)
         audit = {
             "high_fp8": high.fp8_audit,
             "low_fp8": low.fp8_audit,
