@@ -156,6 +156,18 @@ impl StepHandler for PackageSetHandler {
         if recorded_extras != parsed.extras {
             return Ok(ProbeResult::NotSatisfied);
         }
+        // A matching marker still lies if the venv was only partially
+        // materialized — recorded `.dist-info/RECORD` whose payloads never
+        // landed. Force a re-sync so run() can re-materialize them.
+        let broken = venv_partial_install_packages(&venv);
+        if !broken.is_empty() {
+            tracing::warn!(
+                target: "extension_install::package_set",
+                packages = ?broken,
+                "partial uv install detected — forcing re-sync"
+            );
+            return Ok(ProbeResult::NotSatisfied);
+        }
         let total_bytes = dir_size(&venv).await.unwrap_or(0);
         Ok(ProbeResult::Satisfied {
             artifact: StepArtifact {
@@ -652,7 +664,6 @@ fn payload_present(site_packages: &Path, record_path: &str) -> bool {
 /// absent or empty. An unreadable/missing RECORD is skipped (never flagged) so
 /// only a confirmed-missing payload forces a re-sync. Returns the normalized
 /// names (PEP 503) of all flagged packages.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn venv_partial_install_packages(venv: &Path) -> Vec<String> {
     let Some(site_packages) = site_packages_dir(venv) else {
         return Vec::new();
@@ -996,6 +1007,113 @@ mod tests {
             "self-metadata-only RECORD must not flag: {broken:?}"
         );
         let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    /// sha256 of a file as a lowercase hex string, mirroring `file_sha256`.
+    fn sync_sha256(path: &Path) -> String {
+        use sha2::{Digest, Sha256};
+        let bytes = std::fs::read(path).expect("read manifest");
+        let digest = Sha256::digest(&bytes);
+        let mut s = String::with_capacity(digest.len() * 2);
+        for b in digest {
+            s.push_str(&format!("{b:02x}"));
+        }
+        s
+    }
+
+    /// Unique temp root for a probe fixture: returns the dir to clean up.
+    fn temp_probe_root(nonce: &str) -> PathBuf {
+        let unique = format!(
+            "nexus-pkgset-probe-{}-{}-{:?}",
+            nonce,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&root).expect("create probe root");
+        root
+    }
+
+    #[tokio::test]
+    async fn probe_reports_not_satisfied_on_partial_install() {
+        let root = temp_probe_root("partial");
+        let ext_dir = root.join("ext");
+        let ext_data = root.join("data");
+        let packages = ext_data.join("runtime").join("packages");
+        let venv = packages.join(".venv");
+        std::fs::create_dir_all(&ext_dir).expect("ext dir");
+        std::fs::create_dir_all(&packages).expect("packages dir");
+
+        let manifest_rel = "worker/pyproject.toml";
+        let manifest_full = ext_dir.join(manifest_rel);
+        std::fs::create_dir_all(manifest_full.parent().expect("parent")).expect("manifest parent");
+        std::fs::write(&manifest_full, b"[project]\nname='x'\n").expect("write manifest");
+
+        let site = venv.join("lib").join("python3.12").join("site-packages");
+        std::fs::create_dir_all(&site).expect("site-packages");
+        write_record(
+            &site,
+            "nvidia_cudnn_cu13-9.19.0.56.dist-info",
+            &["nvidia/cudnn/lib/libcudnn.so.9,,"],
+        );
+
+        let marker = serde_json::json!({
+            "manifest_path": manifest_rel,
+            "manifest_sha256": sync_sha256(&manifest_full),
+            "lock_path": serde_json::Value::Null,
+            "extras": Vec::<String>::new(),
+            "synced_at": "2026-01-01T00:00:00Z",
+        });
+        std::fs::write(
+            packages.join(".synced.json"),
+            serde_json::to_vec_pretty(&marker).expect("marker bytes"),
+        )
+        .expect("write marker");
+
+        let model_store: std::sync::Arc<dyn crate::ModelStoreClient> =
+            std::sync::Arc::new(stubs::ModelStore);
+        let runtime_bootstrapper: std::sync::Arc<dyn crate::RuntimeBootstrapper> =
+            std::sync::Arc::new(stubs::Runtime);
+        let worker_handshake: std::sync::Arc<dyn crate::WorkerHandshake> =
+            std::sync::Arc::new(stubs::Handshake);
+        let progress_sink: std::sync::Arc<dyn crate::ProgressSink> =
+            std::sync::Arc::new(stubs::Sink);
+        let fetch_artifact: std::sync::Arc<crate::fetch::FetchArtifact> =
+            std::sync::Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            });
+        let upstream = std::collections::HashMap::new();
+        let ctx = StepContext {
+            extension_id: "example",
+            extension_dir: &ext_dir,
+            extension_data_dir: &ext_data,
+            host_data_dir: &ext_data,
+            model_store,
+            runtime_bootstrapper,
+            worker_handshake,
+            fetch_artifact,
+            progress_sink,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            force: false,
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({
+            "manager": "uv",
+            "manifest_path": manifest_rel,
+        });
+        let result = PackageSetHandler::new()
+            .probe(&ctx, &spec)
+            .await
+            .expect("probe ok");
+        assert!(
+            matches!(result, ProbeResult::NotSatisfied),
+            "partial install must force re-sync, got {result:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     mod stubs {
