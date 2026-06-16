@@ -42,6 +42,35 @@ const STALL_WARN_MS = 90_000;
 const STALL_LOST_MS = 240_000;
 const STALL_TICK_MS = 5_000;
 
+export const ACTIVE_RENDER_KEY = "nexus.video.svi2-pro.active-render";
+
+function persistActiveRender(jobId: string): void {
+  try {
+    sessionStorage.setItem(ACTIVE_RENDER_KEY, JSON.stringify({ jobId }));
+  } catch {
+    /* private mode — persistence unavailable */
+  }
+}
+
+function clearActiveRender(): void {
+  try {
+    sessionStorage.removeItem(ACTIVE_RENDER_KEY);
+  } catch {
+    /* private mode — persistence unavailable */
+  }
+}
+
+function readActiveRenderJobId(): string | null {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_RENDER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { jobId?: unknown };
+    return typeof parsed.jobId === "string" ? parsed.jobId : null;
+  } catch {
+    return null;
+  }
+}
+
 interface RenderRequestState {
   settings: ExtensionSettings;
   presetId: string | null;
@@ -255,6 +284,7 @@ export function RenderRequestProvider({
     streamCleanup.current?.();
     streamCleanup.current = null;
     stopWatchdog();
+    clearActiveRender();
     setRender(initialRenderState());
   }, [stopWatchdog]);
 
@@ -263,11 +293,12 @@ export function RenderRequestProvider({
     lastReconnectAt.current = 0;
     const { jobId } = await startRender({ presetId, params });
     setRender(startedState(jobId, qwenEdit.enabled));
+    persistActiveRender(jobId);
     subscribeToJob(jobId);
   }, [params, presetId, qwenEdit.enabled, subscribeToJob]);
 
   const cancelRenderJob = useCallback(async () => {
-    const jobId = render.jobId;
+    const jobId = renderRef.current.jobId ?? render.jobId;
     if (!jobId) return;
     const { status } = await cancelRender(jobId);
     if (status === "cancelling") {
@@ -276,6 +307,7 @@ export function RenderRequestProvider({
     streamCleanup.current?.();
     streamCleanup.current = null;
     stopWatchdog();
+    clearActiveRender();
     setRender((prev) => cancelledState(prev));
   }, [render.jobId, stopWatchdog]);
 
@@ -295,6 +327,12 @@ export function RenderRequestProvider({
   );
 
   useEffect(() => {
+    if (render.phase === "done" || render.phase === "error" || render.phase === "cancelled") {
+      clearActiveRender();
+    }
+  }, [render.phase]);
+
+  useEffect(() => {
     const resumeIfRunning = () => {
       const current = renderRef.current;
       if (current.phase !== "running" || !current.jobId) return;
@@ -312,6 +350,29 @@ export function RenderRequestProvider({
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onFocus);
+    };
+  }, [subscribeToJob]);
+
+  useEffect(() => {
+    const jobId = readActiveRenderJobId();
+    if (!jobId) return;
+    let cancelled = false;
+    void getRenderJob(jobId)
+      .then((job) => {
+        if (cancelled) return;
+        if (job.status === "succeeded" || job.status === "failed" || job.status === "cancelled") {
+          clearActiveRender();
+          setRender(renderStateFromJob(job));
+          return;
+        }
+        setRender(startedState(jobId, false));
+        subscribeToJob(jobId);
+      })
+      .catch(() => {
+        /* job gone or offline — leave the form idle, persisted key stays for next visit */
+      });
+    return () => {
+      cancelled = true;
     };
   }, [subscribeToJob]);
 

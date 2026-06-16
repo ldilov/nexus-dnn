@@ -37,6 +37,7 @@ function setVisibility(state: "visible" | "hidden"): void {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   subscribeRenderStream.mockReset();
   startRender.mockReset();
   cancelRender.mockReset();

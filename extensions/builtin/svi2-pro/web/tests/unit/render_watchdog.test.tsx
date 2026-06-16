@@ -48,6 +48,7 @@ function jobOf(status: RenderJob["status"]): RenderJob {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   vi.useFakeTimers();
   subscribeRenderStream.mockReset().mockReturnValue(vi.fn());
   startRender.mockReset().mockResolvedValue({ jobId: "job-1" });
