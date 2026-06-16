@@ -225,6 +225,8 @@ fn parse_state(s: &str) -> DownloadState {
 pub enum JobStoreError {
     #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("job not found: {0}")]
     NotFound(String),
     #[error("duplicate job: existing_job_id={0}")]

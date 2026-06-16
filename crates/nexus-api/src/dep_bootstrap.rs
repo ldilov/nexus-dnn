@@ -2360,6 +2360,73 @@ mod tests {
         tokio::fs::write(path, contents).await.unwrap();
     }
 
+    /// End-to-end heal: bytes survive in the store sink with a valid sidecar
+    /// but the install_map row was lost (terminal-job prune / fresh DB). Before
+    /// backfill, verify_files_present reports the declared file MISSING (a
+    /// re-download would fire). After backfill_install_map_from_sink adopts the
+    /// orphaned file, verify reports it PRESENT — no re-download.
+    #[tokio::test]
+    async fn backfill_then_verify_reports_present_no_redownload() {
+        use nexus_models_store::ids::JobId;
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = model_store_pool().await;
+        let install_map = InstallMap::new(pool.clone());
+
+        // Orphaned sink state: file + sidecar on disk, NO install_map row.
+        let job_id = JobId::new();
+        let dir = sink_root.join(job_id.to_string());
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("t2v.safetensors"), b"real-weights")
+            .await
+            .unwrap();
+        let manifest = nexus_models_store::downloads::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec!["t2v.safetensors".into()],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        nexus_models_store::downloads::legibility::write_manifest(
+            sink_root,
+            &job_id.to_string(),
+            &manifest,
+        )
+        .await
+        .unwrap();
+
+        let client = client_with_hf(pool, mega_repo_stub(), sink_root.to_path_buf());
+        let sel = selection(&["t2v.safetensors"], &[], &[]);
+
+        // Before backfill: the row is missing, so verify reports the file absent.
+        let before = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert_eq!(
+            before,
+            vec!["t2v.safetensors"],
+            "without a row, verify reports the file missing (would re-download)"
+        );
+
+        // Adopt the orphaned sink bytes back into the install map.
+        let report = install_map
+            .backfill_install_map_from_sink(sink_root)
+            .await
+            .unwrap();
+        assert_eq!(report.recorded, 1);
+
+        // After backfill: verify sees the file present — no re-download.
+        let after = client
+            .verify_files_present("huggingface:Owner/Repo", None, &sel)
+            .await
+            .unwrap();
+        assert!(
+            after.is_empty(),
+            "after backfill the declared file is present, got {after:?}"
+        );
+    }
+
     /// Unrestricted selections always report "all present" — enumerating a
     /// whole-repo snapshot requires the network and is forbidden in probe().
     #[tokio::test]
