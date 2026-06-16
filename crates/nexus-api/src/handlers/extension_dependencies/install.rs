@@ -49,6 +49,33 @@ pub async fn start_install(
         .ok_or_else(|| ApiError::InvalidState("extension declares no dependencies".into()))?;
     let inputs = runner_context_inputs(&state)?;
 
+    // Adopt any store-sink bytes whose install-map rows were lost (terminal-job
+    // prune / fresh DB) BEFORE the runner probes, so model_artifact's per-file
+    // verify sees already-present files and skips a needless re-download. Best
+    // effort + generic (host-owned sink only) — a failure must not block install.
+    if let (Some(install_map), Some(orchestrator)) = (
+        state.install_map.as_ref(),
+        state.download_orchestrator.as_ref(),
+    ) {
+        match install_map
+            .backfill_install_map_from_sink(orchestrator.sink_root())
+            .await
+        {
+            Ok(report) if report.recorded > 0 => tracing::info!(
+                extension_id = %extension_id,
+                recorded = report.recorded,
+                scanned_jobs = report.scanned_jobs,
+                "install: backfilled install-map rows from download sink before run"
+            ),
+            Ok(_) => {}
+            Err(e) => tracing::warn!(
+                extension_id = %extension_id,
+                error = %e,
+                "install: sink backfill failed (continuing — install will re-download if needed)"
+            ),
+        }
+    }
+
     let extension = state
         .extension_registry
         .get_extension(&extension_id)
