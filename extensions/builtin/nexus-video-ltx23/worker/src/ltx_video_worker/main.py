@@ -13,6 +13,7 @@ writes to the wire instead of leaking to a hijacked stream.
 from __future__ import annotations
 
 import asyncio
+import gc
 import sys
 import threading
 from typing import Any, Awaitable, Callable
@@ -34,6 +35,43 @@ Handler = Callable[
 ]
 
 PROTOCOL_VERSION = "1.0"
+
+# REQUIRED: every nexus worker implements runtime.release_memory.
+RELEASE_MEMORY = "runtime.release_memory"
+
+
+def _cuda_memory_mb() -> tuple[int, int]:
+    """Return (allocated_mb, total_mb). Zeros when torch/CUDA is absent."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            used = torch.cuda.memory_allocated() // (1024 * 1024)
+            total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
+            return int(used), int(total)
+    except (ImportError, RuntimeError):
+        pass
+    return 0, 0
+
+
+def base_release_memory() -> dict[str, int]:
+    """Generic VRAM reclaim: gc + empty_cache, measuring freed allocation.
+
+    Torch-absent-safe (returns zeros, never raises). Safe when nothing is
+    loaded (freed_mb == 0).
+    """
+    before, _ = _cuda_memory_mb()
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except (ImportError, RuntimeError):
+        pass
+    after, total = _cuda_memory_mb()
+    freed = before - after if before > after else 0
+    return {"vram_used_mb": after, "vram_total_mb": total, "freed_mb": freed}
 
 
 def _jsonrpc_stdout() -> Any:
@@ -94,9 +132,13 @@ class Worker:
             self._shutdown.set()
             return {"shutting_down": True}
 
+        async def release_memory(_params: Any) -> dict[str, int]:
+            return base_release_memory()
+
         self.register("handshake", handshake)
         self.register(Methods.HEALTH, health)
         self.register("shutdown", shutdown)
+        self.register(RELEASE_MEMORY, release_memory)
 
     async def run(self) -> int:
         self.logger.info(

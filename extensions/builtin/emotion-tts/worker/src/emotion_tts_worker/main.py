@@ -9,6 +9,7 @@ Phase 3 under user-story tasks.
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import sys
 import threading
@@ -20,6 +21,44 @@ from .telemetry import WorkerLogger
 
 Handler = Callable[[dict[str, Any] | list[Any] | None], Awaitable[Any]]
 ProtocolVersion = "1.0"
+
+# REQUIRED: every nexus worker implements runtime.release_memory.
+RELEASE_MEMORY = "runtime.release_memory"
+
+
+def _cuda_memory_mb() -> tuple[int, int]:
+    """Return (allocated_mb, total_mb). Zeros when torch/CUDA is absent."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            used = torch.cuda.memory_allocated() // (1024 * 1024)
+            total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
+            return int(used), int(total)
+    except (ImportError, RuntimeError):
+        pass
+    return 0, 0
+
+
+def base_release_memory() -> dict[str, int]:
+    """Generic VRAM reclaim: gc + empty_cache, measuring freed allocation.
+
+    Torch-absent-safe (returns zeros, never raises). Safe when nothing is
+    loaded (freed_mb == 0). Extensions with a resident model override this
+    method to unload the model first, then call this for the final sweep.
+    """
+    before, _ = _cuda_memory_mb()
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except (ImportError, RuntimeError):
+        pass
+    after, total = _cuda_memory_mb()
+    freed = before - after if before > after else 0
+    return {"vram_used_mb": after, "vram_total_mb": total, "freed_mb": freed}
 
 
 def _jsonrpc_stdout() -> Any:
@@ -176,6 +215,7 @@ class Worker:
                     Methods.HANDSHAKE,
                     Methods.HEALTH,
                     Methods.SHUTDOWN,
+                    RELEASE_MEMORY,
                 ],
                 "notification_methods": [
                     "progress",
@@ -195,9 +235,13 @@ class Worker:
             self._shutdown.set()
             return {"status": "shutting_down"}
 
+        async def release_memory(_: Any) -> dict[str, int]:
+            return base_release_memory()
+
         self._handlers[Methods.HANDSHAKE] = handshake
         self._handlers[Methods.HEALTH] = health
         self._handlers[Methods.SHUTDOWN] = shutdown
+        self._handlers[RELEASE_MEMORY] = release_memory
 
 
 def main() -> int:

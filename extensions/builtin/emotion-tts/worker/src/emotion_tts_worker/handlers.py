@@ -16,7 +16,7 @@ from typing import Any
 
 from . import __version__, audio_edit as audio_edit_module
 from .cancellation import GLOBAL_TOKEN
-from .main import ProtocolVersion, Worker
+from .main import RELEASE_MEMORY, ProtocolVersion, Worker, base_release_memory
 from .model_loader import (
     ModelLoadFailedError,
     ModelMissingError,
@@ -115,6 +115,17 @@ def register_phase4_handlers(
         freed_mb = adapter.unload() if adapter is not None else 0
         return handle_unload_model(vram_freed_mb=freed_mb)
 
+    async def release_memory(_: Any) -> dict[str, int]:
+        # REQUIRED: every nexus worker implements runtime.release_memory.
+        # Full unload first (frees model VRAM), then the generic gc +
+        # empty_cache sweep measures + reports remaining allocation.
+        if adapter is not None:
+            try:
+                adapter.unload()
+            except Exception as exc:  # noqa: BLE001 — best-effort reclaim
+                worker.logger.warning("release_memory.unload_failed", error=str(exc))
+        return base_release_memory()
+
     async def cancel(params: Any) -> dict[str, Any]:
         request_id = str(params.get("request_id", "")) if isinstance(params, dict) else ""
         if not request_id:
@@ -204,6 +215,7 @@ def register_phase4_handlers(
     worker.register(Methods.MODEL_LOAD, load_model)
     worker.register("model.ensure", ensure_model)
     worker.register(Methods.MODEL_UNLOAD, unload_model)
+    worker.register(RELEASE_MEMORY, release_memory, replace=True)
     worker.register(Methods.CANCEL, cancel)
     worker.register("voice.preprocess", voice_preprocess)
     worker.register(Methods.AUDIO_EDIT, audio_edit)

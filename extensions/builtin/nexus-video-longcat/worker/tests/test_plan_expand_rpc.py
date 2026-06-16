@@ -13,7 +13,9 @@ class FakeWorker:
     def __init__(self) -> None:
         self.handlers: dict[str, Any] = {}
 
-    def register(self, method: str, handler: Any) -> None:
+    def register(self, method: str, handler: Any, *, replace: bool = False) -> None:
+        if method in self.handlers and not replace:
+            raise ValueError(f"duplicate handler for {method}")
         self.handlers[method] = handler
 
 
