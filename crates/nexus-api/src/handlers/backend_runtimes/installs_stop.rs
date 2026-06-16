@@ -15,7 +15,7 @@ use nexus_backend_runtimes::generic::leases::BackendRuntimeLease;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
-use crate::handlers::host::gc::fan_out_release_memory;
+use crate::vram_gc::fan_out_release_memory;
 
 #[derive(Debug, Serialize)]
 pub struct StopResponse {
