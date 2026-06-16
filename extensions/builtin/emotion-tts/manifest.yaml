@@ -37,11 +37,11 @@ dependencies:
         # wheels and fail to source-build on 3.12's setuptools. The host
         # resolves the interpreter per-extension from this range.
         version: ">=3.11,<3.12"
-        # PyTorch publishes wheel indices for cu118/cu121/cu124/cu128. There
-        # is no `cu13x` wheel index today; if/when upstream ships CUDA 13,
-        # add `cuda13` back. Until then, advertising `cuda13` lets the dep
-        # installer match it on a CUDA 13 host and then fail to find a
-        # torch wheel — better to fall back to cuda12 (cu128 covers 12.x).
+        # The worker installs torch/torchaudio/torchcodec from the cu130
+        # (CUDA 13) index — see worker/pyproject.toml. cu130 is required for
+        # the GB10/DGX Spark (sm_121): the cu128 NVRTC tops out at sm_120 and
+        # the jiterator fails. `cuda12` is kept here because the host reports
+        # it for these Blackwell parts and cu130 wheels install + run on them.
         accelerator_profiles: [cpu, cuda12]
 
     - id: pkgs

@@ -11,16 +11,22 @@ dependencies = [
   # declared under [tool.uv.sources].indextts (note: no hyphen — the upstream
   # package name in setup.py is "indextts").
   "indextts",
-  # >=2.11 satisfies upstream's indextts torch>=2.1.2 constraint while letting
-  # us pull modern wheels via the [tool.uv.index] pytorch-cu128 mapping below.
-  # The floor is 2.11 (not 2.4) deliberately: torch only began publishing
-  # `manylinux_2_28_aarch64` CUDA wheels on the cu128 index at 2.11.0. Older
-  # pins (e.g. 2.8.0) have no aarch64 wheel, so `uv sync` on aarch64 Linux
-  # (DGX Spark / GB10) failed with "no matching distribution". Keeping the
-  # floor at 2.11 prevents a future re-lock from silently dropping back to a
-  # version with no arm64 wheel. cu128 covers Blackwell (sm_120).
-  "torch>=2.11",
-  "torchaudio>=2.11",
+  # cu130 (CUDA 13) build, pinned to the 2.11.x line. cu128 was wrong for the
+  # GB10/DGX Spark (sm_121): its bundled NVRTC tops out at sm_120, so PyTorch's
+  # runtime jiterator (complex `abs` in the vocoder/STFT) failed with
+  # "nvrtc: invalid value for --gpu-architecture". cu130 ships NVRTC 13.0.88,
+  # which knows sm_121, and aligns torchcodec's libnvrtc dependency below.
+  # The `<2.12` cap keeps torch matched to torchaudio: cu130 publishes torch
+  # 2.12 but torchaudio only up to 2.11, so an open floor would resolve a
+  # mismatched pair. cu130 has manylinux_2_28_aarch64 + win + x86 wheels.
+  "torch>=2.11,<2.12",
+  "torchaudio>=2.11,<2.12",
+  # torchaudio>=2.11 removed its native encoders and routes save()/load()
+  # through TorchCodec, which the IndexTTS-2 wav write path uses. The cu130
+  # build links libnvrtc.so.13 — consistent with the cu130 torch above; the
+  # cu128 torchcodec hard-needs libnvrtc.so.12 and cannot coexist with the
+  # NVRTC 13 the GB10 jiterator requires. Needs system ffmpeg (4-8).
+  "torchcodec",
   # Upstream IndexTTS-2 (main, version 2.0.0) pins transformers==4.52.1 and
   # tokenizers==0.21.0 exactly. Loose ranges below satisfy those pins while
   # leaving room for security patches in the .x lane.
@@ -83,11 +89,21 @@ managed = true
 # `wetext` (declared above) and a runtime monkey-patch in the worker. The
 # `python_version < '0'` marker is always false, so this override removes
 # wetextprocessing wherever it would otherwise be required.
-override-dependencies = ["wetextprocessing ; python_version < '0'"]
+override-dependencies = [
+  "wetextprocessing ; python_version < '0'",
+  # indextts pins torch/torchaudio to its own cu128 index; override both so the
+  # root's cu130 source (sm_121/GB10 + torchcodec) wins instead of conflicting.
+  "torch>=2.11,<2.12",
+  "torchaudio>=2.11,<2.12",
+]
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu128" }
-torchaudio = { index = "pytorch-cu128" }
+# Index name MUST match indextts's own `pytorch-cuda` index so the root's
+# definition (cu130, below) overrides the git dep's cu128 — otherwise uv sees
+# two indexes for torch and errors with "conflicting indexes".
+torch = { index = "pytorch-cuda" }
+torchaudio = { index = "pytorch-cuda" }
+torchcodec = { index = "pytorch-cuda" }
 # indextts is not on PyPI. Upstream's only published tag is `v1.5.0`, which
 # is the IndexTTS v1 line and does NOT contain `indextts/infer_v2.py` —
 # the IndexTTS-2 entrypoint we need (`from indextts.infer_v2 import IndexTTS2`)
@@ -98,8 +114,8 @@ torchaudio = { index = "pytorch-cu128" }
 indextts = { git = "https://github.com/index-tts/index-tts", rev = "830f6f8f94a51fea23ab1d639027a86200075a4e" }
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.ruff]
