@@ -513,7 +513,14 @@ impl RealModelStoreClient {
                     target: "extension_install::model_artifact",
                     repo_id,
                     error = %detail_err,
-                    "hf detail enumeration failed after retries — falling back to search"
+                    unrestricted_selection = selection.is_unrestricted(),
+                    "hf detail enumeration failed after retries — falling back to search. \
+                     Search may return a partial file list; for an UNRESTRICTED (whole-repo) \
+                     selection the per-file verify is disabled (it cannot enumerate the repo \
+                     without the network), so a partial download would still probe Satisfied \
+                     (pre-existing limitation). Pin an explicit files[] selection in the \
+                     extension's model_artifact step once the repo's file list is stable to \
+                     make the install heal on re-run."
                 );
                 let req = SearchReq {
                     query: repo_id.to_owned(),
@@ -2379,7 +2386,7 @@ mod tests {
     }
 
     /// A declared file with no install-map row (never downloaded) is reported
-    /// missing — this is the svi2-pro T2V-pair root cause.
+    /// missing — the partial-family-install root cause.
     #[tokio::test]
     async fn verify_files_present_reports_undownloaded_declared_file() {
         use nexus_models_store::ids::JobId;

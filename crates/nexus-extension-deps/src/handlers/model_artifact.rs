@@ -663,7 +663,7 @@ mod tests {
 
     /// A download that reports Completed but leaves a declared file absent must
     /// fail LOUD — the install errors at install time, not silently at render
-    /// time (svi2-pro T2V-pair root cause).
+    /// time (the partial-family-install root cause).
     #[tokio::test]
     async fn run_fails_loud_when_files_still_missing_after_download() {
         let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PostDownloadMissingStore {
@@ -1044,7 +1044,7 @@ mod tests {
     /// With an explicit `files[]` selection where the family looks installed
     /// (`is_family_installed` → Some) but a declared file is missing, probe
     /// returns `NotSatisfied` so `run()` re-downloads it instead of letting the
-    /// render fail at load time (svi2-pro T2V-pair root cause).
+    /// render fail at load time (the partial-family-install root cause).
     #[tokio::test]
     async fn probe_not_satisfied_when_declared_file_missing() {
         let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PartialFileStore {
