@@ -45,6 +45,7 @@ class Svi2ProAppElement extends HTMLElement {
   private actionBridgeDeploymentId: string | null = null;
   private router: MemoryRouter | null = null;
   private navigateListener: ((event: Event) => void) | null = null;
+  private paintedEntry: string | null = null;
 
   static get observedAttributes(): string[] {
     return ["route", "deployment-id"];
@@ -77,6 +78,7 @@ class Svi2ProAppElement extends HTMLElement {
       this.navigateListener = null;
     }
     this.router = null;
+    this.paintedEntry = null;
   }
 
   private refreshActionBridge(): void {
@@ -137,8 +139,10 @@ class Svi2ProAppElement extends HTMLElement {
   private paint(): void {
     if (!this.root || !this.isConnected) return;
     const route = this.resolveInitialEntry();
+    if (this.router && this.paintedEntry === route) return;
     const router = createMemoryRouter(buildRoutes(), { initialEntries: [route] });
     this.router = router;
+    this.paintedEntry = route;
     this.root.render(
       <StrictMode>
         <RouterProvider router={router} />

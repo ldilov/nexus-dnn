@@ -101,7 +101,10 @@ impl StepHandler for PackageSetHandler {
             ));
         }
         for extra in &parsed.extras {
-            let starts_alnum = extra.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+            let starts_alnum = extra
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
             let valid = starts_alnum
                 && extra
                     .chars()
@@ -110,9 +113,7 @@ impl StepHandler for PackageSetHandler {
                 return Err(DepError::invalid_spec(
                     "",
                     "extras",
-                    format!(
-                        "invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"
-                    ),
+                    format!("invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"),
                 ));
             }
         }
@@ -153,6 +154,17 @@ impl StepHandler for PackageSetHandler {
             })
             .unwrap_or_default();
         if recorded_extras != parsed.extras {
+            return Ok(ProbeResult::NotSatisfied);
+        }
+        // A matching marker still lies if the venv was partially materialized
+        // (dist-info recorded but payload absent) — force a re-sync.
+        let broken = venv_partial_install_packages(&venv);
+        if !broken.is_empty() {
+            tracing::warn!(
+                target: "extension_install::package_set",
+                packages = ?broken,
+                "partial uv install detected — forcing re-sync"
+            );
             return Ok(ProbeResult::NotSatisfied);
         }
         let total_bytes = dir_size(&venv).await.unwrap_or(0);
@@ -211,11 +223,23 @@ impl StepHandler for PackageSetHandler {
             .join(".uv-cache");
         tokio::fs::create_dir_all(&uv_cache).await?;
 
-        let mut cmd = Command::new(&uv_bin);
-        cmd.arg("sync");
-        for extra in &parsed.extras {
-            cmd.arg("--extra").arg(extra);
+        // Plain `uv sync` skips a package whose `.dist-info` RECORD exists, so a
+        // partial install never self-heals — force-reinstall only the broken ones.
+        let reinstall_packages = if venv.exists() {
+            venv_partial_install_packages(&venv)
+        } else {
+            Vec::new()
+        };
+        if !reinstall_packages.is_empty() {
+            tracing::warn!(
+                target: "extension_install::package_set",
+                packages = ?reinstall_packages,
+                "partial uv install detected — re-materializing broken packages"
+            );
         }
+
+        let mut cmd = Command::new(&uv_bin);
+        cmd.args(build_sync_args(&parsed.extras, &reinstall_packages));
         cmd.arg("--project")
             .arg(&project_dir)
             .arg("--no-progress")
@@ -574,6 +598,174 @@ async fn dir_size(path: &Path) -> Result<u64, DepError> {
     Ok(total)
 }
 
+/// Max number of payload entries sampled per `RECORD` before giving up. A
+/// healthy package needs at most one present payload to clear; a broken one is
+/// flagged on the first missing payload.
+const RECORD_PAYLOAD_SAMPLE: usize = 2;
+
+/// Assemble the ordered `uv sync`-onward args: the `sync` verb, an `--extra
+/// <name>` per declared extra, then a `--reinstall-package <name>` per package
+/// flagged as partially installed. A healthy re-sync (`reinstall_packages`
+/// empty) adds zero reinstall flags, so the fast path stays untouched.
+fn build_sync_args(extras: &[String], reinstall_packages: &[String]) -> Vec<String> {
+    let mut args = Vec::with_capacity(1 + extras.len() * 2 + reinstall_packages.len() * 2);
+    args.push("sync".to_owned());
+    for extra in extras {
+        args.push("--extra".to_owned());
+        args.push(extra.clone());
+    }
+    for package in reinstall_packages {
+        args.push("--reinstall-package".to_owned());
+        args.push(package.clone());
+    }
+    args
+}
+
+/// Resolve the venv's `site-packages` directory across POSIX/Windows layouts.
+/// Returns the first candidate that exists, or `None` when neither does.
+fn site_packages_dir(venv: &Path) -> Option<PathBuf> {
+    let windows_layout = venv.join("Lib").join("site-packages");
+    if windows_layout.is_dir() {
+        return Some(windows_layout);
+    }
+    let lib = venv.join("lib");
+    let mut entries = std::fs::read_dir(&lib).ok()?;
+    while let Some(entry) = entries.next().and_then(Result::ok) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("python") {
+            let candidate = entry.path().join("site-packages");
+            if candidate.is_dir() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Normalize a `<distribution>-<version>.dist-info` directory name into the
+/// PEP 503 package name. The wheel distribution part never contains a raw `-`
+/// (it is escaped to `_`), so the first `-` is the name/version separator: take
+/// the substring before it, then map `_`/`.` to `-` and lowercase.
+fn dist_info_to_package_name(dir_name: &str) -> Option<String> {
+    let stem = dir_name.strip_suffix(".dist-info")?;
+    let distribution = stem.split('-').next().filter(|s| !s.is_empty())?;
+    let collapsed: String = distribution
+        .chars()
+        .map(|c| if matches!(c, '_' | '.') { '-' } else { c })
+        .collect();
+    Some(collapsed.to_lowercase())
+}
+
+/// Extract the path (first CSV field) from one `RECORD` line. PEP 376 RECORD is
+/// CSV: a path containing a comma is double-quoted with `""` escaping an inner
+/// quote (`"a,b/c.py",sha,123`). Returns `None` for a blank line.
+fn record_path(line: &str) -> Option<String> {
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    if let Some(rest) = trimmed.strip_prefix('"') {
+        let mut out = String::new();
+        let mut chars = rest.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    out.push('"');
+                } else {
+                    break;
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        return Some(out);
+    }
+    let field = trimmed.split(',').next().unwrap_or("").trim();
+    if field.is_empty() {
+        return None;
+    }
+    Some(field.to_owned())
+}
+
+/// True when the recorded `RECORD` path is a payload file worth sampling: not
+/// the package's own metadata, not an out-of-tree script (`../`), not a `.pyc`.
+fn is_sampleable_payload(record_path: &str, own_dist_info_prefix: &str) -> bool {
+    !record_path.is_empty()
+        && !record_path.starts_with(own_dist_info_prefix)
+        && !record_path.starts_with("../")
+        && !record_path.starts_with("..\\")
+        && !record_path.ends_with(".pyc")
+}
+
+/// True when `<site_packages>/<record_path>` exists on disk. A partial uv
+/// install leaves payloads ABSENT, not truncated — so size is no signal and a
+/// zero-size check would false-flag legitimately empty markers (`py.typed`,
+/// empty `__init__.py`). Guards against `..` traversal escaping site-packages
+/// by rejecting any path whose components are not plain names.
+fn payload_present(site_packages: &Path, record_path: &str) -> bool {
+    let rel = Path::new(record_path);
+    if rel
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return false;
+    }
+    let resolved = site_packages.join(rel);
+    std::fs::metadata(&resolved).is_ok()
+}
+
+/// Scan a venv for packages with a recorded `.dist-info/RECORD` whose payload
+/// files are missing or zero-size on disk — the signature of a partial `uv`
+/// install where the dist-info exists but materialization was interrupted.
+///
+/// For each dist-info, samples the first [`RECORD_PAYLOAD_SAMPLE`] non-metadata,
+/// in-tree payload entries; the package is flagged on the first entry that is
+/// absent or empty. An unreadable/missing RECORD is skipped (never flagged) so
+/// only a confirmed-missing payload forces a re-sync. Returns the normalized
+/// names (PEP 503) of all flagged packages.
+pub(crate) fn venv_partial_install_packages(venv: &Path) -> Vec<String> {
+    let Some(site_packages) = site_packages_dir(venv) else {
+        return Vec::new();
+    };
+    let entries = match std::fs::read_dir(&site_packages) {
+        Ok(rd) => rd,
+        Err(_) => return Vec::new(),
+    };
+    let mut broken = Vec::new();
+    for entry in entries.flatten() {
+        let dir_name = entry.file_name();
+        let dir_name = dir_name.to_string_lossy();
+        if !dir_name.ends_with(".dist-info") {
+            continue;
+        }
+        let Some(package) = dist_info_to_package_name(&dir_name) else {
+            continue;
+        };
+        let record = match std::fs::read_to_string(entry.path().join("RECORD")) {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+        let own_prefix = format!("{dir_name}/");
+        let mut sampled = 0usize;
+        for line in record.lines() {
+            if sampled >= RECORD_PAYLOAD_SAMPLE {
+                break;
+            }
+            let Some(path) = record_path(line) else {
+                continue;
+            };
+            if !is_sampleable_payload(&path, &own_prefix) {
+                continue;
+            }
+            sampled += 1;
+            if !payload_present(&site_packages, &path) {
+                broken.push(package);
+                break;
+            }
+        }
+    }
+    broken
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,6 +972,279 @@ mod tests {
         assert!(
             msg.contains("extension_local"),
             "validation error must name the supported value, got: {msg}"
+        );
+    }
+
+    /// Build a unique temp site-packages dir under the OS temp root and return
+    /// `(venv_root, site_packages)`. Caller cleans up `venv_root`.
+    fn temp_venv_site_packages(nonce: &str) -> (PathBuf, PathBuf) {
+        let unique = format!(
+            "nexus-pkgset-{}-{}-{:?}",
+            nonce,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let venv = std::env::temp_dir().join(unique);
+        let site_packages = if cfg!(windows) {
+            venv.join("Lib").join("site-packages")
+        } else {
+            venv.join("lib").join("python3.12").join("site-packages")
+        };
+        std::fs::create_dir_all(&site_packages).expect("create site-packages");
+        (venv, site_packages)
+    }
+
+    fn write_record(site_packages: &Path, dist_info: &str, lines: &[&str]) {
+        let dir = site_packages.join(dist_info);
+        std::fs::create_dir_all(&dir).expect("create dist-info");
+        std::fs::write(dir.join("RECORD"), lines.join("\n")).expect("write RECORD");
+    }
+
+    #[test]
+    fn partial_install_flags_package_with_missing_payload() {
+        let (venv, site) = temp_venv_site_packages("missing");
+        write_record(
+            &site,
+            "nvidia_cudnn_cu13-9.19.0.56.dist-info",
+            &[
+                "nvidia/cudnn/lib/libcudnn.so.9,,",
+                "nvidia_cudnn_cu13-9.19.0.56.dist-info/RECORD,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert_eq!(broken, vec!["nvidia-cudnn-cu13".to_owned()]);
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_clean_when_payload_present() {
+        let (venv, site) = temp_venv_site_packages("present");
+        let payload = site.join("nvidia").join("cudnn").join("lib");
+        std::fs::create_dir_all(&payload).expect("create payload dir");
+        std::fs::write(payload.join("libcudnn.so.9"), b"x").expect("write payload");
+        write_record(
+            &site,
+            "nvidia_cudnn_cu13-9.19.0.56.dist-info",
+            &[
+                "nvidia/cudnn/lib/libcudnn.so.9,,",
+                "nvidia_cudnn_cu13-9.19.0.56.dist-info/RECORD,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert!(
+            broken.is_empty(),
+            "present payload must not flag: {broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_empty_site_packages_is_clean() {
+        let (venv, _site) = temp_venv_site_packages("empty");
+        let broken = venv_partial_install_packages(&venv);
+        assert!(broken.is_empty(), "empty venv must be clean: {broken:?}");
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_clean_when_first_payload_is_empty_marker() {
+        let (venv, site) = temp_venv_site_packages("emptymarker");
+        let pkg = site.join("typedpkg");
+        std::fs::create_dir_all(&pkg).expect("create pkg dir");
+        std::fs::write(pkg.join("py.typed"), b"").expect("write empty marker");
+        std::fs::write(pkg.join("__init__.py"), b"x = 1\n").expect("write module");
+        write_record(
+            &site,
+            "typedpkg-1.0.0.dist-info",
+            &[
+                "typedpkg/py.typed,,0",
+                "typedpkg/__init__.py,,7",
+                "typedpkg-1.0.0.dist-info/RECORD,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert!(
+            broken.is_empty(),
+            "0-byte py.typed marker must not flag a present package: {broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn record_path_handles_quoted_and_plain_fields() {
+        assert_eq!(
+            record_path("foo/bar/baz.py,sha256=abc,123").as_deref(),
+            Some("foo/bar/baz.py")
+        );
+        assert_eq!(
+            record_path("\"foo,bar/baz.py\",sha256=abc,123").as_deref(),
+            Some("foo,bar/baz.py")
+        );
+        assert_eq!(
+            record_path("\"weird\"\"name.py\",,0").as_deref(),
+            Some("weird\"name.py")
+        );
+        assert_eq!(record_path("").as_deref(), None);
+    }
+
+    #[test]
+    fn partial_install_metadata_only_record_is_clean() {
+        let (venv, site) = temp_venv_site_packages("metaonly");
+        write_record(
+            &site,
+            "tiny_pkg-1.0.0.dist-info",
+            &[
+                "tiny_pkg-1.0.0.dist-info/METADATA,,",
+                "tiny_pkg-1.0.0.dist-info/RECORD,,",
+                "tiny_pkg-1.0.0.dist-info/WHEEL,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert!(
+            broken.is_empty(),
+            "self-metadata-only RECORD must not flag: {broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    /// sha256 of a file as a lowercase hex string, mirroring `file_sha256`.
+    fn sync_sha256(path: &Path) -> String {
+        use sha2::{Digest, Sha256};
+        let bytes = std::fs::read(path).expect("read manifest");
+        let digest = Sha256::digest(&bytes);
+        let mut s = String::with_capacity(digest.len() * 2);
+        for b in digest {
+            s.push_str(&format!("{b:02x}"));
+        }
+        s
+    }
+
+    /// Unique temp root for a probe fixture: returns the dir to clean up.
+    fn temp_probe_root(nonce: &str) -> PathBuf {
+        let unique = format!(
+            "nexus-pkgset-probe-{}-{}-{:?}",
+            nonce,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&root).expect("create probe root");
+        root
+    }
+
+    #[tokio::test]
+    async fn probe_reports_not_satisfied_on_partial_install() {
+        let root = temp_probe_root("partial");
+        let ext_dir = root.join("ext");
+        let ext_data = root.join("data");
+        let packages = ext_data.join("runtime").join("packages");
+        let venv = packages.join(".venv");
+        std::fs::create_dir_all(&ext_dir).expect("ext dir");
+        std::fs::create_dir_all(&packages).expect("packages dir");
+
+        let manifest_rel = "worker/pyproject.toml";
+        let manifest_full = ext_dir.join(manifest_rel);
+        std::fs::create_dir_all(manifest_full.parent().expect("parent")).expect("manifest parent");
+        std::fs::write(&manifest_full, b"[project]\nname='x'\n").expect("write manifest");
+
+        let site = venv.join("lib").join("python3.12").join("site-packages");
+        std::fs::create_dir_all(&site).expect("site-packages");
+        write_record(
+            &site,
+            "nvidia_cudnn_cu13-9.19.0.56.dist-info",
+            &["nvidia/cudnn/lib/libcudnn.so.9,,"],
+        );
+
+        let marker = serde_json::json!({
+            "manifest_path": manifest_rel,
+            "manifest_sha256": sync_sha256(&manifest_full),
+            "lock_path": serde_json::Value::Null,
+            "extras": Vec::<String>::new(),
+            "synced_at": "2026-01-01T00:00:00Z",
+        });
+        std::fs::write(
+            packages.join(".synced.json"),
+            serde_json::to_vec_pretty(&marker).expect("marker bytes"),
+        )
+        .expect("write marker");
+
+        let model_store: std::sync::Arc<dyn crate::ModelStoreClient> =
+            std::sync::Arc::new(stubs::ModelStore);
+        let runtime_bootstrapper: std::sync::Arc<dyn crate::RuntimeBootstrapper> =
+            std::sync::Arc::new(stubs::Runtime);
+        let worker_handshake: std::sync::Arc<dyn crate::WorkerHandshake> =
+            std::sync::Arc::new(stubs::Handshake);
+        let progress_sink: std::sync::Arc<dyn crate::ProgressSink> =
+            std::sync::Arc::new(stubs::Sink);
+        let fetch_artifact: std::sync::Arc<crate::fetch::FetchArtifact> =
+            std::sync::Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            });
+        let upstream = std::collections::HashMap::new();
+        let ctx = StepContext {
+            extension_id: "example",
+            extension_dir: &ext_dir,
+            extension_data_dir: &ext_data,
+            host_data_dir: &ext_data,
+            model_store,
+            runtime_bootstrapper,
+            worker_handshake,
+            fetch_artifact,
+            progress_sink,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            force: false,
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({
+            "manager": "uv",
+            "manifest_path": manifest_rel,
+        });
+        let result = PackageSetHandler::new()
+            .probe(&ctx, &spec)
+            .await
+            .expect("probe ok");
+        assert!(
+            matches!(result, ProbeResult::NotSatisfied),
+            "partial install must force re-sync, got {result:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn build_sync_args_adds_reinstall_package_flags() {
+        let args = build_sync_args(&[], &["nvidia-cudnn-cu13".to_owned()]);
+        let pos = args
+            .iter()
+            .position(|a| a == "--reinstall-package")
+            .expect("flag present");
+        assert_eq!(
+            args.get(pos + 1).map(String::as_str),
+            Some("nvidia-cudnn-cu13")
+        );
+        assert_eq!(args.first().map(String::as_str), Some("sync"));
+    }
+
+    #[test]
+    fn build_sync_args_healthy_resync_adds_no_reinstall() {
+        let args = build_sync_args(&["diffusers".to_owned()], &[]);
+        assert!(
+            !args.iter().any(|a| a == "--reinstall-package"),
+            "healthy re-sync must add zero reinstall flags: {args:?}"
+        );
+        let extra_pos = args
+            .iter()
+            .position(|a| a == "--extra")
+            .expect("extra preserved");
+        assert_eq!(
+            args.get(extra_pos + 1).map(String::as_str),
+            Some("diffusers")
         );
     }
 
