@@ -1,6 +1,8 @@
-import { globalStyle, style } from "@vanilla-extract/css";
+import { globalStyle, keyframes, style } from "@vanilla-extract/css";
 
 import { vars } from "../../../theme/contract.css";
+
+const spin = keyframes({ to: { transform: "rotate(360deg)" } });
 
 export const root = style({
   display: "flex",
@@ -268,4 +270,25 @@ export const emptyState = style({
 
 export const allSatisfied = style({
   background: `linear-gradient(135deg, ${vars.color.accent.secondaryContainer}, ${vars.color.bg.panel})`,
+});
+
+export const loadingRow = style([
+  emptyState,
+  {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: vars.space.gapMd,
+  },
+]);
+
+export const spinner = style({
+  // audit-allow: px — spinner glyph sub-token
+  width: "16px",
+  height: "16px",
+  borderRadius: "50%",
+  flexShrink: 0,
+  border: "2px solid rgba(255,255,255,0.14)",
+  borderTopColor: "var(--accent, #ba9eff)",
+  animation: `${spin} 0.8s linear infinite`,
 });

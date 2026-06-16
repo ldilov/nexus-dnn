@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router";
 import { BrandMark } from "./brand_mark";
 import * as styles from "./sidebar.css";
 
-type UtilityItemId = "settings" | "help";
+type UtilityItemId = "help";
 
 type NavItem = {
   readonly path: string;
@@ -28,7 +28,6 @@ const CORE_NAV_ITEMS: readonly NavItem[] = [
 ];
 
 const UTILITY_ITEMS: readonly UtilityItem[] = [
-  { id: "settings", label: "Settings", icon: "settings" },
   { id: "help", label: "Help", icon: "help" },
 ];
 
@@ -167,6 +166,18 @@ export function Sidebar({
             <span className={labelCls}>{item.label}</span>
           </button>
         ))}
+      </div>
+      <div className={styles.watermark} aria-hidden="true">
+        <span
+          className={[
+            styles.watermarkText,
+            expanded ? styles.watermarkTextVisible : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          Creator: Lazar Dilov
+        </span>
       </div>
     </div>
   );

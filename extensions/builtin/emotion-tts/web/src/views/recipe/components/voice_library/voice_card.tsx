@@ -60,6 +60,7 @@ export interface VoiceCardProps {
   onRename: (next: string) => Promise<void> | void;
   onCopyName: () => void;
   onDelete?: (() => void) | undefined;
+  onCreateCharacter?: (() => void) | undefined;
   /** Notifies the parent that audio playback finished naturally so its
    * "currently playing" tracking can clear. */
   onPlaybackEnded?: () => void;
@@ -74,6 +75,7 @@ export function VoiceCard({
   onRename,
   onCopyName,
   onDelete,
+  onCreateCharacter,
   onPlaybackEnded,
 }: VoiceCardProps): JSX.Element {
   const [renaming, setRenaming] = useState(false);
@@ -197,6 +199,18 @@ export function VoiceCard({
           <span className={css.usedBy}>unassigned</span>
         )}
         <span className={css.actions}>
+          {onCreateCharacter && (
+            <Button
+              variant="ghost"
+              size="xs"
+              iconOnly
+              title="Create character from this voice"
+              aria-label="Create character from this voice"
+              onClick={onCreateCharacter}
+            >
+              ＋
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="xs"

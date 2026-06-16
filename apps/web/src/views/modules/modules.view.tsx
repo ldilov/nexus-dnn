@@ -3,6 +3,13 @@ import { useNavigate } from "react-router";
 import { deployFromModule, fetchModules } from "../../api/client";
 import { mintDraftUuid } from "./draft/draft_uuid";
 import { ModulesUI, type KindFilter, type ModulesViewState } from "./modules.ui";
+import { DeployNameDialog } from "./deploy_name_dialog";
+
+interface DeployTarget {
+  moduleId: string;
+  recipeId?: string;
+  suggestedName: string;
+}
 
 export function ModulesView() {
   const navigate = useNavigate();
@@ -10,6 +17,7 @@ export function ModulesView() {
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [deployingId, setDeployingId] = useState<string | null>(null);
+  const [deployTarget, setDeployTarget] = useState<DeployTarget | null>(null);
   const [installerOpen, setInstallerOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -46,10 +54,22 @@ export function ModulesView() {
   );
 
   const handleDeploy = useCallback(
-    async (moduleId: string, recipeId?: string) => {
+    (moduleId: string, recipeId?: string, suggestedName?: string) => {
+      setDeployTarget({ moduleId, recipeId, suggestedName: suggestedName ?? "" });
+    },
+    [],
+  );
+
+  const confirmDeploy = useCallback(
+    async (name: string) => {
+      if (!deployTarget) return;
+      const { moduleId, recipeId } = deployTarget;
       setDeployingId(moduleId);
       try {
-        const result = await deployFromModule(moduleId, { recipe_id: recipeId });
+        const result = await deployFromModule(moduleId, {
+          recipe_id: recipeId,
+          display_name: name.trim() || undefined,
+        });
         navigate(`/deployments/${encodeURIComponent(result.deployment_id)}`);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Deploy failed";
@@ -58,9 +78,10 @@ export function ModulesView() {
         );
       } finally {
         setDeployingId(null);
+        setDeployTarget(null);
       }
     },
-    [navigate],
+    [deployTarget, navigate],
   );
 
   const handleBlank = useCallback(() => {
@@ -80,23 +101,32 @@ export function ModulesView() {
   }, [state]);
 
   return (
-    <ModulesUI
-      state={state}
-      search={search}
-      onSearchChange={setSearch}
-      kind={kind}
-      onKindChange={setKind}
-      extensionModules={extensionModules}
-      userModules={userModules}
-      deployingId={deployingId}
-      onOpenDetail={handleOpenDetail}
-      onOpenBlueprint={handleOpenBlueprint}
-      onDeploy={handleDeploy}
-      onBlank={handleBlank}
-      installerOpen={installerOpen}
-      onOpenInstaller={() => setInstallerOpen(true)}
-      onCloseInstaller={() => setInstallerOpen(false)}
-      onInstalled={() => load()}
-    />
+    <>
+      <ModulesUI
+        state={state}
+        search={search}
+        onSearchChange={setSearch}
+        kind={kind}
+        onKindChange={setKind}
+        extensionModules={extensionModules}
+        userModules={userModules}
+        deployingId={deployingId}
+        onOpenDetail={handleOpenDetail}
+        onOpenBlueprint={handleOpenBlueprint}
+        onDeploy={handleDeploy}
+        onBlank={handleBlank}
+        installerOpen={installerOpen}
+        onOpenInstaller={() => setInstallerOpen(true)}
+        onCloseInstaller={() => setInstallerOpen(false)}
+        onInstalled={() => load()}
+      />
+      <DeployNameDialog
+        open={deployTarget !== null}
+        defaultName={deployTarget?.suggestedName ?? ""}
+        busy={deployingId !== null}
+        onConfirm={confirmDeploy}
+        onCancel={() => setDeployTarget(null)}
+      />
+    </>
   );
 }

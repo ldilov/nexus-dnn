@@ -64,6 +64,23 @@ export const list = style({
   gap: vars.space.gapXs,
 });
 
+export const input = style({
+  width: "100%",
+  height: vars.control.heightMd,
+  marginTop: vars.space.gapSm,
+  padding: `0 ${vars.space.insetMd}`,
+  background: vars.color.bg.lowest,
+  color: vars.color.text.primary,
+  border: `1px solid ${vars.color.outline.variant}`,
+  borderRadius: vars.radius.control,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  outline: "none",
+  selectors: {
+    "&:focus": { borderColor: vars.color.accent.primary },
+  },
+});
+
 export const footer = style({
   padding: `${vars.space.insetSm} ${vars.space.insetLg} ${vars.space.insetLg}`,
   display: "flex",

@@ -9,7 +9,8 @@ use std::path::PathBuf;
 use crate::backend_client::HandshakeInfo;
 use crate::domain::cache_key::{build as build_cache_key, CacheKeyInput};
 use crate::domain::emotion::{
-    resolve as resolve_emotion, EmotionMode, GlobalEmotion, InlineOverrides, MappingDefaults,
+    resolve as resolve_emotion, EmotionMode, EmotionPayload, GlobalEmotion, InlineOverrides,
+    MappingDefaults,
 };
 use crate::domain::filenames::build_filename;
 use crate::domain::parser::{parse_script, ParserMode};
@@ -108,6 +109,21 @@ pub(crate) async fn prepare(
     // resolver below so the worker receives an absolute filesystem path,
     // not a host artifact reference.
     let global_emotion = parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
+
+    if let Some(raw_segments) = run.prebuilt_segments_json.clone() {
+        return prepare_from_prebuilt(
+            repos,
+            run,
+            run_id,
+            cfg,
+            extension_version,
+            &raw_segments,
+            &generation_obj,
+            &generation_params_btree,
+            &global_emotion,
+        )
+        .await;
+    }
 
     // Pre-fetch all vector presets for this deployment once. Per-character
     // mappings reference presets by id when their default emotion mode is
@@ -360,6 +376,248 @@ pub(crate) async fn prepare(
         utterances: plans,
         source_run_id,
     })
+}
+
+const MAX_PREBUILT_SEGMENTS: usize = 5000;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PrebuiltSegment {
+    text: String,
+    voice_asset_id: String,
+    #[serde(default)]
+    speaker_label: Option<String>,
+    #[serde(default)]
+    emotion: Option<serde_json::Value>,
+}
+
+async fn prepare_from_prebuilt(
+    repos: &Repos,
+    run: RunRow,
+    run_id: &RunId,
+    cfg: &PrepareConfig,
+    extension_version: &str,
+    raw_segments: &str,
+    generation_obj: &serde_json::Map<String, serde_json::Value>,
+    generation_params_btree: &BTreeMap<String, String>,
+    run_global_emotion: &GlobalEmotion,
+) -> Result<Prepared> {
+    let prebuilt: Vec<PrebuiltSegment> = serde_json::from_str(raw_segments)
+        .map_err(|e| EmotionTtsError::Conflict(format!("invalid prebuilt_segments: {e}")))?;
+    if prebuilt.is_empty() {
+        return Err(EmotionTtsError::Conflict(
+            "prebuilt_segments is empty".to_string(),
+        ));
+    }
+    if prebuilt.len() > MAX_PREBUILT_SEGMENTS {
+        return Err(EmotionTtsError::Conflict(format!(
+            "prebuilt_segments exceeds maximum of {MAX_PREBUILT_SEGMENTS}"
+        )));
+    }
+
+    std::fs::create_dir_all(&cfg.output_root).map_err(|e| {
+        EmotionTtsError::internal(format!(
+            "create output_root {}: {e}",
+            cfg.output_root.display()
+        ))
+    })?;
+
+    let mut voice_ids: Vec<crate::domain::VoiceAssetId> = Vec::with_capacity(prebuilt.len());
+    for seg in &prebuilt {
+        let id = crate::domain::VoiceAssetId::try_from(seg.voice_asset_id.clone())
+            .map_err(|e| EmotionTtsError::Conflict(format!("invalid voice_asset_id: {e}")))?;
+        voice_ids.push(id);
+    }
+    voice_ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    voice_ids.dedup();
+
+    let chains = repos.voice_assets.read_edit_chains_for(&voice_ids).await?;
+    let mut chain_digests: HashMap<String, crate::domain::ChainDigest> =
+        HashMap::with_capacity(voice_ids.len());
+    for id in &voice_ids {
+        let digest = chains.get(id.as_str()).map_or_else(
+            || crate::domain::ChainDigest::EMPTY,
+            crate::domain::ChainDigest::of,
+        );
+        chain_digests.insert(id.as_str().to_string(), digest);
+    }
+
+    let (segments, plans) = build_prebuilt_segments(
+        &prebuilt,
+        &run,
+        cfg,
+        extension_version,
+        generation_obj,
+        generation_params_btree,
+        run_global_emotion,
+        &chain_digests,
+    )?;
+
+    let batch_input = BatchInput {
+        request_id: format!("{}-batch", run_id.as_str()),
+        run_id: run_id.as_str().to_string(),
+        deployment_id: run.deployment_id.as_str().to_string(),
+        segments,
+        optimisations: BatchOptimisations::default(),
+    };
+    let source_run_id = run.original_run_id.clone();
+    Ok(Prepared {
+        run,
+        batch_input,
+        utterances: plans,
+        source_run_id,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_prebuilt_segments(
+    prebuilt: &[PrebuiltSegment],
+    run: &RunRow,
+    cfg: &PrepareConfig,
+    extension_version: &str,
+    generation_obj: &serde_json::Map<String, serde_json::Value>,
+    generation_params_btree: &BTreeMap<String, String>,
+    run_global_emotion: &GlobalEmotion,
+    chain_digests: &HashMap<String, crate::domain::ChainDigest>,
+) -> Result<(Vec<SynthesisSegment>, Vec<UtterancePlan>)> {
+    let mut occurrence_by_speaker: HashMap<String, i64> = HashMap::new();
+    let mut segments = Vec::with_capacity(prebuilt.len());
+    let mut plans = Vec::with_capacity(prebuilt.len());
+
+    for (idx, seg) in prebuilt.iter().enumerate() {
+        if seg.text.trim().is_empty() {
+            return Err(EmotionTtsError::Conflict(format!(
+                "prebuilt segment {idx} has empty text"
+            )));
+        }
+
+        let speaker_path = (cfg.voice_path_resolver)(&seg.voice_asset_id).ok_or_else(|| {
+            EmotionTtsError::Conflict(format!(
+                "voice file missing for asset {}",
+                seg.voice_asset_id
+            ))
+        })?;
+
+        let utterance_emotion =
+            resolve_prebuilt_emotion(seg.emotion.as_ref(), cfg, run_global_emotion);
+
+        let utterance_seed: i64 = match run.seed_strategy.as_str() {
+            "increment_per_line" => run.base_seed.saturating_add(idx as i64),
+            _ => run.base_seed,
+        };
+
+        let character_display = seg
+            .speaker_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| seg.voice_asset_id.clone());
+        let character_index = {
+            let counter = occurrence_by_speaker
+                .entry(character_display.to_lowercase())
+                .or_insert(0);
+            *counter += 1;
+            *counter
+        };
+
+        let content_hash = (cfg.voice_sha256_resolver)(&seg.voice_asset_id).and_then(|sha256| {
+            let cache_input = CacheKeyInput {
+                extension_version: extension_version.to_string(),
+                runtime_version: cfg
+                    .runtime_meta
+                    .as_ref()
+                    .map_or(
+                        crate::backend_client::FALLBACK_RUNTIME_VERSION,
+                        HandshakeInfo::runtime_version_for_cache,
+                    )
+                    .to_string(),
+                model_version: cfg
+                    .runtime_meta
+                    .as_ref()
+                    .map_or(
+                        crate::backend_client::FALLBACK_MODEL_VERSION,
+                        HandshakeInfo::model_version_for_cache,
+                    )
+                    .to_string(),
+                model_family: cfg
+                    .runtime_meta
+                    .as_ref()
+                    .map_or(
+                        crate::backend_client::FALLBACK_MODEL_FAMILY,
+                        HandshakeInfo::model_family_for_cache,
+                    )
+                    .to_string(),
+                text: seg.text.clone(),
+                speaker_ref_sha256: sha256,
+                emotion: utterance_emotion.clone(),
+                generation_params: generation_params_btree.clone(),
+                seed: utterance_seed,
+                speed_factor: run.speed_factor,
+                speed_mode: run.speed_mode.clone(),
+                output_format: run.output_format.clone(),
+                voice_asset_chain_digest: chain_digests
+                    .get(seg.voice_asset_id.as_str())
+                    .cloned()
+                    .unwrap_or(crate::domain::ChainDigest::EMPTY),
+            };
+            build_cache_key(&cache_input).ok()
+        });
+
+        let global_index = (idx + 1) as i64;
+        let filename_info = build_filename(
+            global_index,
+            &character_display,
+            character_index,
+            &run.output_format,
+        );
+        let output_target = cfg.output_root.join(&filename_info.filename);
+        let output_target_abs = output_target.to_string_lossy().into_owned();
+
+        let utterance_id = crate::domain::UtteranceId::new();
+        plans.push(UtterancePlan {
+            utterance_id: utterance_id.clone(),
+            global_index,
+            character_display: character_display.clone(),
+            character_sanitised: filename_info.character_sanitised.clone(),
+            character_index,
+            text: seg.text.clone(),
+            output_target_abs: output_target_abs.clone(),
+            content_hash,
+        });
+
+        let mut segment_generation = generation_obj.clone();
+        segment_generation.insert("seed".to_string(), serde_json::json!(utterance_seed));
+
+        segments.push(SynthesisSegment {
+            segment_id: utterance_id.as_str().to_string(),
+            global_index,
+            character_display,
+            character_sanitised: filename_info.character_sanitised,
+            character_index,
+            text: seg.text.clone(),
+            speaker_audio_ref_abs: speaker_path,
+            emotion: utterance_emotion,
+            generation: serde_json::Value::Object(segment_generation),
+            output_target_abs,
+        });
+    }
+
+    Ok((segments, plans))
+}
+
+fn resolve_prebuilt_emotion(
+    seg_emotion: Option<&serde_json::Value>,
+    cfg: &PrepareConfig,
+    run_global: &GlobalEmotion,
+) -> EmotionPayload {
+    match seg_emotion {
+        Some(v) if !v.is_null() => {
+            let snapshot = v.to_string();
+            let g = parse_global_emotion(Some(&snapshot), cfg);
+            resolve_emotion(&InlineOverrides::default(), None, None, &g).payload
+        }
+        _ => resolve_emotion(&InlineOverrides::default(), None, None, run_global).payload,
+    }
 }
 
 /// Convert the run row's `global_emotion_snapshot_json` (whatever the
@@ -658,6 +916,169 @@ mod tests {
             default_voice_asset_id: None,
             runtime_meta: None,
         }
+    }
+
+    fn fake_run_row() -> RunRow {
+        RunRow {
+            run_id: crate::domain::RunId::new(),
+            deployment_id: crate::domain::DeploymentId::try_from("dep_test".to_string()).unwrap(),
+            kind: "generate".to_string(),
+            status: "queued".to_string(),
+            script_snapshot: String::new(),
+            parser_mode: "raw_text".to_string(),
+            generation_settings_json: "{}".to_string(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".to_string(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".to_string(),
+            cache_policy: "use_cache".to_string(),
+            seed_strategy: "fixed".to_string(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".to_string(),
+            queued_at: 0,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+            export_zip_stale_at: None,
+            prebuilt_segments_json: None,
+        }
+    }
+
+    fn empty_generation() -> (
+        serde_json::Map<String, serde_json::Value>,
+        BTreeMap<String, String>,
+    ) {
+        (serde_json::Map::new(), BTreeMap::new())
+    }
+
+    fn seg(text: &str, voice: &str, label: Option<&str>, emotion: Option<serde_json::Value>) -> PrebuiltSegment {
+        PrebuiltSegment {
+            text: text.to_string(),
+            voice_asset_id: voice.to_string(),
+            speaker_label: label.map(str::to_string),
+            emotion,
+        }
+    }
+
+    #[test]
+    fn prebuilt_segments_number_occurrences_per_speaker() {
+        let cfg = cfg_with_resolver_returning_path("/abs/voice.wav");
+        let run = fake_run_row();
+        let (gen_obj, gen_btree) = empty_generation();
+        let global = GlobalEmotion::default();
+        let chains = HashMap::new();
+        let prebuilt = vec![
+            seg("one", "va_a", Some("Alice"), None),
+            seg("two", "va_b", Some("Bob"), None),
+            seg("three", "va_a", Some("Alice"), None),
+        ];
+        let (segs, plans) = build_prebuilt_segments(
+            &prebuilt, &run, &cfg, "0.0.0", &gen_obj, &gen_btree, &global, &chains,
+        )
+        .unwrap();
+        assert_eq!(segs.len(), 3);
+        assert_eq!(plans.len(), 3);
+        assert_eq!(
+            segs.iter().map(|s| s.global_index).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(
+            segs.iter().map(|s| s.character_index).collect::<Vec<_>>(),
+            vec![1, 1, 2]
+        );
+        assert_eq!(segs[0].text, "one");
+        assert_eq!(segs[0].character_display, "Alice");
+        assert_eq!(segs[1].character_display, "Bob");
+    }
+
+    #[test]
+    fn prebuilt_segment_honours_per_segment_emotion_vector() {
+        let cfg = cfg_with_resolver_returning_path("/abs/voice.wav");
+        let run = fake_run_row();
+        let (gen_obj, gen_btree) = empty_generation();
+        let global = GlobalEmotion::default();
+        let chains = HashMap::new();
+        let emotion = serde_json::json!({
+            "mode": "emotion_vector",
+            "vector": [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3],
+            "emotionAlpha": 0.5,
+        });
+        let prebuilt = vec![seg("hi", "va_a", None, Some(emotion))];
+        let (segs, _) = build_prebuilt_segments(
+            &prebuilt, &run, &cfg, "0.0.0", &gen_obj, &gen_btree, &global, &chains,
+        )
+        .unwrap();
+        match &segs[0].emotion {
+            EmotionPayload::EmotionVector { vector, alpha } => {
+                assert!((vector[0] - 0.7).abs() < 1e-9);
+                assert!((vector[7] - 0.3).abs() < 1e-9);
+                assert!((*alpha - 0.5).abs() < 1e-9);
+            }
+            other => panic!("expected EmotionVector, got {other:?}"),
+        }
+        assert_eq!(segs[0].character_display, "va_a");
+    }
+
+    #[test]
+    fn prebuilt_segment_without_emotion_falls_back_to_run_global() {
+        let cfg = cfg_with_resolver_returning_path("/abs/voice.wav");
+        let run = fake_run_row();
+        let (gen_obj, gen_btree) = empty_generation();
+        let global = GlobalEmotion {
+            mode: EmotionMode::EmotionVector,
+            vector: Some([0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            alpha: Some(1.0),
+            ..Default::default()
+        };
+        let chains = HashMap::new();
+        let prebuilt = vec![seg("hi", "va_a", None, None)];
+        let (segs, _) = build_prebuilt_segments(
+            &prebuilt, &run, &cfg, "0.0.0", &gen_obj, &gen_btree, &global, &chains,
+        )
+        .unwrap();
+        assert!(matches!(
+            segs[0].emotion,
+            EmotionPayload::EmotionVector { .. }
+        ));
+    }
+
+    #[test]
+    fn prebuilt_segment_empty_text_rejected() {
+        let cfg = cfg_with_resolver_returning_path("/abs/voice.wav");
+        let run = fake_run_row();
+        let (gen_obj, gen_btree) = empty_generation();
+        let global = GlobalEmotion::default();
+        let chains = HashMap::new();
+        let prebuilt = vec![seg("   ", "va_a", None, None)];
+        let result = build_prebuilt_segments(
+            &prebuilt, &run, &cfg, "0.0.0", &gen_obj, &gen_btree, &global, &chains,
+        );
+        assert!(matches!(result, Err(EmotionTtsError::Conflict(_))));
+    }
+
+    #[test]
+    fn prebuilt_segment_missing_voice_file_rejected() {
+        let cfg = PrepareConfig {
+            output_root: std::env::temp_dir(),
+            voice_path_resolver: std::sync::Arc::new(|_id: &str| None),
+            voice_sha256_resolver: std::sync::Arc::new(|_id: &str| None),
+            default_voice_asset_id: None,
+            runtime_meta: None,
+        };
+        let run = fake_run_row();
+        let (gen_obj, gen_btree) = empty_generation();
+        let global = GlobalEmotion::default();
+        let chains = HashMap::new();
+        let prebuilt = vec![seg("hi", "va_a", None, None)];
+        let result = build_prebuilt_segments(
+            &prebuilt, &run, &cfg, "0.0.0", &gen_obj, &gen_btree, &global, &chains,
+        );
+        assert!(matches!(result, Err(EmotionTtsError::Conflict(_))));
     }
 
     #[test]

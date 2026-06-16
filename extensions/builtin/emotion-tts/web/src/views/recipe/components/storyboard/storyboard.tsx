@@ -11,14 +11,17 @@ import {
 import type { VoiceAsset } from "../../../../services/voice_assets_client";
 import type { VectorPreset } from "../../../../services/presets_client";
 import type { CharacterMapping } from "../../../../services/mappings_client";
+import type { PrebuiltSegment } from "../../../../services/types";
 import {
   buildEmotions,
   buildVoices,
   countWords,
   emotionLabel,
+  FALLBACK_VOICE,
   flatSegments,
   jobOfSegment,
   jobsInScriptOrder,
+  presetVectorForEmotionId,
   rangeIsFree,
   rangeText,
   segmentLabels,
@@ -42,6 +45,7 @@ interface StoryboardProps {
   onStoryTextChange: (next: string) => void;
   // Deployment character mappings for the cast popover's "Characters" tab.
   mappings?: ReadonlyMap<string, CharacterMapping>;
+  onQueueChange?: ((segments: PrebuiltSegment[]) => void) | undefined;
 }
 
 type CastMode = "voice" | "character";
@@ -57,6 +61,7 @@ export function Storyboard({
   storyText,
   onStoryTextChange,
   mappings,
+  onQueueChange,
 }: StoryboardProps): JSX.Element {
   const voices = useMemo(() => buildVoices(voiceAssets), [voiceAssets]);
   const emotions = useMemo(() => buildEmotions(presets), [presets]);
@@ -136,7 +141,8 @@ export function Storyboard({
 
   const openJobEditor = useCallback(
     (job: Job, anchorEl?: HTMLElement | null) => {
-      const first = [...job.segIds].sort((a, b) => orderOf(a) - orderOf(b))[0] as string;
+      const first = [...job.segIds].sort((a, b) => orderOf(a) - orderOf(b))[0];
+      if (!first) return;
       const el = anchorEl ?? segRefs.current.get(first) ?? null;
       setEditingJobId(job.id);
       setSelection([...job.segIds]);
@@ -222,6 +228,7 @@ export function Storyboard({
   // Roving arrow nav across emotion pills (AC-2.5).
   const cycleEmotion = useCallback(
     (dir: number) => {
+      if (emotions.length === 0) return; // empty deployment — nothing to cycle (modulo-by-zero)
       const idx = emotions.findIndex((e) => e.id === draftEmotion);
       const next = emotions[(idx + dir + emotions.length) % emotions.length] as EmotionOption;
       setDraftEmotion(next.id);
@@ -259,6 +266,26 @@ export function Storyboard({
   }, [jobs]);
 
   const sortedJobs = useMemo(() => jobsInScriptOrder(paragraphs, jobs), [paragraphs, jobs]);
+  const queueSegments = useMemo<PrebuiltSegment[]>(
+    () =>
+      sortedJobs.map((j) => {
+        const vec = presetVectorForEmotionId(presets, j.emotion);
+        return {
+          text: rangeText(paragraphs, j.segIds),
+          voice_asset_id: j.voiceId,
+          speaker_label: (voiceById(voices, j.voiceId) ?? FALLBACK_VOICE).name,
+          emotion: vec ? { mode: "emotion_vector", vector: vec } : null,
+        };
+      }),
+    [sortedJobs, paragraphs, voices, presets],
+  );
+  const lastQueueJsonRef = useRef<string | null>(null);
+  useEffect(() => {
+    const json = JSON.stringify(queueSegments);
+    if (json === lastQueueJsonRef.current) return;
+    lastQueueJsonRef.current = json;
+    onQueueChange?.(queueSegments);
+  }, [queueSegments, onQueueChange]);
   const firstSegByJob = useMemo(() => {
     const m = new Map<string, string>();
     for (const j of jobs) {
@@ -743,7 +770,6 @@ function castNameStyle(active: boolean): CSSProperties {
 const CAST_SEARCH_ICON: CSSProperties = { position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: "var(--on-surface-muted)", pointerEvents: "none" };
 const CAST_ROLE_STYLE: CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--on-surface-muted)" };
 const CAST_SUB_STYLE: CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.02em", color: "var(--on-surface-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
-const FALLBACK_VOICE: Voice = { id: "", name: "Unassigned", role: "", icon: "graphic_eq", color: "var(--on-surface-variant, #c4c7c5)", rgb: "120,124,128", onColor: "#15171a", initial: "—", lib: "" };
 
 function emoBtnStyle(v: Voice, active: boolean): CSSProperties {
   return {

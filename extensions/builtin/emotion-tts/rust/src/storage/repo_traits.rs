@@ -141,6 +141,12 @@ pub struct RunRow {
     /// on disk. NULL means the ZIP is fresh (or no export has been built).
     #[serde(default)]
     pub export_zip_stale_at: Option<i64>,
+    /// Phase 1 (storyboard queue → Generate). When `Some`, a JSON array of
+    /// `{text, voice_asset_id, emotion}` segments the dispatcher synthesises
+    /// verbatim, skipping script parsing + character→voice mapping. NULL =
+    /// legacy script-snapshot path.
+    #[serde(default)]
+    pub prebuilt_segments_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -10,7 +10,7 @@ This page describes what the repo appears to support today and where the stronge
 
 ## Architecture Support
 
-`nexus-dnn` targets three host architectures. The host binary, embedded Python, ffmpeg, and the LLM install pipeline are arch-aware across all three. On aarch64, CPU paths and GPU LLM (Vulkan, or an external CUDA `llama-server`) work today; the only real gaps are that the managed picker does not yet surface the Vulkan arm64 build, and some GPU Python wheels (flash-attn) have no aarch64 build so they compile from source.
+`nexus-dnn` targets three host architectures and is arch-aware across all three for the host binary, embedded Python, ffmpeg, and the LLM/video install pipelines. All three ship a **prebuilt cp312 flash-attn wheel** (the aarch64 wheel built on a GB10-class Spark), so even the heaviest extension — svi2-pro — installs with **no source build and no `nvcc`**. The remaining aarch64 gaps are narrow: there is no *official* CUDA arm64 llama.cpp prebuilt (CPU + Vulkan GPU are surfaced; full CUDA comes via an external `llama-server`), and the optional svi2-pro stable-diffusion.cpp edit path needs an operator-built `sd` binary. See [deployment/container-and-cuda-dependencies.md](deployment/container-and-cuda-dependencies.md) for the full flash-attn support matrix.
 
 | Capability | amd64 Windows | amd64 Linux | aarch64 Linux (DGX Spark / GB10) |
 |------------|:---:|:---:|:---|
@@ -20,14 +20,15 @@ This page describes what the repo appears to support today and where the stronge
 | LLM via llama.cpp (managed) | 🟢 cpu/cuda | 🟢 cpu/cuda | 🟢 CPU + Vulkan GPU; no official CUDA arm64 (CUDA via external server) |
 | LLM via external server | 🟢 | 🟢 | 🟢 GPU-capable — CUDA `llama-server` on GB10 / sbsa |
 | EmotionTTS | 🟢 | 🟢 | 🟢 cu128 torch **2.11+** arm64 wheels; no flash-attn dependency |
-| LTX-2.3 / LongCat video | 🟢 | 🟢 | 🟡 works; SDPA fallback (flash-attn has no arm64 wheel) |
-| SVI2-Pro | 🟢 | 🟡 | 🟡 GB10-validated; flash-attn builds from source or SDPA; sd-cli edit needs system binary |
+| LTX-2.3 / LongCat video | 🟢 | 🟢 | 🟢 no flash-attn dependency; LongCat uses Triton SageAttention with SDPA fallback |
+| SVI2-Pro | 🟢 | 🟢 | 🟢 GB10-validated; prebuilt cp312 flash-attn wheel (no source build); optional `sd` edit path needs an operator-built binary |
 
 **aarch64 Linux notes:**
 
 - **Managed llama.cpp on aarch64 offers CPU and Vulkan GPU.** The managed installer surfaces both the official arm64 **CPU** build (`ubuntu-arm64`) and the arm64 **Vulkan** GPU build (`ubuntu-vulkan-arm64`, GPU-capable on GB10); on a host with a GPU/CUDA stack present, the installer defaults to the Vulkan variant. There is no *official* CUDA arm64 prebuilt — CUDA on aarch64 comes from a source build (see Arm's GB10 llama.cpp guide) or third-party arm64 CUDA tarballs (e.g. ai-dock). For the fastest CUDA path on a DGX Spark, run a CUDA `llama-server` and reach it via `NEXUS_LLAMA_SERVER_URL` (arch-agnostic).
 - **EmotionTTS works on aarch64.** IndexTTS-2 uses cu128 torch with no flash-attn dependency. Note the worker pins `torch>=2.11`: the cu128 index only began publishing `manylinux_2_28_aarch64` CUDA wheels at torch 2.11.0, so the earlier 2.8.0 lock had **no** arm64 wheel and `uv sync` failed on aarch64. With the 2.11+ pin (matching the LTX-2.3 worker's cu128 setup) `uv sync` resolves cleanly.
-- **SVI2-Pro / LongCat: the GPU attention wheels (flash-attn, sageattention) have no aarch64 builds.** On a host with a CUDA toolkit (e.g. DGX Spark — validated on GB10) `uv sync` compiles flash-attn from source (slow, ~30–90 min) and the render works; without a toolkit that build fails and the worker falls back to SDPA (already the Blackwell default). Arch-gating these extras to `x86_64` so the source build is skipped on aarch64 is a pending follow-up (needs a `uv.lock` regen).
+- **SVI2-Pro now ships a prebuilt aarch64 flash-attn wheel** (`binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl`, built on a GB10), referenced from `extensions/builtin/svi2-pro/worker/pyproject.toml` via a platform-gated `[tool.uv.sources]` entry. `uv sync` resolves it directly — **no source build, no `nvcc`** — matching the win-amd64 and linux-amd64 wheels. svi2-pro installs 100% on all three arches; if the wheel is ever absent the worker falls back to SDPA (the Blackwell default).
+- **LongCat does not depend on flash-attn.** It uses Triton-based SageAttention v1 (arch-agnostic, JIT-compiled, no prebuilt CUDA wheel needed) with an SDPA fallback. The faster SageAttention 3 FP8 wheel is win-amd64 only and is a speed extra, not a requirement.
 - **stable-diffusion.cpp (svi2-pro edit-then-animate) has no Linux arm64/CUDA prebuilt.** Core image-to-video render works; the optional edit path needs an operator-built `sd` on `PATH`.
 
 ## Tested Machine Evidence

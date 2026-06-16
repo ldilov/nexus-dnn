@@ -487,6 +487,7 @@ async fn sse_replays_completed_utterances_on_subscribe() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();

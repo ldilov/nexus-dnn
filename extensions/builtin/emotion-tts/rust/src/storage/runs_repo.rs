@@ -51,6 +51,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<RunRow> {
         error_category: row.try_get("error_category").map_err(to_err)?,
         error_detail: row.try_get("error_detail").map_err(to_err)?,
         export_zip_stale_at: row.try_get("export_zip_stale_at").map_err(to_err)?,
+        prebuilt_segments_json: row.try_get("prebuilt_segments_json").map_err(to_err)?,
     })
 }
 
@@ -62,8 +63,9 @@ impl RunsRepo for SqliteRunsRepo {
              (run_id, deployment_id, kind, status, script_snapshot, parser_mode, generation_settings_json, \
               global_emotion_snapshot_json, output_format, speed_factor, speed_mode, cache_policy, \
               seed_strategy, base_seed, original_run_id, runtime_install_id, runtime_version, model_version, \
-              extension_version, queued_at, started_at, finished_at, error_category, error_detail) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              extension_version, queued_at, started_at, finished_at, error_category, error_detail, \
+              prebuilt_segments_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(row.run_id.as_str())
         .bind(row.deployment_id.as_str())
@@ -89,6 +91,7 @@ impl RunsRepo for SqliteRunsRepo {
         .bind(row.finished_at)
         .bind(&row.error_category)
         .bind(&row.error_detail)
+        .bind(&row.prebuilt_segments_json)
         .execute(&self.pool)
         .await
         .map_err(to_err)?;

@@ -129,14 +129,26 @@ export const presetCardName = style({
 });
 
 export const presetCardDelete = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  // audit-allow: px — fixed icon-button hit target, not density-coupled
+  width: "26px",
+  // audit-allow: px — fixed icon-button hit target, not density-coupled
+  height: "26px",
   border: "none",
+  borderRadius: vars.radius.pill,
   background: "transparent",
   color: vars.color.textFaint,
   cursor: "pointer",
   fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
+  fontSize: vars.text.body,
+  lineHeight: 1,
+  transition: "color 120ms ease, background 120ms ease",
   ":hover": {
     color: vars.color.danger,
+    background: `color-mix(in oklab, ${vars.color.danger} 16%, transparent)`,
   },
 });
 

@@ -19,6 +19,7 @@ import type {
   CreateRunRequest,
   GlobalEmotion,
   OutputFormat,
+  PrebuiltSegment,
   RunSummary,
 } from "../../services/types";
 import { listVoiceAssets, uploadVoiceAsset, type VoiceAsset } from "../../services/voice_assets_client";
@@ -185,6 +186,7 @@ export function RecipeView(): JSX.Element {
     setStoryTextRaw(next);
   }, []);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
+  const [prebuiltSegments, setPrebuiltSegments] = useState<PrebuiltSegment[]>([]);
 
   const scriptRef = useRef(script);
   const rowsRefMode = useRef(rows);
@@ -422,6 +424,13 @@ export function RecipeView(): JSX.Element {
     [deployment.deploymentId, upsertMapping],
   );
 
+  const handleCreateCharacterFromVoice = useCallback(
+    (asset: VoiceAsset) => {
+      void upsertMapping(asset.displayName, { speakerVoiceAssetId: asset.voiceAssetId });
+    },
+    [upsertMapping],
+  );
+
   const handleSliderChange = useCallback((next: DirectModSliderState) => {
     setSliderState(next);
   }, []);
@@ -543,8 +552,17 @@ export function RecipeView(): JSX.Element {
       globalEmotion: { ...globalEmotion, emotionAlpha: performance.intensity },
       generation,
       cachePolicy,
+      ...(editorMode === "storyboard" && prebuiltSegments.length > 0
+        ? {
+            prebuiltSegments: prebuiltSegments.map((seg) =>
+              seg.emotion
+                ? { ...seg, emotion: { ...seg.emotion, emotionAlpha: performance.intensity } }
+                : seg,
+            ),
+          }
+        : {}),
     }),
-    [effectiveScript, editorMode, outputFormat, speedFactor, performance.intensity, globalEmotion, generation, cachePolicy],
+    [effectiveScript, editorMode, outputFormat, speedFactor, performance.intensity, globalEmotion, generation, cachePolicy, prebuiltSegments],
   );
 
   const diagnostics = useMemo(
@@ -566,11 +584,14 @@ export function RecipeView(): JSX.Element {
         .filter((d) => d.id !== "performance")
         .map((d) => ({
           label: d.label,
-          status: d.status === "ok" ? "ok" : d.status === "warn" ? "warn" : "fail",
+          status: d.status === "ok" ? "ok" : d.status === "warn" ? "warn" : "ok",
           detail: d.detail,
-        })) as { label: string; status: "ok" | "warn" | "fail"; detail?: string }[],
+        })) as { label: string; status: "ok" | "warn"; detail?: string }[],
     [diagnostics],
   );
+
+  const hasQueue = editorMode === "storyboard" && prebuiltSegments.length > 0;
+  const canGenerate = effectiveScript.trim().length > 0 || hasQueue;
 
   return (
     <>
@@ -595,7 +616,7 @@ export function RecipeView(): JSX.Element {
       </div>
       <RecipeUi
         deployment={deployment}
-        canGenerate={effectiveScript.trim().length > 0}
+        canGenerate={canGenerate}
         workflowCustomised={workflow.workflow.customised}
         unmappableFields={workflow.unmappableFields}
         hero={<DeploymentHeader deployment={deployment} />}
@@ -603,7 +624,7 @@ export function RecipeView(): JSX.Element {
           <RunPanel
             deploymentId={deployment.deploymentId}
             createPayload={createPayload}
-            canGenerate={effectiveScript.trim().length > 0}
+            canGenerate={canGenerate}
             diagnostics={legacyDiagnostics}
           />
         }
@@ -631,6 +652,7 @@ export function RecipeView(): JSX.Element {
             onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
             presets={vectorPresets}
             voiceAssets={voiceAssets}
+            onQueueChange={setPrebuiltSegments}
           />
         }
         parsedDialogueSection={
@@ -643,6 +665,7 @@ export function RecipeView(): JSX.Element {
             mappings={mappings}
             characterColors={characterColors}
             onVoiceAssetsChange={setVoiceAssets}
+            onCreateCharacterFromVoice={handleCreateCharacterFromVoice}
           />
         }
         castSection={

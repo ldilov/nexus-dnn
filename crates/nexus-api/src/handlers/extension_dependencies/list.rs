@@ -86,9 +86,17 @@ pub async fn list_dependencies(
     };
 
     let mut any_partial = false;
-    for step in &plan.steps {
-        let (mut dto, has_partial_bytes) =
-            probe_step(&inputs.registry, &runner_ctx, step, &upstream).await;
+    // Probe every step concurrently. The snapshot probe has no inter-step data
+    // dependency (`upstream` stays empty here), so the old sequential `for`
+    // walk was pure stacked I/O latency — slow for extensions with many
+    // model_artifact steps. join_all overlaps the awaits in one task.
+    let probed = futures_util::future::join_all(
+        plan.steps
+            .iter()
+            .map(|step| probe_step(&inputs.registry, &runner_ctx, step, &upstream)),
+    )
+    .await;
+    for (step, (mut dto, has_partial_bytes)) in plan.steps.iter().zip(probed) {
         apply_runner_overlay(&mut dto, runner_state.get(&step.id));
         if has_partial_bytes && matches!(dto.status, StepStatusKind::Pending) {
             any_partial = true;

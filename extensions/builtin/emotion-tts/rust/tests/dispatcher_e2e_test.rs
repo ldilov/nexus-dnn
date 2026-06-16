@@ -232,6 +232,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -505,6 +506,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -763,6 +765,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -1003,6 +1006,7 @@ async fn resume_run_reuses_cache_from_original() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -1074,6 +1078,7 @@ async fn resume_run_reuses_cache_from_original() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -1289,6 +1294,7 @@ async fn raw_text_run_uses_deployment_default_voice() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -1548,6 +1554,7 @@ async fn test_line_skips_cache_and_export() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -1824,6 +1831,7 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -2079,6 +2087,7 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();
@@ -2334,6 +2343,7 @@ async fn read_only_cache_policy_skips_cache_writes() {
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();

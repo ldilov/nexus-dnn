@@ -2,7 +2,7 @@ import type { Deployment } from "../../../../services/deployments_client";
 import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { VectorPreset } from "../../../../services/presets_client";
 import type { VoiceAsset } from "../../../../services/voice_assets_client";
-import type { OutputFormat } from "../../../../services/types";
+import type { OutputFormat, PrebuiltSegment } from "../../../../services/types";
 import { Storyboard } from "../storyboard/storyboard";
 import { QuickVoicePicker } from "../quick_voice_picker";
 import { ScriptEditor } from "../script_editor";
@@ -34,6 +34,7 @@ interface ScriptSectionProps {
   onDefaultVoiceAssetIdChange: (id: string | null) => void;
   presets: readonly VectorPreset[];
   voiceAssets: readonly VoiceAsset[];
+  onQueueChange?: ((segments: PrebuiltSegment[]) => void) | undefined;
 }
 
 export function ScriptSection({
@@ -53,6 +54,7 @@ export function ScriptSection({
   onDefaultVoiceAssetIdChange,
   presets,
   voiceAssets,
+  onQueueChange,
 }: ScriptSectionProps): JSX.Element {
   const isQuick = editorMode === "quick";
   const isRows = editorMode === "rows";
@@ -117,6 +119,7 @@ export function ScriptSection({
           storyText={storyText}
           onStoryTextChange={onStoryTextChange}
           mappings={mappingsByLower}
+          onQueueChange={onQueueChange}
         />
       ) : isRows ? (
         <CharacterRowsEditor

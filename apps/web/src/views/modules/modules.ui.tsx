@@ -25,7 +25,7 @@ export interface ModulesUIProps {
   deployingId: string | null;
   onOpenDetail: (moduleId: string) => void;
   onOpenBlueprint: (moduleId: string, recipeId?: string) => void;
-  onDeploy: (moduleId: string, recipeId?: string) => void;
+  onDeploy: (moduleId: string, recipeId?: string, suggestedName?: string) => void;
   onBlank: () => void;
   installerOpen: boolean;
   onOpenInstaller: () => void;

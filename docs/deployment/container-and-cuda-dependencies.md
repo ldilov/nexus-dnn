@@ -49,7 +49,15 @@ cpython)`. Prebuilt wheels live in the repo-global
 |---|---|---|---|---|
 | **linux-aarch64** | **3.12** (cp312) | torch 2.12 / cu132 (runs); wheel built on CUDA 13 | ✅ wheel | `binaries/linux-aarch64/` (built on GB10) |
 | **win-amd64** | 3.11 + 3.12 | torch 2.12 / cu132 | ✅ wheels | `binaries/win-amd64/` |
-| **linux-amd64** | any | torch 2.12 / cu132 | ⚠️ index/PyPI, else source-build | not vendored — needs CUDA toolkit if no index wheel |
+| **linux-amd64** | **3.12** (cp312) | torch 2.12 / cu132 | ✅ wheel | `binaries/linux-amd64/` (mjun0812/flash-attention-prebuild-wheels) |
+
+**All three platforms ship a prebuilt cp312 flash-attn wheel → svi2-pro installs 100%
+with no source build and no `nvcc`.** flash-attn pins cp312 (svi2 pins Python 3.12).
+The win-amd64 + linux-amd64 wheels come from
+[mjun0812/flash-attention-prebuild-wheels](https://github.com/mjun0812/flash-attention-prebuild-wheels);
+the linux-aarch64 wheel was built on the GB10. torch comes from the
+`download.pytorch.org/whl/cu132` index (cp312 wheels exist for win_amd64,
+manylinux x86_64, and manylinux aarch64).
 
 Notes:
 - The aarch64 wheel was built against CUDA 13.0 but loads fine against torch's
@@ -73,7 +81,35 @@ Notes:
 
 `nvcc` is only needed to **source-build** a CUDA Python extension that has no
 prebuilt wheel for the platform. The intended path is **prebuilt wheels per
-platform**; the CUDA toolkit is an opt-in fallback (see the dependency installer
-roadmap). To make a new prebuilt wheel one-click on a platform, add it under
-`binaries/<platform>/` and reference it from the extension's `pyproject.toml`
-`[tool.uv.sources]`.
+platform**; the CUDA toolkit is an opt-in fallback. To make a new prebuilt wheel
+one-click on a platform, add it under `binaries/<platform>/` and reference it
+from the extension's `pyproject.toml` `[tool.uv.sources]`.
+
+### On-demand nvcc — the mechanism (no system toolkit, no sudo)
+
+When a source build is genuinely unavoidable, an extension provisions `nvcc`
+**as a pip wheel inside its own venv** — `nvidia-cuda-nvcc-cu13` ships wheels for
+win-amd64, linux-x86_64, and linux-aarch64. uv puts it on the build PATH for the
+source-built package; nothing is installed system-wide.
+
+In the extension's `worker/pyproject.toml`:
+
+```toml
+[project.optional-dependencies]
+# only pulled when the platform has no prebuilt wheel for `some-cuda-ext`
+build-nvcc = ["nvidia-cuda-nvcc-cu13>=13.0", "ninja"]
+
+[tool.uv.extra-build-dependencies]
+# give the source build of `some-cuda-ext` an nvcc + headers from wheels
+some-cuda-ext = ["nvidia-cuda-nvcc-cu13", "torch"]
+```
+
+Then install the `build-nvcc` extra on the platforms that lack a prebuilt wheel
+(via the manifest `pkgs` step `extras`, gated by a platform marker).
+
+**Caveat:** `nvcc-cu13` provides a **CUDA 13** compiler. flash-attn 2.8.3 does
+**not** compile on CUDA 13 (removed `double4` types), so this path is **not**
+valid for flash-attn — flash-attn must use a prebuilt wheel. nvcc-cu13 is for
+other CUDA exts (e.g. sageattention) or a future flash version that restores
+CUDA-13 compile support. Use `nvidia-cuda-nvcc-cu12` only if an extension is
+pinned to a CUDA-12 (cu126/cu128) torch base.

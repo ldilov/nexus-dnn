@@ -123,6 +123,7 @@ async fn insert_run(repos: &Repos, dep: &DeploymentId, status: &str, kind: &str)
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();

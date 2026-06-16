@@ -175,6 +175,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "audit_chain_snapshot",
         sql: include_str!("../../storage/migrations/024_audit_chain_snapshot.sql"),
     },
+    Migration {
+        version: 25,
+        name: "run_prebuilt_segments",
+        sql: include_str!("../../storage/migrations/025_run_prebuilt_segments.sql"),
+    },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");

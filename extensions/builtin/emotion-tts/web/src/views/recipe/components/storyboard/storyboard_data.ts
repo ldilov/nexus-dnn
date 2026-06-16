@@ -161,6 +161,14 @@ export function buildEmotions(presets: readonly VectorPreset[]): readonly Emotio
   return out;
 }
 
+export function presetVectorForEmotionId(
+  presets: readonly VectorPreset[],
+  emotionId: string,
+): number[] | null {
+  const match = presets.find((p) => slug(p.presetName) === emotionId);
+  return match ? match.vector : null;
+}
+
 /** Split a script into paragraphs of clickable WORD segments — each word keeps
  * its trailing whitespace, so concatenating segments in order reproduces the
  * source losslessly (previews + ordering stay exact). Word granularity lets a
@@ -276,8 +284,23 @@ export function statusSummary(jobs: readonly Job[]): string {
   return parts.join("  ·  ");
 }
 
+/// Neutral placeholder used when a deployment has no voices yet, or a job
+/// references a voice that no longer exists — keeps every `voiceById` caller
+/// crash-safe (it always gets a real Voice with all fields populated).
+export const FALLBACK_VOICE: Voice = {
+  id: "",
+  name: "Unassigned",
+  role: "",
+  icon: "graphic_eq",
+  color: "var(--on-surface-variant, #c4c7c5)",
+  rgb: "120,124,128",
+  onColor: "#15171a",
+  initial: "—",
+  lib: "",
+};
+
 export function voiceById(voices: readonly Voice[], id: string): Voice {
-  return voices.find((v) => v.id === id) ?? (voices[0] as Voice);
+  return voices.find((v) => v.id === id) ?? voices[0] ?? FALLBACK_VOICE;
 }
 
 export function emotionLabel(emotions: readonly EmotionOption[], id: string): string {

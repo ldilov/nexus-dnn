@@ -8,7 +8,7 @@ interface ModuleCardProps {
   module: ModuleSummary;
   onOpenDetail: (moduleId: string) => void;
   onOpenBlueprint: (moduleId: string, recipeId?: string) => void;
-  onDeployInstance: (moduleId: string, recipeId?: string) => void;
+  onDeployInstance: (moduleId: string, recipeId?: string, suggestedName?: string) => void;
   deploying?: boolean;
 }
 
@@ -30,9 +30,9 @@ export function ModuleCard({
   const handleDeploy = useCallback(
     (recipeId?: string) => {
       setPickerOpen(false);
-      onDeployInstance(module.module_id, recipeId ?? primary?.recipe_id);
+      onDeployInstance(module.module_id, recipeId ?? primary?.recipe_id, module.display_name);
     },
-    [onDeployInstance, module.module_id, primary?.recipe_id],
+    [onDeployInstance, module.module_id, primary?.recipe_id, module.display_name],
   );
 
   const handleBlueprint = useCallback(

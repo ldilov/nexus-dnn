@@ -325,6 +325,11 @@ pub struct CreateRunBody {
     pub global_emotion: Option<Value>,
     #[serde(default)]
     pub generation: Option<Value>,
+    /// Phase 1 (storyboard queue → Generate). Optional explicit segment list
+    /// `[{text, voice_asset_id, emotion?}]`. When present the dispatcher
+    /// synthesises these verbatim and ignores `script` parsing / mappings.
+    #[serde(default)]
+    pub prebuilt_segments: Option<Value>,
 }
 
 fn default_parser_mode() -> String {
@@ -459,6 +464,7 @@ async fn create_run_impl(
         error_category: None,
         error_detail: None,
         export_zip_stale_at: None,
+        prebuilt_segments_json: body.prebuilt_segments.as_ref().map(|v| v.to_string()),
     };
     state.repos.runs.insert(&row).await?;
 
@@ -655,6 +661,7 @@ async fn resume_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -
         error_category: None,
         error_detail: None,
         export_zip_stale_at: None,
+        prebuilt_segments_json: original.prebuilt_segments_json.clone(),
     };
     state.repos.runs.insert(&resumed).await?;
     state
@@ -731,6 +738,7 @@ async fn test_line_impl(
         error_category: None,
         error_detail: None,
         export_zip_stale_at: None,
+        prebuilt_segments_json: None,
     };
     state.repos.runs.insert(&row).await?;
     state

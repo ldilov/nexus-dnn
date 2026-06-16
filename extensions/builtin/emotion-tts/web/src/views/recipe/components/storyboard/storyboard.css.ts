@@ -214,7 +214,7 @@ export const castModeBar = style({
 });
 
 export const castModeBtn = style({
-  fontFamily: vars.font.ui,
+  fontFamily: vars.font.body,
   fontSize: "11px",
   fontWeight: 600,
   padding: "5px 11px",
@@ -222,7 +222,7 @@ export const castModeBtn = style({
   cursor: "pointer",
   border: "none",
   background: "transparent",
-  color: vars.color.textVariant,
+  color: vars.color.textMuted,
   transition: `all ${vars.motion.fast}`,
 });
 

@@ -221,6 +221,7 @@ async fn seed_world() -> (axum::Router, Repos, DeploymentId, RunId, UtteranceId)
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();

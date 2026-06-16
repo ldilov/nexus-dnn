@@ -160,6 +160,32 @@ export const navItemLabelVisible = style({
   opacity: 1,
 });
 
+export const watermark = style({
+  flexShrink: 0,
+  display: "flex",
+  justifyContent: "center",
+  paddingBottom: vars.space.insetSm,
+  paddingLeft: vars.space.insetMd,
+  paddingRight: vars.space.insetMd,
+  overflow: "hidden",
+});
+
+export const watermarkText = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  color: vars.color.text.muted,
+  letterSpacing: "0.04em",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  opacity: 0,
+  transition: `opacity 200ms ${vars.motion.easingDefault}`,
+});
+
+export const watermarkTextVisible = style({
+  opacity: 0.6,
+});
+
 export const pinButton = style({
   display: "flex",
   alignItems: "center",

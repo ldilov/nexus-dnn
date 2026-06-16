@@ -158,6 +158,7 @@ async fn seed_run_with_artifacts(
             error_category: None,
             error_detail: None,
             export_zip_stale_at: None,
+            prebuilt_segments_json: None,
         })
         .await
         .unwrap();

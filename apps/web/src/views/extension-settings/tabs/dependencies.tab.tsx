@@ -34,8 +34,10 @@ export interface DependenciesTabProps {
 export function DependenciesTab({ extensionId }: DependenciesTabProps) {
   const swrKey = `/extensions/${extensionId}/dependencies`;
   // audit-allow: io-boundary — direct fetch outside services/* layer, scoped to feature
-  const { data, error, isLoading, mutate } = useSWR(swrKey, () =>
-    fetchDependencies(extensionId),
+  const { data, error, isLoading, mutate } = useSWR(
+    swrKey,
+    () => fetchDependencies(extensionId),
+    { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 2000 },
   );
 
   const handleCompleted = useCallback(
@@ -170,7 +172,12 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
   }, [data]);
 
   if (isLoading) {
-    return <div className={s.emptyState}>Loading dependencies…</div>;
+    return (
+      <div className={s.loadingRow} role="status" aria-live="polite">
+        <span className={s.spinner} aria-hidden="true" />
+        Loading dependencies…
+      </div>
+    );
   }
   if (error) {
     return (

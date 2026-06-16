@@ -18,6 +18,13 @@ export interface GlobalEmotion {
   emotionAlpha?: number;
 }
 
+export interface PrebuiltSegment {
+  text: string;
+  voice_asset_id: string;
+  speaker_label?: string;
+  emotion?: { mode: "emotion_vector"; vector: number[]; emotionAlpha?: number } | null;
+}
+
 export interface CreateRunRequest {
   script: string;
   parserMode?: ParserMode;
@@ -29,6 +36,7 @@ export interface CreateRunRequest {
   cachePolicy?: CachePolicy;
   globalEmotion?: GlobalEmotion;
   generation?: Record<string, unknown>;
+  prebuiltSegments?: PrebuiltSegment[];
   createZipBundle?: boolean;
   includePreviewMix?: boolean;
   includeManifestJson?: boolean;

@@ -5,7 +5,8 @@ resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
     "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')",
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "(python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux')",
     "sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 
@@ -201,11 +202,11 @@ name = "flash-attn"
 version = "2.8.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')",
+    "(python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux')",
 ]
 dependencies = [
-    { name = "einops", marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')" },
-    { name = "torch", marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')" },
+    { name = "einops", marker = "(python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux')" },
+    { name = "torch", marker = "(python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee264754709c22963447f7f8134613fd9ce80984ed0dab7/flash_attn-2.8.3.tar.gz", hash = "sha256:1e71dd64a9e0280e0447b8a0c2541bad4bf6ac65bdeaa2f90e51a9e57de0370d", size = 8447812, upload-time = "2025-08-15T08:28:12.911Z" }
 
@@ -222,6 +223,27 @@ dependencies = [
 ]
 wheels = [
     { filename = "flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl", hash = "sha256:fe6ff6b54352031df281ffb7f83b844397552d9019eb6ef5d74472fed1385cae" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "einops" },
+    { name = "torch" },
+]
+
+[[package]]
+name = "flash-attn"
+version = "2.8.3+cu132torch2.12"
+source = { path = "../../../../binaries/linux-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-linux_x86_64.whl" }
+resolution-markers = [
+    "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "einops", marker = "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torch", marker = "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+wheels = [
+    { filename = "flash_attn-2.8.3+cu132torch2.12-cp312-cp312-linux_x86_64.whl", hash = "sha256:875c1a10d3659deb5484496bfd66aa9149dd3012801fcbbac0bfefaa57ccc4d1" },
 ]
 
 [package.metadata]
@@ -558,8 +580,9 @@ diffusers = [
     { name = "transformers" },
 ]
 flash = [
-    { name = "flash-attn", version = "2.8.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux')" },
+    { name = "flash-attn", version = "2.8.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux')" },
     { name = "flash-attn", version = "2.8.3", source = { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" }, marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../../../../binaries/linux-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-linux_x86_64.whl" }, marker = "python_full_version >= '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" }, marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
 ]
@@ -579,7 +602,8 @@ requires-dist = [
     { name = "einops", marker = "extra == 'diffusers'", specifier = ">=0.8" },
     { name = "ffmpeg-python", specifier = ">=0.2" },
     { name = "flash-attn", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'flash'", path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl" },
-    { name = "flash-attn", marker = "(python_full_version != '3.12.*' and sys_platform == 'linux' and extra == 'flash') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'flash')", specifier = ">=2.8" },
+    { name = "flash-attn", marker = "(python_full_version != '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'flash') or (python_full_version != '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'flash') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'flash')", specifier = ">=2.8" },
+    { name = "flash-attn", marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'flash'", path = "../../../../binaries/linux-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-linux_x86_64.whl" },
     { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'win32' and extra == 'flash'", path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl" },
     { name = "flash-attn", marker = "(python_full_version < '3.11' and sys_platform == 'win32' and extra == 'flash') or (python_full_version >= '3.13' and sys_platform == 'win32' and extra == 'flash')" },
     { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'flash'", path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl" },

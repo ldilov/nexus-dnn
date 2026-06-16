@@ -62,14 +62,16 @@ allow-direct-references = true
 torch = [{ index = "pytorch-cu132" }]
 torchvision = [{ index = "pytorch-cu132" }]
 flash-attn = [
-  # Prebuilt wheels per platform (cu132 / torch 2.12) from the repo-global
-  # binaries/ tree (shared across extensions). aarch64 + windows ship vendored
-  # wheels; linux-amd64 resolves a wheel from the index (PyPI) — if none
-  # matches, the CUDA toolkit is required to source-build.
+  # Prebuilt cp312 wheels for ALL THREE platforms (torch 2.12 / cu132) from the
+  # repo-global binaries/ tree — svi2 installs 100% with no source build / nvcc.
+  # win-amd64 + linux-amd64 from mjun0812/flash-attention-prebuild-wheels;
+  # linux-aarch64 built on GB10/CUDA13 (generic 2.8.3, loads vs torch cu132).
   # windows-amd64
   { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.12'" },
   { path = "../../../../binaries/win-amd64/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.11'" },
-  # linux-aarch64 (built on GB10 / CUDA 13, cpython 3.12)
+  # linux-amd64 (x86_64)
+  { path = "../../../../binaries/linux-amd64/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
+  # linux-aarch64
   { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
 ]
 
