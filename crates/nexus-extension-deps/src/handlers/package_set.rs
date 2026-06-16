@@ -101,7 +101,10 @@ impl StepHandler for PackageSetHandler {
             ));
         }
         for extra in &parsed.extras {
-            let starts_alnum = extra.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+            let starts_alnum = extra
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
             let valid = starts_alnum
                 && extra
                     .chars()
@@ -110,9 +113,7 @@ impl StepHandler for PackageSetHandler {
                 return Err(DepError::invalid_spec(
                     "",
                     "extras",
-                    format!(
-                        "invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"
-                    ),
+                    format!("invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"),
                 ));
             }
         }
@@ -574,6 +575,126 @@ async fn dir_size(path: &Path) -> Result<u64, DepError> {
     Ok(total)
 }
 
+/// Max number of payload entries sampled per `RECORD` before giving up. A
+/// healthy package needs at most one present payload to clear; a broken one is
+/// flagged on the first missing payload.
+const RECORD_PAYLOAD_SAMPLE: usize = 2;
+
+/// Resolve the venv's `site-packages` directory across POSIX/Windows layouts.
+/// Returns the first candidate that exists, or `None` when neither does.
+fn site_packages_dir(venv: &Path) -> Option<PathBuf> {
+    let windows_layout = venv.join("Lib").join("site-packages");
+    if windows_layout.is_dir() {
+        return Some(windows_layout);
+    }
+    let lib = venv.join("lib");
+    let mut entries = std::fs::read_dir(&lib).ok()?;
+    while let Some(entry) = entries.next().and_then(Result::ok) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("python") {
+            let candidate = entry.path().join("site-packages");
+            if candidate.is_dir() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Normalize a `<distribution>-<version>.dist-info` directory name into the
+/// PEP 503 package name. The wheel distribution part never contains a raw `-`
+/// (it is escaped to `_`), so the first `-` is the name/version separator: take
+/// the substring before it, then map `_`/`.` to `-` and lowercase.
+fn dist_info_to_package_name(dir_name: &str) -> Option<String> {
+    let stem = dir_name.strip_suffix(".dist-info")?;
+    let distribution = stem.split('-').next().filter(|s| !s.is_empty())?;
+    let collapsed: String = distribution
+        .chars()
+        .map(|c| if matches!(c, '_' | '.') { '-' } else { c })
+        .collect();
+    Some(collapsed.to_lowercase())
+}
+
+/// True when the recorded `RECORD` path is a payload file worth sampling: not
+/// the package's own metadata, not an out-of-tree script (`../`), not a `.pyc`.
+fn is_sampleable_payload(record_path: &str, own_dist_info_prefix: &str) -> bool {
+    !record_path.is_empty()
+        && !record_path.starts_with(own_dist_info_prefix)
+        && !record_path.starts_with("../")
+        && !record_path.starts_with("..\\")
+        && !record_path.ends_with(".pyc")
+}
+
+/// True when `<site_packages>/<record_path>` is present and non-empty. Guards
+/// against `..` traversal escaping site-packages by rejecting any path whose
+/// components are not plain names.
+fn payload_present(site_packages: &Path, record_path: &str) -> bool {
+    let rel = Path::new(record_path);
+    if rel
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return false;
+    }
+    let resolved = site_packages.join(rel);
+    std::fs::metadata(&resolved)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
+}
+
+/// Scan a venv for packages with a recorded `.dist-info/RECORD` whose payload
+/// files are missing or zero-size on disk — the signature of a partial `uv`
+/// install where the dist-info exists but materialization was interrupted.
+///
+/// For each dist-info, samples the first [`RECORD_PAYLOAD_SAMPLE`] non-metadata,
+/// in-tree payload entries; the package is flagged on the first entry that is
+/// absent or empty. An unreadable/missing RECORD is skipped (never flagged) so
+/// only a confirmed-missing payload forces a re-sync. Returns the normalized
+/// names (PEP 503) of all flagged packages.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn venv_partial_install_packages(venv: &Path) -> Vec<String> {
+    let Some(site_packages) = site_packages_dir(venv) else {
+        return Vec::new();
+    };
+    let entries = match std::fs::read_dir(&site_packages) {
+        Ok(rd) => rd,
+        Err(_) => return Vec::new(),
+    };
+    let mut broken = Vec::new();
+    for entry in entries.flatten() {
+        let dir_name = entry.file_name();
+        let dir_name = dir_name.to_string_lossy();
+        if !dir_name.ends_with(".dist-info") {
+            continue;
+        }
+        let Some(package) = dist_info_to_package_name(&dir_name) else {
+            continue;
+        };
+        let record = match std::fs::read_to_string(entry.path().join("RECORD")) {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+        let own_prefix = format!("{dir_name}/");
+        let mut sampled = 0usize;
+        for line in record.lines() {
+            if sampled >= RECORD_PAYLOAD_SAMPLE {
+                break;
+            }
+            let record_path = line.split(',').next().unwrap_or("").trim();
+            if !is_sampleable_payload(record_path, &own_prefix) {
+                continue;
+            }
+            sampled += 1;
+            if !payload_present(&site_packages, record_path) {
+                broken.push(package);
+                break;
+            }
+        }
+    }
+    broken
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -781,6 +902,100 @@ mod tests {
             msg.contains("extension_local"),
             "validation error must name the supported value, got: {msg}"
         );
+    }
+
+    /// Build a unique temp site-packages dir under the OS temp root and return
+    /// `(venv_root, site_packages)`. Caller cleans up `venv_root`.
+    fn temp_venv_site_packages(nonce: &str) -> (PathBuf, PathBuf) {
+        let unique = format!(
+            "nexus-pkgset-{}-{}-{:?}",
+            nonce,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let venv = std::env::temp_dir().join(unique);
+        let site_packages = if cfg!(windows) {
+            venv.join("Lib").join("site-packages")
+        } else {
+            venv.join("lib").join("python3.12").join("site-packages")
+        };
+        std::fs::create_dir_all(&site_packages).expect("create site-packages");
+        (venv, site_packages)
+    }
+
+    fn write_record(site_packages: &Path, dist_info: &str, lines: &[&str]) {
+        let dir = site_packages.join(dist_info);
+        std::fs::create_dir_all(&dir).expect("create dist-info");
+        std::fs::write(dir.join("RECORD"), lines.join("\n")).expect("write RECORD");
+    }
+
+    #[test]
+    fn partial_install_flags_package_with_missing_payload() {
+        let (venv, site) = temp_venv_site_packages("missing");
+        write_record(
+            &site,
+            "nvidia_cudnn_cu13-9.19.0.56.dist-info",
+            &[
+                "nvidia/cudnn/lib/libcudnn.so.9,,",
+                "nvidia_cudnn_cu13-9.19.0.56.dist-info/RECORD,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert_eq!(broken, vec!["nvidia-cudnn-cu13".to_owned()]);
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_clean_when_payload_present() {
+        let (venv, site) = temp_venv_site_packages("present");
+        let payload = site.join("nvidia").join("cudnn").join("lib");
+        std::fs::create_dir_all(&payload).expect("create payload dir");
+        std::fs::write(payload.join("libcudnn.so.9"), b"x").expect("write payload");
+        write_record(
+            &site,
+            "nvidia_cudnn_cu13-9.19.0.56.dist-info",
+            &[
+                "nvidia/cudnn/lib/libcudnn.so.9,,",
+                "nvidia_cudnn_cu13-9.19.0.56.dist-info/RECORD,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert!(
+            broken.is_empty(),
+            "present payload must not flag: {broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_empty_site_packages_is_clean() {
+        let (venv, _site) = temp_venv_site_packages("empty");
+        let broken = venv_partial_install_packages(&venv);
+        assert!(broken.is_empty(), "empty venv must be clean: {broken:?}");
+        let _ = std::fs::remove_dir_all(&venv);
+    }
+
+    #[test]
+    fn partial_install_metadata_only_record_is_clean() {
+        let (venv, site) = temp_venv_site_packages("metaonly");
+        write_record(
+            &site,
+            "tiny_pkg-1.0.0.dist-info",
+            &[
+                "tiny_pkg-1.0.0.dist-info/METADATA,,",
+                "tiny_pkg-1.0.0.dist-info/RECORD,,",
+                "tiny_pkg-1.0.0.dist-info/WHEEL,,",
+            ],
+        );
+        let broken = venv_partial_install_packages(&venv);
+        assert!(
+            broken.is_empty(),
+            "self-metadata-only RECORD must not flag: {broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&venv);
     }
 
     mod stubs {
