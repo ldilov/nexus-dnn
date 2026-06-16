@@ -34,6 +34,13 @@ RUN curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-lin
  && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY . .
+# Build the web app up front so apps/web/dist exists before nexus-api's
+# rust-embed embeds it. nexus-api compiles before nexus-core's build.rs runs,
+# so relying on that build.rs to emit dist in time is a race that loses on a
+# clean build (`#[derive(RustEmbed)] folder ... does not exist`). Building it
+# here makes it deterministic; build.rs may rebuild it later, which is a no-op.
+RUN pnpm --dir apps/web install \
+ && pnpm --dir apps/web run build
 RUN cargo build --release -p nexus-core --bin nexus-dnn \
  && cp target/release/nexus-dnn /usr/local/bin/nexus-dnn
 
@@ -56,8 +63,14 @@ COPY --from=builder /app/extensions/builtin /usr/local/share/nexus-dnn/extension
 COPY --from=builder /app/binaries /usr/local/share/nexus-dnn/binaries
 COPY --from=builder /app/binaries/linux-aarch64/sd-cli-linux-aarch64 /usr/local/bin/sd
 RUN chmod +x /usr/local/bin/sd
+# EmotionTTS concurrent-worker ceiling — the recipe UI offers 1..this many at
+# runtime start. Each worker is one resident IndexTTS-2 model (~N× VRAM); the
+# pool providers are lazy so an unused ceiling costs nothing, and the active
+# cap defaults to 1 (serial) until the user picks more. Override per container:
+# `docker run -e EMOTIONTTS_MAX_WORKERS=2 ...` (hard max 8).
 ENV NEXUS_DATA_DIR=/data \
-    NEXUS_PORT=3000
+    NEXUS_PORT=3000 \
+    EMOTIONTTS_MAX_WORKERS=4
 EXPOSE 3000
 VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/nexus-dnn"]
