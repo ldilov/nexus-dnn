@@ -60,7 +60,7 @@ export interface VoiceCardProps {
   onRename: (next: string) => Promise<void> | void;
   onCopyName: () => void;
   onDelete?: (() => void) | undefined;
-  onCreateCharacter?: (() => void) | undefined;
+  onCreateCharacter?: ((characterName: string) => void) | undefined;
   /** Notifies the parent that audio playback finished naturally so its
    * "currently playing" tracking can clear. */
   onPlaybackEnded?: () => void;
@@ -80,7 +80,10 @@ export function VoiceCard({
 }: VoiceCardProps): JSX.Element {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(asset.displayName);
+  const [creatingCharacter, setCreatingCharacter] = useState(false);
+  const [charDraft, setCharDraft] = useState(asset.displayName);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const charInputRef = useRef<HTMLInputElement>(null);
 
   const seed = useMemo(() => seedFromSha(asset.contentSha256), [asset.contentSha256]);
   const bars = useMemo(() => buildBars(seed, BAR_COUNT), [seed]);
@@ -113,6 +116,33 @@ export function VoiceCard({
       await onRename(trimmed);
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const beginCreateCharacter = (): void => {
+    setCharDraft(asset.displayName);
+    setCreatingCharacter(true);
+  };
+
+  const submitCreateCharacter = (): void => {
+    const trimmed = charDraft.trim();
+    if (!trimmed) {
+      charInputRef.current?.focus();
+      return;
+    }
+    setCreatingCharacter(false);
+    onCreateCharacter?.(trimmed);
+  };
+
+  const cancelCreateCharacter = (): void => {
+    setCreatingCharacter(false);
+  };
+
+  const onCharBlur = (): void => {
+    if (charDraft.trim()) {
+      submitCreateCharacter();
+    } else {
+      cancelCreateCharacter();
     }
   };
 
@@ -182,36 +212,83 @@ export function VoiceCard({
       </button>
 
       <footer className={css.foot}>
-        {usedBy.length > 0 ? (
-          <span className={css.usedBy}>
-            <span>used by</span>
-            {usedBy.map((u) => (
-              <span
-                key={u.characterName}
-                className={css.usedChip}
-                style={{ color: u.color, borderColor: u.color }}
-              >
-                {u.characterName}
-              </span>
-            ))}
-          </span>
-        ) : (
-          <span className={css.usedBy}>unassigned</span>
-        )}
-        <span className={css.actions}>
-          {onCreateCharacter && (
+        {creatingCharacter ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
+            <input
+              ref={charInputRef}
+              className={css.renameInput}
+              style={{ flex: 1, minWidth: 0 }}
+              value={charDraft}
+              autoFocus
+              placeholder="Character name"
+              onChange={(e) => setCharDraft(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={onCharBlur}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitCreateCharacter();
+                } else if (e.key === "Escape") {
+                  cancelCreateCharacter();
+                }
+              }}
+              aria-label="New character name"
+            />
             <Button
               variant="ghost"
               size="xs"
               iconOnly
-              title="Create character from this voice"
-              aria-label="Create character from this voice"
-              onClick={onCreateCharacter}
+              title="Add character"
+              aria-label="Confirm add character"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={submitCreateCharacter}
             >
-              ＋
+              ✓
             </Button>
-          )}
-          <Button
+            <Button
+              variant="ghost"
+              size="xs"
+              iconOnly
+              title="Cancel"
+              aria-label="Cancel add character"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={cancelCreateCharacter}
+            >
+              ✕
+            </Button>
+          </span>
+        ) : (
+          <>
+            {usedBy.length > 0 ? (
+              <span className={css.usedBy}>
+                <span>used by</span>
+                {usedBy.map((u) => (
+                  <span
+                    key={u.characterName}
+                    className={css.usedChip}
+                    style={{ color: u.color, borderColor: u.color }}
+                  >
+                    {u.characterName}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className={css.usedBy}>unassigned</span>
+            )}
+            <span className={css.actions}>
+              {onCreateCharacter && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  iconOnly
+                  title="Create character from this voice"
+                  aria-label="Create character from this voice"
+                  onClick={beginCreateCharacter}
+                >
+                  ＋
+                </Button>
+              )}
+              <Button
             variant="ghost"
             size="xs"
             iconOnly
@@ -244,7 +321,9 @@ export function VoiceCard({
               ✕
             </Button>
           )}
-        </span>
+            </span>
+          </>
+        )}
       </footer>
 
       {streamUrl && (

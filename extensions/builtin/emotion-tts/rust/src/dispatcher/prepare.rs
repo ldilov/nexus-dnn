@@ -677,6 +677,10 @@ fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> GlobalEm
                 return GlobalEmotion::default();
             };
             if arr.len() != 8 {
+                tracing::warn!(
+                    vector_len = arr.len(),
+                    "emotion_vector payload is not length 8; emotion discarded"
+                );
                 return GlobalEmotion::default();
             }
             let mut out = [0.0f64; 8];

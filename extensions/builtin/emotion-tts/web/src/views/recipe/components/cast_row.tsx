@@ -18,6 +18,7 @@ export interface CastRowProps {
   onAssignPreset?: (presetId: string) => void;
   onUploadFile?: (file: File) => void;
   onClearMapping?: () => void;
+  onRename?: (next: string) => void;
 }
 
 export function CastRow({
@@ -33,6 +34,7 @@ export function CastRow({
   onAssignPreset,
   onUploadFile,
   onClearMapping,
+  onRename,
 }: CastRowProps): JSX.Element {
   const [dragOver, setDragOver] = useState(false);
   const speakerAsset = mapping
@@ -102,6 +104,38 @@ export function CastRow({
       </button>
       {active && (
         <div className={css.expansion}>
+          {isMapped && lineCount === 0 && onRename && (
+            <div className={css.expansionRow}>
+              <span className={css.expansionLabel}>Character name</span>
+              <input
+                defaultValue={characterName}
+                placeholder="Character name"
+                aria-label="Rename character"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: "var(--surface-floor, #0c0e10)",
+                  border: "1px solid rgba(70,72,74,0.4)",
+                  borderRadius: 8,
+                  color: "var(--on-surface)",
+                  padding: "6px 10px",
+                  fontFamily: "var(--font-ui)",
+                  fontSize: 13,
+                  outline: "none",
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next && next !== characterName) onRename(next);
+                }}
+              />
+            </div>
+          )}
           <div className={css.expansionRow}>
             <span className={css.expansionLabel}>Drop new audio</span>
             <label

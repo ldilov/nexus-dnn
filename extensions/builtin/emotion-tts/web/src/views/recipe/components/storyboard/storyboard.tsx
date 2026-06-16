@@ -120,6 +120,12 @@ export function Storyboard({
     });
   }, [paragraphs]);
 
+  const voiceIds = useMemo(() => new Set(voices.map((v) => v.id)), [voices]);
+  const isVoiceMissing = useCallback(
+    (job: Job): boolean => !voiceIds.has(job.voiceId),
+    [voiceIds],
+  );
+
   const measurePos = useCallback((el: HTMLElement | null | undefined): PopPos => {
     const c = canvasRef.current;
     if (!c || !el) return { top: 60, left: 0 };
@@ -197,6 +203,7 @@ export function Storyboard({
       return;
     }
     if (selection.length === 0) return;
+    if (rangeText(paragraphs, selection).trim() === "") return;
     if (!rangeIsFree(jobs, selection)) return;
     const id = nextJobId();
     const job: Job = { id, segIds: [...selection], voiceId: draftVoice, emotion: draftEmotion, status: "queued" };
@@ -205,7 +212,7 @@ export function Storyboard({
     setSelection([]);
     setSelAnchor(null);
     setPopoverPos(null);
-  }, [editingJobId, selection, jobs, draftVoice, draftEmotion, nextJobId]);
+  }, [editingJobId, selection, jobs, paragraphs, draftVoice, draftEmotion, nextJobId]);
 
   const removeJob = useCallback((id: string) => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
@@ -268,15 +275,18 @@ export function Storyboard({
   const sortedJobs = useMemo(() => jobsInScriptOrder(paragraphs, jobs), [paragraphs, jobs]);
   const queueSegments = useMemo<PrebuiltSegment[]>(
     () =>
-      sortedJobs.map((j) => {
-        const vec = presetVectorForEmotionId(presets, j.emotion);
-        return {
-          text: rangeText(paragraphs, j.segIds),
-          voice_asset_id: j.voiceId,
-          speaker_label: (voiceById(voices, j.voiceId) ?? FALLBACK_VOICE).name,
-          emotion: vec ? { mode: "emotion_vector", vector: vec } : null,
-        };
-      }),
+      sortedJobs
+        .filter((j) => voices.some((v) => v.id === j.voiceId))
+        .filter((j) => rangeText(paragraphs, j.segIds).trim() !== "")
+        .map((j) => {
+          const vec = presetVectorForEmotionId(presets, j.emotion);
+          return {
+            text: rangeText(paragraphs, j.segIds),
+            voice_asset_id: j.voiceId,
+            speaker_label: (voiceById(voices, j.voiceId) ?? FALLBACK_VOICE).name,
+            emotion: vec ? { mode: "emotion_vector", vector: vec } : null,
+          };
+        }),
     [sortedJobs, paragraphs, voices, presets],
   );
   const lastQueueJsonRef = useRef<string | null>(null);
@@ -597,6 +607,7 @@ export function Storyboard({
         <div ref={carRef} className={css.carousel}>
           {sortedJobs.map((j) => {
             const v = voiceById(voices, j.voiceId) ?? FALLBACK_VOICE;
+            const voiceMissing = isVoiceMissing(j);
             const meta = STATUS_META[j.status];
             const active = focusedJobId === j.id || hoveredJobId === j.id;
             const playing = playingJobId === j.id;
@@ -606,9 +617,10 @@ export function Storyboard({
                 key={j.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`${v.name} ${labels[j.id]} — ${emotionLabel(emotions, j.emotion)} — ${meta.label}`}
+                aria-label={`${v.name} ${labels[j.id]} — ${emotionLabel(emotions, j.emotion)} — ${voiceMissing ? "voice removed — recast" : meta.label}`}
                 className={css.card}
-                style={cardStyle(v, active)}
+                data-broken={voiceMissing ? "true" : "false"}
+                style={voiceMissing ? brokenCardStyle(active) : cardStyle(v, active)}
                 onClick={() => openJobEditor(j)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openJobEditor(j); }
@@ -632,6 +644,14 @@ export function Storyboard({
                     <span style={statusLabelStyle(meta, j.status)}>{meta.label}</span>
                   </span>
                 </div>
+                {voiceMissing && (
+                  <span style={BROKEN_HINT} role="status">
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }} aria-hidden="true">
+                      error
+                    </span>
+                    voice removed — recast
+                  </span>
+                )}
                 <div className={css.cardFoot}>
                   <button
                     type="button"
@@ -797,6 +817,28 @@ function cardStyle(v: Voice, active: boolean): CSSProperties {
       : `inset 3px 0 0 ${v.color}`,
   };
 }
+
+function brokenCardStyle(active: boolean): CSSProperties {
+  const broken = "var(--error, #ff6e84)";
+  return {
+    background: active ? "var(--surface-high, #1d2023)" : "var(--surface-low, #111416)",
+    transform: active ? "translateY(-2px)" : "none",
+    boxShadow: active
+      ? `inset 3px 0 0 ${broken}, 0 0 0 1px rgba(255,110,132,0.45), 0 12px 28px rgba(0,0,0,0.5)`
+      : `inset 3px 0 0 ${broken}, 0 0 0 1px rgba(255,110,132,0.32)`,
+  };
+}
+
+const BROKEN_HINT: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  marginTop: 6,
+  fontFamily: "var(--font-ui)",
+  fontSize: 10.5,
+  fontWeight: 500,
+  color: "var(--error, #ff6e84)",
+};
 
 function emotionChipStyle(v: Voice): CSSProperties {
   return {

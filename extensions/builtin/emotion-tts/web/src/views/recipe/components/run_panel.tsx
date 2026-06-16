@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
+import { getRuntimeHealth, type RuntimeHealth } from "../../../services/runtime_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
 import {
   STICKY_BAR_THRESHOLD,
@@ -21,6 +22,8 @@ import {
   variantStyle as buttonVariant,
 } from "../../../components/button.css";
 import { StatusPill } from "../../../components/status_pill";
+
+const HEALTH_POLL_MS = 4000;
 
 type Phase = "idle" | "starting" | "running" | "terminal" | "error";
 
@@ -51,11 +54,30 @@ export function RunPanel(props: Props): JSX.Element {
   const [segments, setSegments] = useState<Map<number, SegmentState>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
+  const [health, setHealth] = useState<RuntimeHealth | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
       unsubscribeRef.current?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async (): Promise<void> => {
+      try {
+        const h = await getRuntimeHealth();
+        if (!cancelled) setHealth(h);
+      } catch {
+        // ignore
+      }
+    };
+    void poll();
+    const id = window.setInterval(poll, HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -184,15 +206,19 @@ export function RunPanel(props: Props): JSX.Element {
   const errorIsUnmapped = error?.toLowerCase().includes("unmapped") ?? false;
 
   const diagnostics = props.diagnostics ?? [];
-  const blockingDiagnostic = diagnostics.find((d) => d.status === "fail");
+
+  const badge = health?.badge ?? "not_installed";
+  const runtimeReady = badge === "ready" || badge === "running";
 
   const generateLabel =
     phase === "starting"
       ? "Starting…"
       : phase === "running"
         ? "Generating…"
-        : "Generate";
-  const generateDisabled = !props.canGenerate || canCancel || !!blockingDiagnostic;
+        : !runtimeReady
+          ? "Start runtime to generate"
+          : "Generate";
+  const generateDisabled = !props.canGenerate || canCancel || !runtimeReady;
   const isRunning = phase === "starting" || phase === "running";
   // "idle" (breathing halo) only when we're truly ready to fire — otherwise
   // the static disabled style applies.
@@ -334,7 +360,7 @@ export function RunPanel(props: Props): JSX.Element {
           <span style={{ flex: 1 }}>Partial run — some segments failed or were cancelled.</span>
           <Button
             variant="secondary"
-            disabled={!!blockingDiagnostic}
+            disabled={false}
             onClick={async () => {
               try {
                 const resumed = await resumeRun(props.deploymentId, run.runId);

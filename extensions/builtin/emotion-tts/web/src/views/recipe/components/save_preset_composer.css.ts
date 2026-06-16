@@ -83,7 +83,7 @@ export const presetGrid = style({
 
 export const presetCard = style({
   display: "grid",
-  gridTemplateColumns: "auto 1fr auto",
+  gridTemplateColumns: "1fr auto",
   alignItems: "center",
   gap: vars.space.sm,
   padding: vars.space.sm,

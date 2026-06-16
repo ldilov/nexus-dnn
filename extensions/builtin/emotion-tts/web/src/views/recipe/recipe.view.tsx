@@ -329,7 +329,7 @@ export function RecipeView(): JSX.Element {
     return script;
   }, [editorMode, rows, vectorPresets, script, storyText]);
   const parsedLines = useMemo(() => parseDialogue(effectiveScript), [effectiveScript]);
-  const characters = useMemo(() => {
+  const scriptedCharacters = useMemo(() => {
     if (editorMode !== "story") return uniqueCharacters(parsedLines);
     const seen = new Set<string>();
     const ordered: string[] = [];
@@ -341,6 +341,18 @@ export function RecipeView(): JSX.Element {
     }
     return ordered;
   }, [editorMode, parsedLines, storyText]);
+  const characters = useMemo(() => {
+    const seen = new Set(scriptedCharacters.map((c) => c.toLowerCase()));
+    const out = [...scriptedCharacters];
+    for (const m of mappings) {
+      if (!m.isActive) continue;
+      const key = m.characterName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m.characterName);
+    }
+    return out;
+  }, [scriptedCharacters, mappings]);
   const characterColors = useMemo(() => assignCharacterColors(characters), [characters]);
   const lineCounts = useMemo(() => lineCountByCharacter(parsedLines), [parsedLines]);
 
@@ -374,7 +386,7 @@ export function RecipeView(): JSX.Element {
           setMappings((prev) =>
             prev.map((m) => (m.mappingId === updated.mappingId ? updated : m)),
           );
-          notify.success(`Updated mapping for ${characterName}`);
+          notify.success(`Updated mapping for ${existing.characterName}`);
         } else if (patch.speakerVoiceAssetId) {
           const created = await createMapping(deployment.deploymentId, {
             ...patch,
@@ -386,6 +398,26 @@ export function RecipeView(): JSX.Element {
         }
       } catch (err: unknown) {
         notify.error(err instanceof Error ? err.message : "mapping failed");
+      }
+    },
+    [mappingsByLower, deployment.deploymentId],
+  );
+
+  const handleRenameCharacter = useCallback(
+    async (oldName: string, nextName: string): Promise<void> => {
+      const trimmed = nextName.trim();
+      const existing = mappingsByLower.get(oldName.toLowerCase());
+      if (!existing || !trimmed || trimmed === existing.characterName) return;
+      try {
+        const updated = await patchMapping(deployment.deploymentId, existing.mappingId, {
+          characterName: trimmed,
+        });
+        setMappings((prev) =>
+          prev.map((m) => (m.mappingId === updated.mappingId ? updated : m)),
+        );
+        notify.success(`Renamed character to ${trimmed}`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "rename failed");
       }
     },
     [mappingsByLower, deployment.deploymentId],
@@ -425,8 +457,8 @@ export function RecipeView(): JSX.Element {
   );
 
   const handleCreateCharacterFromVoice = useCallback(
-    (asset: VoiceAsset) => {
-      void upsertMapping(asset.displayName, { speakerVoiceAssetId: asset.voiceAssetId });
+    (asset: VoiceAsset, characterName: string) => {
+      void upsertMapping(characterName, { speakerVoiceAssetId: asset.voiceAssetId });
     },
     [upsertMapping],
   );
@@ -695,6 +727,7 @@ export function RecipeView(): JSX.Element {
                     }
                     onUploadFile={(file) => handleUploadAndMap(name, file)}
                     onClearMapping={() => handleClearMapping(name)}
+                    onRename={(next) => handleRenameCharacter(name, next)}
                   />
                 </li>
               );

@@ -21,7 +21,7 @@ export interface VoiceLibraryProps {
   characterColors: Record<string, string>;
   /** Setter from the recipe view so additions/renames/deletions live-update. */
   onVoiceAssetsChange: (next: VoiceAsset[]) => void;
-  onCreateCharacterFromVoice?: (asset: VoiceAsset) => void;
+  onCreateCharacterFromVoice?: (asset: VoiceAsset, characterName: string) => void;
 }
 
 /**
@@ -316,7 +316,7 @@ export function VoiceLibrary({
                 onRename={(next) => onRename(asset.voiceAssetId, next)}
                 onCopyName={() => onCopyName(asset.displayName)}
                 onDelete={presentation === "upload" ? () => void onDelete(asset) : undefined}
-                onCreateCharacter={onCreateCharacterFromVoice ? () => onCreateCharacterFromVoice(asset) : undefined}
+                onCreateCharacter={onCreateCharacterFromVoice ? (name) => onCreateCharacterFromVoice(asset, name) : undefined}
               />
             );
           })}

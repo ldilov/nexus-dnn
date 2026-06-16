@@ -166,7 +166,9 @@ export function presetVectorForEmotionId(
   emotionId: string,
 ): number[] | null {
   const match = presets.find((p) => slug(p.presetName) === emotionId);
-  return match ? match.vector : null;
+  if (!match) return null;
+  const vector = match.vector;
+  return Array.isArray(vector) && vector.length === 8 ? vector : null;
 }
 
 /** Split a script into paragraphs of clickable WORD segments — each word keeps

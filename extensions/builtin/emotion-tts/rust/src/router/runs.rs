@@ -368,7 +368,12 @@ async fn create_run_impl(
     body: CreateRunBody,
 ) -> Result<Value> {
     let dep = DeploymentId::try_from(deployment_id)?;
-    if body.script.trim().is_empty() {
+    let has_prebuilt = body
+        .prebuilt_segments
+        .as_ref()
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| !a.is_empty());
+    if !has_prebuilt && body.script.trim().is_empty() {
         return Err(EmotionTtsError::validation("script cannot be empty"));
     }
     if !matches!(body.output_format.as_str(), "wav" | "mp3" | "flac") {
@@ -394,47 +399,63 @@ async fn create_run_impl(
         }
     };
 
-    let parse = parse_script(&body.script, parser_mode);
-    let mappings = state.repos.mappings.list_by_deployment(&dep).await?;
-    let map_out = MappingResolveOperator
-        .execute(MapInput {
-            utterances: parse.utterances.clone(),
-            mappings,
-        })
-        .await?;
+    let (unresolved_characters, predicted_filenames, parser_warnings): (
+        Vec<String>,
+        Vec<String>,
+        Vec<Value>,
+    ) = if has_prebuilt {
+        (Vec::new(), Vec::new(), Vec::new())
+    } else {
+        let parse = parse_script(&body.script, parser_mode);
+        let mappings = state.repos.mappings.list_by_deployment(&dep).await?;
+        let map_out = MappingResolveOperator
+            .execute(MapInput {
+                utterances: parse.utterances.clone(),
+                mappings,
+            })
+            .await?;
 
-    let predicted_filenames: Vec<String> = map_out
-        .resolved
-        .iter()
-        .enumerate()
-        .map(|(idx, r)| {
-            build_filename(
-                (idx + 1) as i64,
-                &r.utterance.character_display,
-                r.character_index,
-                &body.output_format,
-            )
-            .filename
-        })
-        .collect();
-
-    if !map_out.unresolved_characters.is_empty() {
-        let names = map_out
-            .unresolved_characters
+        let predicted: Vec<String> = map_out
+            .resolved
             .iter()
-            .map(|n| format!("\"{n}\""))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let count = map_out.unresolved_characters.len();
-        return Err(EmotionTtsError::Conflict(format!(
-            "{count} unmapped {} ({names}) — open the Mappings editor and map {} to a voice asset before running, \
-             or remove {} from the script. Lines without a [Character] prefix default to \"Narrator\", which also \
-             needs a mapping.",
-            if count == 1 { "character" } else { "characters" },
-            if count == 1 { "it" } else { "them" },
-            if count == 1 { "the line" } else { "those lines" },
-        )));
-    }
+            .enumerate()
+            .map(|(idx, r)| {
+                build_filename(
+                    (idx + 1) as i64,
+                    &r.utterance.character_display,
+                    r.character_index,
+                    &body.output_format,
+                )
+                .filename
+            })
+            .collect();
+
+        if !map_out.unresolved_characters.is_empty() {
+            let names = map_out
+                .unresolved_characters
+                .iter()
+                .map(|n| format!("\"{n}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let count = map_out.unresolved_characters.len();
+            return Err(EmotionTtsError::Conflict(format!(
+                "{count} unmapped {} ({names}) — open the Mappings editor and map {} to a voice asset before running, \
+                 or remove {} from the script. Lines without a [Character] prefix default to \"Narrator\", which also \
+                 needs a mapping.",
+                if count == 1 { "character" } else { "characters" },
+                if count == 1 { "it" } else { "them" },
+                if count == 1 { "the line" } else { "those lines" },
+            )));
+        }
+
+        let warnings = parse
+            .report
+            .warnings
+            .iter()
+            .map(warning_json)
+            .collect::<Vec<_>>();
+        (map_out.unresolved_characters, predicted, warnings)
+    };
 
     let run_id = RunId::new();
     let now = Utc::now().timestamp();
@@ -478,9 +499,9 @@ async fn create_run_impl(
         "runId": run_id.as_str(),
         "queuePosition": position,
         "preflight": {
-            "unresolvedCharacters": map_out.unresolved_characters,
+            "unresolvedCharacters": unresolved_characters,
             "predictedFilenames": predicted_filenames,
-            "parserWarnings": parse.report.warnings.iter().map(warning_json).collect::<Vec<_>>(),
+            "parserWarnings": parser_warnings,
         }
     }))
 }
