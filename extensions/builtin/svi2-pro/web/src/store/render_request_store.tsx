@@ -101,6 +101,8 @@ export function RenderRequestProvider({
   const [render, setRender] = useState<RenderState>(initialRenderState);
   const streamCleanup = useRef<(() => void) | null>(null);
   const stallTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const renderRef = useRef<RenderState>(render);
+  renderRef.current = render;
 
   const stopWatchdog = useCallback(() => {
     if (stallTimer.current !== null) {
@@ -128,6 +130,23 @@ export function RenderRequestProvider({
       });
     }, STALL_TICK_MS);
   }, [stopWatchdog]);
+
+  const subscribeToJob = useCallback(
+    (jobId: string) => {
+      streamCleanup.current?.();
+      streamCleanup.current = subscribeRenderStream(
+        jobId,
+        (frame) => {
+          setRender((prev) => reduceRenderFrame(prev, frame));
+        },
+        () => {
+          setRender((prev) => markStalled(prev));
+        },
+      );
+      startWatchdog();
+    },
+    [startWatchdog],
+  );
 
   const applyPresetById = useCallback(
     (preset: PresetSummary) => {
@@ -209,17 +228,8 @@ export function RenderRequestProvider({
     streamCleanup.current?.();
     const { jobId } = await startRender({ presetId, params });
     setRender(startedState(jobId, qwenEdit.enabled));
-    streamCleanup.current = subscribeRenderStream(
-      jobId,
-      (frame) => {
-        setRender((prev) => reduceRenderFrame(prev, frame));
-      },
-      () => {
-        setRender((prev) => markStalled(prev));
-      },
-    );
-    startWatchdog();
-  }, [params, presetId, qwenEdit.enabled, startWatchdog]);
+    subscribeToJob(jobId);
+  }, [params, presetId, qwenEdit.enabled, subscribeToJob]);
 
   const cancelRenderJob = useCallback(async () => {
     const jobId = render.jobId;
@@ -248,6 +258,27 @@ export function RenderRequestProvider({
     },
     [stopWatchdog],
   );
+
+  useEffect(() => {
+    const resumeIfRunning = () => {
+      const current = renderRef.current;
+      if (current.phase !== "running" || !current.jobId) return;
+      subscribeToJob(current.jobId);
+      setRender((prev) =>
+        prev.phase === "running" ? { ...prev, stalled: false, lastFrameAt: Date.now() } : prev,
+      );
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") resumeIfRunning();
+    };
+    const onFocus = () => resumeIfRunning();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [subscribeToJob]);
 
   useEffect(() => {
     return () => {
