@@ -178,6 +178,115 @@ fn sha256_hex(bytes: &[u8]) -> String {
     s
 }
 
+/// Model store modelling a partial HuggingFace family install: the family
+/// looks installed (`is_family_installed` → Some) but one declared file is
+/// absent until `start_download` runs once, after which the per-file verify
+/// reports nothing missing (the heal).
+#[derive(Default)]
+struct PartialMockModelStore {
+    download_calls: AtomicUsize,
+    healed: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait]
+impl ModelStoreClient for PartialMockModelStore {
+    async fn is_family_installed(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<PathBuf>, DepError> {
+        Ok(Some(std::env::temp_dir().join("partial-family")))
+    }
+
+    async fn verify_files_present(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+        _selection: &nexus_extension_deps::FileSelection,
+    ) -> Result<Vec<String>, DepError> {
+        if self.healed.load(Ordering::SeqCst) {
+            Ok(Vec::new())
+        } else {
+            Ok(vec!["t2v.safetensors".to_owned()])
+        }
+    }
+
+    async fn start_download(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+        _selection: &nexus_extension_deps::FileSelection,
+    ) -> Result<String, DepError> {
+        self.download_calls.fetch_add(1, Ordering::SeqCst);
+        self.healed.store(true, Ordering::SeqCst);
+        Ok("partial-job".into())
+    }
+
+    async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {
+        Ok(ModelDownloadProgress::Completed {
+            path: std::env::temp_dir().join("partial-family"),
+            bytes_placed: 1_000,
+        })
+    }
+}
+
+/// A model_artifact step whose family is on disk but is missing a declared
+/// file must probe NotSatisfied and then heal via exactly one download — not
+/// short-circuit Satisfied and let the render fail at load time.
+#[tokio::test]
+async fn partial_install_probe_returns_not_satisfied_and_run_heals() {
+    let host_dir = tempfile::tempdir().expect("tempdir");
+    let ext_dir = tempfile::tempdir().expect("tempdir");
+
+    let runtime = Arc::new(MockRuntime::default());
+    let model_store = Arc::new(PartialMockModelStore::default());
+    let handshake = Arc::new(MockHandshake::default());
+    let sink = Arc::new(CapturingSink::default());
+
+    let block = DependenciesBlock {
+        steps: vec![Step {
+            id: "models".into(),
+            step_type: "model_artifact".into(),
+            requires: vec![],
+            spec: serde_json::json!({
+                "family_id": "huggingface:Owner/Repo",
+                "files": ["i2v.safetensors", "t2v.safetensors"],
+            }),
+        }],
+    };
+
+    let registry = HandlerRegistry::default();
+    let plan = parse_dependencies_block("test.partial", block, &registry).expect("parses");
+    let runner = InstallRunner::new(plan, Arc::new(registry));
+    let progress_sink: Arc<dyn ProgressSink> = sink.clone();
+    let mut ctx = RunnerContext {
+        extension_id: "test.partial",
+        extension_dir: ext_dir.path(),
+        extension_data_dir: host_dir.path(),
+        host_data_dir: host_dir.path(),
+        model_store: model_store.clone() as Arc<dyn ModelStoreClient>,
+        runtime_bootstrapper: runtime.clone() as Arc<dyn RuntimeBootstrapper>,
+        worker_handshake: handshake.clone() as Arc<dyn WorkerHandshake>,
+        fetch_artifact: fetch_artifact_arc(),
+        progress_sink,
+        cancellation_token: CancellationToken::new(),
+        install_run_id: Uuid::nil(),
+        force: false,
+    };
+
+    let report = runner.run_install(&mut ctx).await;
+    assert!(
+        report.all_satisfied,
+        "the partial install heals to satisfied"
+    );
+    assert!(matches!(report.statuses["models"], StepStatus::Ok { .. }));
+    assert_eq!(
+        model_store.download_calls.load(Ordering::SeqCst),
+        1,
+        "exactly one download drives the heal"
+    );
+}
+
 #[tokio::test]
 async fn full_install_flow_succeeds_and_is_idempotent() {
     // Mock HTTP server for the system_binary step.
