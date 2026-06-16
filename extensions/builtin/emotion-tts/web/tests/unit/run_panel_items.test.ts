@@ -27,7 +27,9 @@ const jobs: StoryboardJob[] = [
   job("j3", "SEG-004"),
 ];
 
-// Two runs, chunked 12/3-style: chunk A = [j0,j1], chunk B = [j2,j3].
+// Two runs, chunked 12/3-style: chunk A = [j0,j1], chunk B = [j2,j3]. The
+// backend emits a 1-BASED global_index per run, so run A emits 1 and 2, run B
+// emits 1 and 2 (NOT 0 and 1).
 const chunks: RunChunk[] = [
   { runId: "runA", jobs: [jobs[0]!, jobs[1]!] },
   { runId: "runB", jobs: [jobs[2]!, jobs[3]!] },
@@ -41,33 +43,37 @@ describe("initialItems", () => {
   });
 });
 
-describe("jobIdForEvent", () => {
-  it("maps (runId, globalIndex) back to the right jobId within each run", () => {
-    expect(jobIdForEvent(chunks, "runA", 0)).toBe("j0");
-    expect(jobIdForEvent(chunks, "runA", 1)).toBe("j1");
-    expect(jobIdForEvent(chunks, "runB", 0)).toBe("j2");
-    expect(jobIdForEvent(chunks, "runB", 1)).toBe("j3");
+describe("jobIdForEvent (1-based global_index)", () => {
+  it("globalIndex=1 maps to the FIRST job in each run", () => {
+    expect(jobIdForEvent(chunks, "runA", 1)).toBe("j0");
+    expect(jobIdForEvent(chunks, "runB", 1)).toBe("j2");
   });
 
-  it("returns null for unknown run or out-of-range index", () => {
-    expect(jobIdForEvent(chunks, "ghost", 0)).toBeNull();
+  it("the highest globalIndex maps to the LAST job in each run", () => {
+    expect(jobIdForEvent(chunks, "runA", 2)).toBe("j1");
+    expect(jobIdForEvent(chunks, "runB", 2)).toBe("j3");
+  });
+
+  it("returns null for the never-emitted 0 index, unknown run, or out-of-range", () => {
+    expect(jobIdForEvent(chunks, "runA", 0)).toBeNull();
+    expect(jobIdForEvent(chunks, "ghost", 1)).toBeNull();
     expect(jobIdForEvent(chunks, "runA", 9)).toBeNull();
   });
 });
 
 describe("applyEvent", () => {
-  it("segment_started → generating, stamps runId", () => {
-    const ev: ProgressEvent = { type: "segment_started", runId: "runB", globalIndex: 1 };
+  it("segment_started → generating, stamps runId (1-based index)", () => {
+    const ev: ProgressEvent = { type: "segment_started", runId: "runB", globalIndex: 2 };
     const next = applyEvent(initialItems(jobs), chunks, ev);
     expect(next.get("j3")).toMatchObject({ status: "generating", runId: "runB" });
   });
 
-  it("segment_completed → done with duration, clears queue position", () => {
-    const start: ProgressEvent = { type: "segment_started", runId: "runA", globalIndex: 0 };
+  it("segment_completed → done with duration, clears queue position (1-based index)", () => {
+    const start: ProgressEvent = { type: "segment_started", runId: "runA", globalIndex: 1 };
     const done: ProgressEvent = {
       type: "segment_completed",
       runId: "runA",
-      globalIndex: 0,
+      globalIndex: 1,
       durationMs: 1234,
       cacheHit: false,
       audioArtifactRef: "ref",
@@ -78,11 +84,11 @@ describe("applyEvent", () => {
     expect(items.get("j0")?.queuePosition).toBeUndefined();
   });
 
-  it("segment_failed → failed with category", () => {
+  it("segment_failed → failed with category (1-based index)", () => {
     const ev: ProgressEvent = {
       type: "segment_failed",
       runId: "runB",
-      globalIndex: 0,
+      globalIndex: 1,
       failureCategory: "synthesis_failed",
       failureDetail: "boom",
     };
@@ -92,7 +98,7 @@ describe("applyEvent", () => {
 
   it("does not mutate the previous map (immutability)", () => {
     const prev = initialItems(jobs);
-    const ev: ProgressEvent = { type: "segment_started", runId: "runA", globalIndex: 0 };
+    const ev: ProgressEvent = { type: "segment_started", runId: "runA", globalIndex: 1 };
     const next = applyEvent(prev, chunks, ev);
     expect(prev.get("j0")?.status).toBe("queued");
     expect(next).not.toBe(prev);
@@ -106,19 +112,23 @@ describe("applyEvent", () => {
 });
 
 describe("allTerminal", () => {
-  it("false while any item is queued/generating, true once all done/failed", () => {
+  it("false while any item is queued/generating, true once the LAST segment of every run completes", () => {
     let items = initialItems(jobs);
     expect(allTerminal(items)).toBe(false);
-    for (const [idx, runId] of [["0", "runA"], ["1", "runA"], ["0", "runB"], ["1", "runB"]] as const) {
+    // Run A emits 1,2 and run B emits 1,2 — completing the highest index of
+    // each run must drive every item terminal (the hang-bug regression).
+    for (const [globalIndex, runId] of [[1, "runA"], [2, "runA"], [1, "runB"], [2, "runB"]] as const) {
       items = applyEvent(items, chunks, {
         type: "segment_completed",
         runId,
-        globalIndex: Number(idx),
+        globalIndex,
         durationMs: 100,
         cacheHit: false,
         audioArtifactRef: "ref",
       });
     }
+    expect(items.get("j1")?.status).toBe("done");
+    expect(items.get("j3")?.status).toBe("done");
     expect(allTerminal(items)).toBe(true);
   });
 
@@ -140,7 +150,7 @@ describe("withQueueMetrics", () => {
     let items = applyEvent(initialItems(jobs), chunks, {
       type: "segment_completed",
       runId: "runA",
-      globalIndex: 0,
+      globalIndex: 1,
       durationMs: 2000,
       cacheHit: false,
       audioArtifactRef: "ref",
@@ -158,13 +168,13 @@ describe("toRunProgressMap + countByStatus", () => {
     expect(rp.get("j0")).toMatchObject({ jobId: "j0", status: "queued", runId: null });
   });
 
-  it("counts statuses", () => {
+  it("counts statuses (1-based indices)", () => {
     let items = initialItems(jobs);
-    items = applyEvent(items, chunks, { type: "segment_started", runId: "runA", globalIndex: 0 });
+    items = applyEvent(items, chunks, { type: "segment_started", runId: "runA", globalIndex: 1 });
     items = applyEvent(items, chunks, {
       type: "segment_completed",
       runId: "runA",
-      globalIndex: 1,
+      globalIndex: 2,
       durationMs: 1,
       cacheHit: false,
       audioArtifactRef: "ref",

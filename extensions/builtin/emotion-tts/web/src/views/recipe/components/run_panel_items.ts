@@ -30,8 +30,9 @@ export interface ItemState {
  * one item finishes. */
 export const DEFAULT_ITEM_ETA_MS = 6000;
 
-/** A run's ordered jobs, paired with the run id once created. The job at
- * `globalIndex` N inside a run is `chunk.jobs[N]`. */
+/** A run's ordered jobs, paired with the run id once created. The backend emits
+ * a 1-BASED `global_index` per run (`prepare.rs` uses `idx + 1`), so the job
+ * for `globalIndex` N is `chunk.jobs[N - 1]`. */
 export interface RunChunk {
   runId: string;
   jobs: StoryboardJob[];
@@ -46,7 +47,9 @@ export function initialItems(jobs: readonly StoryboardJob[]): Map<string, ItemSt
 }
 
 /** Resolve a `(runId, globalIndex)` SSE event back to its jobId by indexing the
- * chunk's ordered job list. Returns null when the run/index is unknown. */
+ * chunk's ordered job list. `globalIndex` is 1-BASED per run (the backend emits
+ * `idx + 1`), so it maps to `chunk.jobs[globalIndex - 1]`. Returns null when the
+ * run is unknown or the index falls outside the chunk. */
 export function jobIdForEvent(
   chunks: readonly RunChunk[],
   runId: string,
@@ -54,7 +57,9 @@ export function jobIdForEvent(
 ): string | null {
   const chunk = chunks.find((c) => c.runId === runId);
   if (!chunk) return null;
-  return chunk.jobs[globalIndex]?.jobId ?? null;
+  const zeroBased = globalIndex - 1;
+  if (zeroBased < 0 || zeroBased >= chunk.jobs.length) return null;
+  return chunk.jobs[zeroBased]?.jobId ?? null;
 }
 
 /** Apply one SSE progress event to the item map, returning a new map (the input

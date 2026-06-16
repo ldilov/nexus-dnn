@@ -131,12 +131,15 @@ describe("RunPanel storyboard fan-out", () => {
       expect(streams.size).toBe(3);
     });
 
-    // runB index 1 maps to global job j3 (chunk B = [j2, j3]).
+    // Backend emits 1-BASED global_index per run. Chunk B = [j2, j3], so
+    // run B's index 1 → FIRST job j2 and index 2 → LAST job j3.
     await act(async () => {
       streams.get("runB")?.({ type: "segment_started", runId: "runB", globalIndex: 1 });
+      streams.get("runB")?.({ type: "segment_started", runId: "runB", globalIndex: 2 });
     });
     await waitFor(() => {
       const last = progressSnapshots[progressSnapshots.length - 1]!;
+      expect(last.get("j2")?.status).toBe("generating");
       expect(last.get("j3")?.status).toBe("generating");
     });
 
@@ -145,7 +148,8 @@ describe("RunPanel storyboard fan-out", () => {
     expect(generating.disabled).toBe(true);
     expect(screen.getByRole("button", { name: /Cancel all running segments/i })).toBeTruthy();
 
-    // Complete every job across all three runs → phase becomes terminal.
+    // Complete every job across all three runs (1-based indices 1 and 2 per
+    // run) → every item terminal → phase becomes terminal.
     await act(async () => {
       const done = (runId: string, idx: number): ProgressEvent => ({
         type: "segment_completed",
@@ -155,12 +159,12 @@ describe("RunPanel storyboard fan-out", () => {
         cacheHit: false,
         audioArtifactRef: "ref",
       });
-      streams.get("runA")?.(done("runA", 0));
       streams.get("runA")?.(done("runA", 1));
-      streams.get("runB")?.(done("runB", 0));
+      streams.get("runA")?.(done("runA", 2));
       streams.get("runB")?.(done("runB", 1));
-      streams.get("runC")?.(done("runC", 0));
+      streams.get("runB")?.(done("runB", 2));
       streams.get("runC")?.(done("runC", 1));
+      streams.get("runC")?.(done("runC", 2));
     });
 
     await waitFor(() => {
