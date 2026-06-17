@@ -82,10 +82,14 @@ function Probe(): null {
   return null;
 }
 
-function Harness(): ReactElement {
+function Harness({ attentionBackend }: { attentionBackend?: string } = {}): ReactElement {
+  const initialSettings =
+    attentionBackend === undefined
+      ? undefined
+      : { ...DEFAULT_SETTINGS, attentionBackend };
   return (
     <SWRConfig value={{ provider: () => new Map() }}>
-      <RenderRequestProvider>
+      <RenderRequestProvider initialSettings={initialSettings}>
         <Probe />
         <AttentionSelect />
       </RenderRequestProvider>
@@ -184,6 +188,22 @@ describe("AttentionSelect — capabilities resolved (200)", () => {
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({ attentionBackend: "sdpa" }),
     );
+  });
+
+  test("keeps a saved unsupported backend selected and warns it will fall back", async () => {
+    render(<Harness attentionBackend="flash3_fp4" />);
+    await waitFor(() => screen.getByRole("option", { name: "FlashAttention 3 FP4" }));
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("flash3_fp4");
+
+    const flash3 = screen.getByRole("option", {
+      name: "FlashAttention 3 FP4",
+    }) as HTMLOptionElement;
+    expect(flash3.disabled).toBe(true);
+    expect(flash3.title).toBe("flash3_fp4 requires sm_90 (got sm_120)");
+
+    expect(screen.getByText(/will fall\s+back to sdpa at render time/i)).toBeDefined();
   });
 });
 

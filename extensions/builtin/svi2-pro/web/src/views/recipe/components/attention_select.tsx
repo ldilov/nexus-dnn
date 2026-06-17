@@ -30,6 +30,7 @@ export function AttentionSelect(): ReactElement {
 
   const caps = capsQuery.data;
   const capsUnavailable = caps === undefined;
+  const capsFailed = capsQuery.error !== undefined;
 
   const selectedCap = caps?.backends.find((b) => b.id === selected);
   const selectedUnsupported = selectedCap !== undefined && !selectedCap.supported;
@@ -77,7 +78,7 @@ export function AttentionSelect(): ReactElement {
           </svg>
         </span>
       </div>
-      {capsUnavailable && (
+      {capsFailed && (
         <span className={styles.hint}>
           GPU capabilities unavailable — all options shown.
         </span>
