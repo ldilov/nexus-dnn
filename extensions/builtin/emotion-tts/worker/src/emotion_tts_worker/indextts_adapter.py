@@ -338,12 +338,21 @@ class IndexTtsAdapter:
                 _ckpt("on_step kwarg installed")
 
             _ckpt("calling IndexTTS2.infer() — heavy work begins")
-            self._model.infer(
+            # IndexTTS's torchaudio.save corrupts int16 PCM on this torch/cu130
+            # aarch64 stack (saturated garbage); take the array + save via soundfile.
+            infer_kwargs["stream_return"] = False
+            sr, wav_data = self._model.infer(
                 spk_audio_prompt=segment.speaker_audio_abs,
                 text=segment.text,
-                output_path=segment.output_target_abs,
+                output_path=None,
                 **infer_kwargs,
             )
+            import numpy as _np
+
+            from .audio_edit.codecs import encode_output
+
+            wav_f = _np.asarray(wav_data).astype(_np.float32) / 32768.0
+            encode_output(wav_f, sr, Path(segment.output_target_abs))
             _ckpt(f"IndexTTS2.infer returned in {time.time() - started:.1f}s — "
                   f"output={segment.output_target_abs}")
         except Exception as exc:
