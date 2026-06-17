@@ -51,6 +51,9 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   // Health updates every 4s; reading it from a ref inside `onRunClick`
   // means the callback closure stays stable and always sees the most recent
   const healthRef = useRef<RuntimeHealth | null>(null);
+  // Badge at the moment the user clicked run/stop, so the optimistic spinner
+  // clears only once the badge actually moves (covers start AND stop).
+  const clickBadgeRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +90,7 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
 
   const badge = health?.badge ?? "not_installed";
   const isRunning = badge === "ready" || badge === "running";
+  const isStopping = badge === "stopping";
   const isStarting =
     badge === "starting" || badge === "installing" || badge === "stopping";
   const runtimeReady = isRunning;
@@ -94,25 +98,33 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   // Clear the optimistic spinner once the next health poll has observed a
   // lifecycle-transition badge (starting / installing / stopping). At that
   useEffect(() => {
-    if (runtimeBusy && (isStarting || isRunning)) {
+    if (runtimeBusy && clickBadgeRef.current !== null && badge !== clickBadgeRef.current) {
+      clickBadgeRef.current = null;
       setRuntimeBusy(false);
     }
-  }, [runtimeBusy, isStarting, isRunning]);
+  }, [runtimeBusy, badge]);
 
   const onRunClick = useCallback((): void => {
     // Delegate to the host action bridge so the host shell's "Start runtime"
     // button and this toolbar reflect the same in-flight state instantly —
+    clickBadgeRef.current = healthRef.current?.badge ?? "not_installed";
     setRuntimeBusy(true);
     invokeRuntimeAction();
     // Clear the local optimistic flag once the next health poll observes
     // the lifecycle transition (badge moves into starting/installing/running
   }, []);
 
-  const runtimeLabel = isRunning
-    ? "Stop runtime"
-    : isStarting
-      ? "Runtime starting…"
-      : "Start runtime";
+  const runtimeLabel = isStopping
+    ? "Stopping…"
+    : runtimeBusy && isRunning
+      ? "Stopping…"
+      : runtimeBusy
+        ? "Starting…"
+        : isRunning
+          ? "Stop runtime"
+          : isStarting
+            ? "Runtime starting…"
+            : "Start runtime";
   const runtimeDisabled = runtimeBusy || isStarting;
   const runtimeShowSpinner = runtimeBusy || isStarting;
   const runtimeState = runtimeShowSpinner
@@ -132,18 +144,17 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   const generateReady = runtimeReady && canGenerate && !generateBusy;
 
   // Status pill text + tone — keeps the bar communicative when collapsed.
-  const statusTone: StatusTone = isRunning
-    ? "ready"
-    : isStarting || runtimeBusy
-      ? "busy"
-      : "off";
-  const statusText = isRunning
-    ? "Runtime ready"
-    : isStarting
-      ? "Starting…"
-      : runtimeBusy
-        ? "Working…"
-        : "Runtime off";
+  const statusTone: StatusTone =
+    runtimeBusy || isStarting ? "busy" : isRunning ? "ready" : "off";
+  const statusText = isStopping
+    ? "Stopping…"
+    : runtimeBusy
+      ? "Working…"
+      : isRunning
+        ? "Runtime ready"
+        : isStarting
+          ? "Starting…"
+          : "Runtime off";
   const statusPulse = statusTone === "busy";
 
   if (typeof document === "undefined") return <></>;
