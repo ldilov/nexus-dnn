@@ -15693,13 +15693,17 @@ async function kT(t, a) {
   });
 }
 function Sf(t, a, s, i) {
-  return ST(
+  let o = () => {
+  }, u = !1;
+  return o = ST(
     `/deployments/${t}/runs/${a}/progress`,
-    s,
+    (f) => {
+      s(f), f.type === "run_terminal" && !u && (u = !0, o());
+    },
     i,
     void 0,
     RT
-  );
+  ), o;
 }
 async function Zs(t) {
   return Mt(`/voice-assets?deploymentId=${encodeURIComponent(t)}`);

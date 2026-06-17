@@ -105,13 +105,24 @@ export function subscribeRunProgress(
   onEvent: (event: ProgressEvent) => void,
   onError?: (err: Event) => void,
 ): () => void {
-  return subscribeSse<ProgressEvent>(
+  // Close on run_terminal: the run is done, so stop the EventSource before the
+  // browser auto-reconnects and re-receives the server's replayed terminal.
+  let close: () => void = () => {};
+  let done = false;
+  close = subscribeSse<ProgressEvent>(
     `/deployments/${deploymentId}/runs/${runId}/progress`,
-    onEvent,
+    (event) => {
+      onEvent(event);
+      if (event.type === "run_terminal" && !done) {
+        done = true;
+        close();
+      }
+    },
     onError,
     undefined,
     parseProgressEvent,
   );
+  return close;
 }
 
 export function extractPreflight(resp: CreateRunResponse): Preflight {
