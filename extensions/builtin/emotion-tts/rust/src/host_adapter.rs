@@ -552,8 +552,11 @@ impl ExtArtifactStore for HostArtifactStoreAdapter {
     }
 
     async fn resolve_path(&self, artifact_ref: &str) -> Result<String, HostContractError> {
-        // `artifact_ref` from `store()` is `blobs/<prefix>/<artifact_id>`.
-        // Extract the artifact_id (last segment) and ask the host for the
+        // Absolute paths are worker run-outputs on disk — serve in place.
+        // Relative `blobs/<prefix>/<id>` refs come from `store()`.
+        if Path::new(artifact_ref).is_absolute() {
+            return Ok(artifact_ref.to_string());
+        }
         let id = artifact_ref
             .rsplit('/')
             .next()
@@ -567,5 +570,58 @@ impl ExtArtifactStore for HostArtifactStoreAdapter {
             .await
             .map_err(|e| HostContractError::Artifact(format!("blob_path({id}): {e}")))?;
         Ok(path.to_string_lossy().to_string())
+    }
+}
+
+#[cfg(test)]
+mod artifact_store_tests {
+    use std::sync::Arc;
+
+    use nexus_artifact::{ArtifactStore, FilesystemArtifactStore};
+
+    use super::HostArtifactStoreAdapter;
+    use crate::host_contract::HostArtifactStore;
+
+    /// Regression for the download/play 500: run-utterance audio is written by
+    /// the worker to an absolute path on disk and stored verbatim as the ref —
+    /// `resolve_path` must serve it in place, not strip it to a blob id and miss.
+    #[tokio::test]
+    async fn resolve_path_passes_absolute_worker_outputs_through() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let adapter =
+            HostArtifactStoreAdapter::new(Arc::new(FilesystemArtifactStore::new(dir.path().into())));
+
+        let abs = std::env::temp_dir().join("002_2_Bella_001.mp3");
+        let abs_str = abs.to_string_lossy().to_string();
+        let resolved = adapter
+            .resolve_path(&abs_str)
+            .await
+            .expect("absolute worker outputs resolve to themselves");
+        assert_eq!(resolved, abs_str);
+    }
+
+    /// `blobs/<prefix>/<id>` refs minted by `store()` still resolve to the
+    /// on-disk blob — the absolute-path branch must not regress that path.
+    #[tokio::test]
+    async fn resolve_path_resolves_store_blob_refs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = Arc::new(FilesystemArtifactStore::new(dir.path().into()));
+        store.initialize().await.expect("init store");
+        let adapter = HostArtifactStoreAdapter::new(store);
+
+        let put = adapter
+            .store(b"hello".to_vec(), "voice.wav", Some("audio/wav"))
+            .await
+            .expect("store bytes");
+        assert!(put.artifact_ref.starts_with("blobs/"));
+
+        let resolved = adapter
+            .resolve_path(&put.artifact_ref)
+            .await
+            .expect("blob ref resolves");
+        assert!(
+            std::path::Path::new(&resolved).is_file(),
+            "blob ref resolves to an on-disk file: {resolved}"
+        );
     }
 }
