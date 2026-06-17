@@ -108,8 +108,6 @@ export function StepRow({
             ? s.statusTextFailed
             : "";
 
-  // Active: running, or pending with live events / DTO bytes. Exclude paused
-  // so its dedicated bar never double-renders alongside the active bar.
   const rowActive =
     !paused &&
     (step.status === "running" ||

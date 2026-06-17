@@ -137,10 +137,11 @@ describe("useInstallProgress mapping (AC-3.5)", () => {
     expect(mutateMock).not.toHaveBeenCalled();
   });
 
-  it("Gap-B: onOpen on second connect (reconnect) calls mutate with the swrKey", () => {
+  it("Gap-B: onOpen on second connect (reconnect) calls mutate with the swrKey exactly once", () => {
     renderHook(() => useInstallProgress("ext.demo", "/key"));
     act(() => { captured.onOpen?.(); });
     act(() => { captured.onOpen?.(); });
     expect(mutateMock).toHaveBeenCalledWith("/key");
+    expect(mutateMock).toHaveBeenCalledTimes(1);
   });
 });
