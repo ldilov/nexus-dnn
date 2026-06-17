@@ -64,6 +64,7 @@ async fn health(State(state): State<RuntimeState>) -> Response {
 async fn health_impl(state: &RuntimeState) -> Result<Value> {
     let workers_ceiling = crate::dispatcher::worker_ceiling();
     let workers_active = state.queue.current_max_in_flight();
+    let (workers_warming, workers_warm) = state.pool.warm_counts().await;
     let Some(client) = state.provider.current().await else {
         return Ok(json!({
             "badge": "stopped",
@@ -74,6 +75,8 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
             "lastErrorCategory": null,
             "workersCeiling": workers_ceiling,
             "workersActive": workers_active,
+            "workersWarm": workers_warm,
+            "workersWarming": workers_warming,
         }));
     };
     // The badge is derived from the lease state, which lives in the host and
@@ -96,6 +99,8 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
         "lastErrorCategory": resp.get("last_error_category").cloned().unwrap_or(Value::Null),
         "workersCeiling": workers_ceiling,
         "workersActive": workers_active,
+        "workersWarm": workers_warm,
+        "workersWarming": workers_warming,
     }))
 }
 
@@ -147,11 +152,28 @@ fn normalize_handshake(raw: &Value) -> Value {
 /// Optional `POST /runtime/start` body. `numWorkers` selects how many TTS
 /// workers may run concurrently this session (each a full resident model,
 /// ~N× VRAM), clamped to `[1, EMOTIONTTS_MAX_WORKERS]`. Absent ⇒ 1.
-#[derive(Debug, Default, Deserialize)]
+/// `warmup` (default `true`) pre-acquires all active workers in the background
+/// so the first parallel run hits warm models; set `false` to keep extras lazy.
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartRequest {
     #[serde(default)]
     num_workers: Option<usize>,
+    #[serde(default = "default_true")]
+    warmup: bool,
+}
+
+impl Default for StartRequest {
+    fn default() -> Self {
+        Self {
+            num_workers: None,
+            warmup: default_true(),
+        }
+    }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest>>) -> Response {
@@ -159,6 +181,43 @@ async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest
     let ceiling = crate::dispatcher::worker_ceiling();
     let requested = req.num_workers.unwrap_or(1).clamp(1, ceiling);
     let active = state.queue.set_max_in_flight(requested);
+
+    if req.warmup {
+        // Warm exactly the active worker count in the background — never the
+        // ceiling — so the first parallel run finds resident models. The model
+        // is eager-loaded at lease acquire, so `spawn_if_needed` per provider
+        // is the whole "warm" step. Keep `start` non-blocking: 202 returns now.
+        let pool = state.pool.clone();
+        let warm = requested.min(pool.size());
+        tokio::spawn(async move {
+            let providers = pool.providers();
+            let futures = providers[..warm].iter().map(|p| p.spawn_if_needed());
+            for result in futures::future::join_all(futures).await {
+                if let Err(err) = result {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        error = %err,
+                        "runtime warmup: provider spawn failed"
+                    );
+                }
+            }
+            tracing::info!(
+                target: "emotion_tts::dispatch",
+                workers = warm,
+                "runtime warmup complete"
+            );
+        });
+        return (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "status": "started",
+                "workers": active,
+                "workersCeiling": ceiling,
+            })),
+        )
+            .into_response();
+    }
+
     match state.provider.spawn_if_needed().await {
         Ok(_) => (
             StatusCode::ACCEPTED,

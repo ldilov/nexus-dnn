@@ -81,6 +81,25 @@ impl LeaseProviderPool {
         self.all.len()
     }
 
+    /// Snapshot of how many providers are `(warming, warm)` right now, derived
+    /// from each live provider's lease state without sending a worker RPC:
+    /// `Ready` ⇒ warm, `Starting` ⇒ warming, every other state (and providers
+    /// with no lease yet) counts as neither.
+    pub async fn warm_counts(&self) -> (usize, usize) {
+        let mut warming = 0;
+        let mut warm = 0;
+        for provider in &self.all {
+            if let Some(client) = provider.current().await {
+                match client.lease().state() {
+                    crate::host_contract::LeaseState::Ready => warm += 1,
+                    crate::host_contract::LeaseState::Starting => warming += 1,
+                    _ => {}
+                }
+            }
+        }
+        (warming, warm)
+    }
+
     /// Stop every provider in the pool, freeing each worker's VRAM via its
     /// lease release. Best-effort: a failure on one provider never skips the
     /// rest — all are attempted and the first error is returned afterward.
@@ -238,5 +257,32 @@ mod tests {
             3,
             "stop_all must drain ALL providers, not just the primary"
         );
+    }
+
+    #[tokio::test]
+    async fn warm_counts_reflects_ready_providers() {
+        let released = Arc::new(AtomicUsize::new(0));
+        let factory = Arc::new(CountingLeaseFactory {
+            released: released.clone(),
+        });
+        let primary = Arc::new(LeaseProvider::new(factory.clone()));
+        let pool = LeaseProviderPool::with_ceiling(factory, primary, 3);
+
+        assert_eq!(pool.warm_counts().await, (0, 0), "cold pool: nothing warm");
+
+        pool.providers()[0]
+            .spawn_if_needed()
+            .await
+            .expect("warm one");
+        assert_eq!(
+            pool.warm_counts().await,
+            (0, 1),
+            "one Ready provider ⇒ warm=1"
+        );
+
+        for provider in pool.providers() {
+            provider.spawn_if_needed().await.expect("warm all");
+        }
+        assert_eq!(pool.warm_counts().await, (0, 3), "all Ready ⇒ warm=3");
     }
 }
