@@ -198,7 +198,10 @@ impl HuggingFaceCapability for HuggingFaceClient {
             return serde_json::from_str::<RepoMetadata>(&cached.body).map_err(HfError::from);
         }
 
-        let url = format!("{}/api/models/{}/revision/{}", self.base_url, repo_id, rev);
+        let url = format!(
+            "{}/api/models/{}/revision/{}?blobs=true",
+            self.base_url, repo_id, rev
+        );
         let mut builder = self.http.get(&url);
         builder = self.apply_auth(builder);
 

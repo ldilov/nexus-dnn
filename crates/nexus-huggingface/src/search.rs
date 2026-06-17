@@ -25,12 +25,37 @@ fn default_page() -> u32 {
     1
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RepoFile {
-    #[serde(alias = "rfilename")]
     pub path: String,
-    #[serde(alias = "size", default)]
     pub size_bytes: Option<u64>,
+}
+
+impl<'de> serde::Deserialize<'de> for RepoFile {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct LfsBlock {
+            size: Option<u64>,
+        }
+
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(alias = "rfilename")]
+            path: String,
+            #[serde(alias = "size", default)]
+            size_bytes: Option<u64>,
+            #[serde(default)]
+            lfs: Option<LfsBlock>,
+        }
+
+        use serde::Deserialize;
+        let raw = Raw::deserialize(deserializer)?;
+        let size_bytes = raw.size_bytes.or_else(|| raw.lfs.and_then(|l| l.size));
+        Ok(RepoFile {
+            path: raw.path,
+            size_bytes,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,5 +172,32 @@ mod tests {
         let f: RepoFile = serde_json::from_str(raw).unwrap();
         assert_eq!(f.path, "model.gguf");
         assert_eq!(f.size_bytes, Some(99));
+    }
+
+    #[test]
+    fn repo_file_deserialises_lfs_size_form() {
+        let raw = r#"{"rfilename": "w.safetensors", "lfs": {"size": 12345, "sha256": "abc", "pointerSize": 132}}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(f.path, "w.safetensors");
+        assert_eq!(f.size_bytes, Some(12345));
+    }
+
+    #[test]
+    fn repo_file_top_level_size_wins_over_lfs_size() {
+        let raw = r#"{"rfilename": "w.safetensors", "size": 99999, "lfs": {"size": 12345}}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(f.size_bytes, Some(99999));
+    }
+
+    #[test]
+    fn repo_file_roundtrips_through_canonical_serialization() {
+        let original = RepoFile {
+            path: "model.safetensors".into(),
+            size_bytes: Some(12345),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let roundtripped: RepoFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtripped.path, original.path);
+        assert_eq!(roundtripped.size_bytes, original.size_bytes);
     }
 }
