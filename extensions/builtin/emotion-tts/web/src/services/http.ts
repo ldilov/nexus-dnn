@@ -46,10 +46,32 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return (await resp.json()) as T;
 }
 
-export function subscribeSse<T>(path: string, onEvent: (event: T) => void, onError?: (err: Event) => void): () => void {
+/** Named SSE events the run-progress stream emits — these MUST stay in sync
+ * with the producer's wire names (Rust `dispatcher/events.rs` `SSE_*` consts,
+ * emitted from both `sse_event_name()` and the replay/poll paths in
+ * `router/runs.rs`). The browser's `EventSource.onmessage` fires ONLY for
+ * default/`message` frames, so every named frame needs its own
+ * `addEventListener`, else the UI never advances.
+ *
+ * Adding a producer event requires updating BOTH this list and the Rust
+ * producer — EventSource has no wildcard listener, so this explicit TS↔Rust
+ * list is intentional and structurally unlinked (no compile-time enforcement). */
+export const RUN_PROGRESS_EVENT_NAMES = [
+  "segment_started",
+  "segment_completed",
+  "segment_failed",
+  "run_terminal",
+] as const;
+
+export function subscribeSse<T>(
+  path: string,
+  onEvent: (event: T) => void,
+  onError?: (err: Event) => void,
+  eventNames: readonly string[] = RUN_PROGRESS_EVENT_NAMES,
+): () => void {
   const url = path.startsWith("http") ? path : `${EXTENSION_PREFIX}${path}`;
   const es = new EventSource(url);
-  es.onmessage = (ev) => {
+  const handle = (ev: MessageEvent): void => {
     if (!ev.data) return;
     try {
       onEvent(JSON.parse(ev.data) as T);
@@ -57,6 +79,10 @@ export function subscribeSse<T>(path: string, onEvent: (event: T) => void, onErr
       /* drop malformed frame */
     }
   };
+  es.onmessage = handle;
+  for (const name of eventNames) {
+    es.addEventListener(name, handle as EventListener);
+  }
   es.onerror = (err) => {
     onError?.(err);
   };

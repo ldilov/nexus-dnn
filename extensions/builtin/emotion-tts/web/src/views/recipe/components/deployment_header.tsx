@@ -6,7 +6,11 @@ import {
   getRuntimeHealth,
   type RuntimeHealth,
 } from "../../../services/runtime_client";
-import { setDesiredWorkers } from "../../../services/worker_pref";
+import {
+  getDesiredWarmup,
+  setDesiredWarmup,
+  setDesiredWorkers,
+} from "../../../services/worker_pref";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
 import { StatusPill } from "../../../components/status_pill";
@@ -24,6 +28,8 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
   // first time health reports it, then user-owned.
   const [workers, setWorkers] = useState(1);
   const seededWorkers = useState({ done: false })[0];
+  // Preload-on-start preference, mirrored into worker_pref for the host bridge.
+  const [warmup, setWarmup] = useState(getDesiredWarmup());
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +66,8 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
   const workersCeiling = health?.workersCeiling ?? 1;
   const workersActive = health?.workersActive ?? 1;
   const runtimeUp = badge === "ready" || badge === "running" || badge === "starting";
+  const workersWarming = health?.workersWarming ?? 0;
+  const workersWarm = health?.workersWarm ?? 0;
 
   return (
     <output className={css.controlRow} aria-live="polite">
@@ -70,6 +78,12 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
       <StatusPill tone={toneFor(badge)} pulse={badge === "starting" || badge === "installing"}>
         {badgeLabel(badge)}
       </StatusPill>
+
+      {workersWarming > 0 && (
+        <span style={WARMING_INDICATOR}>
+          Warming {workersWarm}/{workersActive}…
+        </span>
+      )}
 
       {health && (
         <>
@@ -108,6 +122,22 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
                 : `~${workers}× model VRAM`}
             </span>
           </span>
+
+          <span className={css.label}>Preload</span>
+          <label style={WARMUP_LABEL}>
+            <input
+              type="checkbox"
+              checked={warmup}
+              aria-label="Preload models on start"
+              onChange={(e) => {
+                const on = e.target.checked;
+                setWarmup(on);
+                setDesiredWarmup(on);
+              }}
+              style={WARMUP_CHECKBOX}
+            />
+            <span style={WORKERS_HINT}>Preload models on start</span>
+          </label>
         </>
       )}
 
@@ -144,6 +174,27 @@ const WORKERS_SELECT: CSSProperties = {
 const WORKERS_HINT: CSSProperties = {
   fontSize: 11,
   color: "var(--on-surface-variant, #c4c7c5)",
+};
+
+const WARMUP_LABEL: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  cursor: "pointer",
+};
+
+const WARMUP_CHECKBOX: CSSProperties = {
+  width: 14,
+  height: 14,
+  margin: 0,
+  cursor: "pointer",
+  accentColor: "var(--accent, #ba9eff)",
+};
+
+const WARMING_INDICATOR: CSSProperties = {
+  fontSize: 11,
+  color: "var(--on-surface-variant, #c4c7c5)",
+  fontFamily: "var(--font-mono)",
 };
 
 function toneFor(badge: string): "success" | "accent" | "danger" | "neutral" {

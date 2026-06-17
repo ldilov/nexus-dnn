@@ -577,6 +577,7 @@ async fn sse_replays_completed_utterances_on_subscribe() {
         "0.0.0-test",
         None,
         None,
+        None,
         registry,
         Arc::new(emotion_tts_extension::families::FamilyRegistry::new(
             Vec::new(),

@@ -22,12 +22,14 @@ use serde_json::{json, Value};
 
 use crate::backend_client::rpc::methods;
 use crate::backend_client::LeaseProvider;
+use crate::dispatcher::LeaseProviderPool;
 use crate::domain::{EmotionTtsError, Result};
 use crate::queue::SharedQueue;
 
 #[derive(Clone)]
 pub struct RuntimeState {
     pub provider: Arc<LeaseProvider>,
+    pub pool: Arc<LeaseProviderPool>,
     pub queue: SharedQueue,
 }
 
@@ -62,6 +64,7 @@ async fn health(State(state): State<RuntimeState>) -> Response {
 async fn health_impl(state: &RuntimeState) -> Result<Value> {
     let workers_ceiling = crate::dispatcher::worker_ceiling();
     let workers_active = state.queue.current_max_in_flight();
+    let (workers_warming, workers_warm) = state.pool.warm_counts().await;
     let Some(client) = state.provider.current().await else {
         return Ok(json!({
             "badge": "stopped",
@@ -72,6 +75,8 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
             "lastErrorCategory": null,
             "workersCeiling": workers_ceiling,
             "workersActive": workers_active,
+            "workersWarm": workers_warm,
+            "workersWarming": workers_warming,
         }));
     };
     // The badge is derived from the lease state, which lives in the host and
@@ -94,6 +99,8 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
         "lastErrorCategory": resp.get("last_error_category").cloned().unwrap_or(Value::Null),
         "workersCeiling": workers_ceiling,
         "workersActive": workers_active,
+        "workersWarm": workers_warm,
+        "workersWarming": workers_warming,
     }))
 }
 
@@ -145,11 +152,28 @@ fn normalize_handshake(raw: &Value) -> Value {
 /// Optional `POST /runtime/start` body. `numWorkers` selects how many TTS
 /// workers may run concurrently this session (each a full resident model,
 /// ~N× VRAM), clamped to `[1, EMOTIONTTS_MAX_WORKERS]`. Absent ⇒ 1.
-#[derive(Debug, Default, Deserialize)]
+/// `warmup` (default `true`) pre-acquires all active workers in the background
+/// so the first parallel run hits warm models; set `false` to keep extras lazy.
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartRequest {
     #[serde(default)]
     num_workers: Option<usize>,
+    #[serde(default = "default_true")]
+    warmup: bool,
+}
+
+impl Default for StartRequest {
+    fn default() -> Self {
+        Self {
+            num_workers: None,
+            warmup: default_true(),
+        }
+    }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest>>) -> Response {
@@ -157,6 +181,54 @@ async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest
     let ceiling = crate::dispatcher::worker_ceiling();
     let requested = req.num_workers.unwrap_or(1).clamp(1, ceiling);
     let active = state.queue.set_max_in_flight(requested);
+
+    if req.warmup {
+        // Warm exactly the active worker count in the background — never the
+        // ceiling — so the first parallel run finds resident models. The model
+        // is eager-loaded at lease acquire, so `spawn_if_needed` per provider
+        // is the whole "warm" step. Keep `start` non-blocking: 202 returns now.
+        let pool = state.pool.clone();
+        let warm = requested.min(pool.size());
+        // Capture the generation BEFORE spawning. A concurrent Stop/Restart (or
+        // a newer Start) bumps it, and the warm loop bails before re-acquiring a
+        // worker that `stop_all` just released — closing the warm-vs-stop VRAM
+        // re-leak race. Sequential (not join_all) so the guard is re-checked
+        // between each multi-minute model load.
+        let gen = pool.next_generation();
+        tokio::spawn(async move {
+            for provider in &pool.providers()[..warm] {
+                if pool.generation() != gen {
+                    tracing::info!(
+                        target: "emotion_tts::dispatch",
+                        "runtime warmup superseded by a newer start/stop; bailing"
+                    );
+                    return;
+                }
+                if let Err(err) = provider.spawn_if_needed().await {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        error = %err,
+                        "runtime warmup: provider spawn failed"
+                    );
+                }
+            }
+            tracing::info!(
+                target: "emotion_tts::dispatch",
+                workers = warm,
+                "runtime warmup complete"
+            );
+        });
+        return (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "status": "started",
+                "workers": active,
+                "workersCeiling": ceiling,
+            })),
+        )
+            .into_response();
+    }
+
     match state.provider.spawn_if_needed().await {
         Ok(_) => (
             StatusCode::ACCEPTED,
@@ -197,7 +269,12 @@ async fn stop_impl(state: &RuntimeState) -> Result<Value> {
         }
     }
 
-    state.provider.stop().await?;
+    // Bump the start generation BEFORE releasing so any in-flight background
+    // warm task sees a newer generation and bails instead of re-acquiring a
+    // worker we're about to free — otherwise it would re-leak the VRAM Stop
+    // exists to reclaim.
+    state.pool.next_generation();
+    state.pool.stop_all().await?;
     Ok(json!({
         "status": "stopped",
         "cancelledRunIds": cancelled,
@@ -205,10 +282,23 @@ async fn stop_impl(state: &RuntimeState) -> Result<Value> {
 }
 
 async fn restart(State(state): State<RuntimeState>) -> Response {
-    match state.provider.restart().await {
+    match restart_impl(&state).await {
         Ok(_) => (StatusCode::ACCEPTED, Json(json!({ "status": "restarted" }))).into_response(),
         Err(err) => err.into_response(),
     }
+}
+
+/// Stop the whole pool, then re-spawn ONLY the primary. The extra pool
+/// providers are intentionally left cold: they re-warm lazily on the next
+/// parallel run (or eagerly on the next `start` with `warmup`). Restart does
+/// not re-run warmup — this is deliberate, not a missing step.
+async fn restart_impl(state: &RuntimeState) -> Result<()> {
+    // Same generation fence as `stop_impl`: invalidate any in-flight warm
+    // before releasing, so it can't repopulate a slot we just cleared.
+    state.pool.next_generation();
+    state.pool.stop_all().await?;
+    state.provider.spawn_if_needed().await?;
+    Ok(())
 }
 
 fn lease_state_to_badge(state: crate::host_contract::LeaseState) -> &'static str {

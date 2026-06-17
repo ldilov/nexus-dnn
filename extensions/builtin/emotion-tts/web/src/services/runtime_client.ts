@@ -21,6 +21,10 @@ export interface RuntimeHealth {
   // max selectable; `workersActive` is the current concurrent-run cap.
   workersCeiling?: number;
   workersActive?: number;
+  // Warm-on-start progress (Spec: warm-on-Start). `workersWarm` = workers with
+  // the model resident; `workersWarming` = workers mid-warmup right now.
+  workersWarm?: number;
+  workersWarming?: number;
 }
 
 export interface HandshakeInfo {
@@ -44,10 +48,13 @@ export async function getRuntimeHandshake(): Promise<HandshakeInfo> {
   return apiFetch("/runtime/handshake");
 }
 
-export async function startRuntime(numWorkers?: number): Promise<void> {
+export async function startRuntime(numWorkers?: number, warmup?: boolean): Promise<void> {
+  const body: { numWorkers?: number; warmup?: boolean } = {};
+  if (numWorkers != null) body.numWorkers = numWorkers;
+  if (warmup != null) body.warmup = warmup;
   await apiFetch("/runtime/start", {
     method: "POST",
-    ...(numWorkers != null ? { body: JSON.stringify({ numWorkers }) } : {}),
+    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
   });
 }
 

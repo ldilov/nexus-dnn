@@ -263,13 +263,14 @@ impl EmotionTtsRouterProvider {
             EXTENSION_VERSION,
             output_root_base,
         ));
-        drop(crate::dispatcher::spawn_idle_watcher_pooled(pool));
+        drop(crate::dispatcher::spawn_idle_watcher_pooled(pool.clone()));
         let artifact_store = self.resources.artifact_store.clone();
         Ok(crate::router::build_router_with_families(
             repos,
             queue,
             EXTENSION_VERSION,
             Some(provider),
+            Some(pool),
             artifact_store,
             run_channels,
             Arc::new(crate::families::FamilyRegistry::new(Vec::new())),
