@@ -56,3 +56,39 @@ impl RunEvent {
 
 #[allow(dead_code)]
 fn _bind_unused_imports(_a: RunId, _b: UtteranceId) {} // keep imports if domain swaps to typed strings later
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sse_event_names_match_frontend_listener_list() {
+        let started = RunEvent::SegmentStarted {
+            run_id: "r".into(),
+            utterance_id: "u".into(),
+            global_index: 1,
+        };
+        let completed = RunEvent::SegmentCompleted {
+            run_id: "r".into(),
+            utterance_id: "u".into(),
+            global_index: 1,
+            duration_ms: 10,
+        };
+        let failed = RunEvent::SegmentFailed {
+            run_id: "r".into(),
+            utterance_id: "u".into(),
+            global_index: 1,
+            failure_category: "x".into(),
+            failure_detail: None,
+        };
+        let terminal = RunEvent::RunTerminal {
+            run_id: "r".into(),
+            status: "completed".into(),
+        };
+
+        assert_eq!(started.sse_event_name(), "segment_started");
+        assert_eq!(completed.sse_event_name(), "segment_completed");
+        assert_eq!(failed.sse_event_name(), "segment_failed");
+        assert_eq!(terminal.sse_event_name(), "run_terminal");
+    }
+}
