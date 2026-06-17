@@ -168,6 +168,41 @@ def test_attention_override_cleared_after_render(tmp_path, monkeypatch):
     assert ab._ATTENTION_OVERRIDE is None
 
 
+def test_attention_override_cleared_when_render_raises(tmp_path, monkeypatch):
+    import svi2_video_worker.attention_backend as ab
+
+    monkeypatch.setattr(ab, "_ATTENTION_OVERRIDE", None)
+
+    ref_path = tmp_path / "ref.png"
+    from PIL import Image
+    Image.new("RGB", (16, 16), (0, 0, 0)).save(ref_path)
+
+    params = validate_render_params(
+        {
+            "ref_image_path": str(ref_path),
+            "prompts": ["test"],
+            "num_clips": 1,
+            "height": 16,
+            "width": 16,
+            "frames_per_clip": 5,
+            "num_inference_steps": 2,
+            "num_overlap_frame": 1,
+            "output_path": str(tmp_path / "out.mp4"),
+            "device": "cpu",
+            "attention": "sage2",
+        }
+    )
+
+    def _boom(_p):
+        assert ab._ATTENTION_OVERRIDE == "sage2"
+        raise RuntimeError("build failed before inner try")
+
+    with pytest.raises(RuntimeError, match="build failed"):
+        _run_render(params, worker=None, build_models=_boom)
+
+    assert ab._ATTENTION_OVERRIDE is None
+
+
 def test_run_render_end_to_end_with_fakes(tmp_path, monkeypatch):
     import svi2_video_worker.ffmpeg_io as ffmpeg_io
     from pathlib import Path

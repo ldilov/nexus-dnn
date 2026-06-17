@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import torch
 import torch.nn.functional as F
@@ -240,12 +240,10 @@ def _requested() -> str:
     return _ALIASES.get(raw, raw)
 
 
-def attention_capabilities() -> dict:
-    _ORDER = ("sdpa", "flash2", "flash3_fp4", "sage2", "sage3_fp4")
+def attention_capabilities() -> dict[str, Any]:
     bf16 = torch.bfloat16
     backends = []
-    for key in _ORDER:
-        spec = _REGISTRY[key]
+    for key, spec in _REGISTRY.items():
         reason = _is_usable(spec, bf16)
         backends.append({
             "id": key,
@@ -259,7 +257,7 @@ def attention_capabilities() -> dict:
     return {
         "sm": list(_SM),
         "cuda_available": torch.cuda.is_available(),
-        "default": "flash2",
+        "default": _AUTO_CHAIN[0],
         "auto_chain": list(_AUTO_CHAIN),
         "backends": backends,
     }

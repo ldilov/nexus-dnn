@@ -759,434 +759,436 @@ def _run_render(
     output_path = Path(params["output_path"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    set_attention_override(params.get("attention"))
-    _ab._logged = False
-
     device = params.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     reset_peak()
 
-    prebuilt = build_models(params) if build_models is not None else None
-
-    num_clips: int = params["num_clips"]
-    prompts: list[str] = params["prompts"]
-    negative_prompt: str = params["negative_prompt"]
-    frames_per_clip: int = params["frames_per_clip"]
-    num_overlap_frame: int = params["num_overlap_frame"]
-    num_motion_latent: int = params["num_motion_latent"]
-    cfg_scale: float = params["cfg_scale"]
-    fps: int = params["fps"]
-    height: int = params["height"]
-    width: int = params["width"]
-    switch_boundary: float = params["switch_boundary"]
-    pixel_re_encode: bool = params["pixel_re_encode"]
-    num_motion_frame: int = params["num_motion_frame"]
-    icn_scale: float = params["image_cond_noise_scale"]
-    icn_schedule = params.get("image_cond_noise_schedule")
-    icn_bg_protect: float = params["image_cond_noise_bg_protect"]
-    ref_pad_num: int = params["ref_pad_num"]
-    ref_pad_free_clips: int = params["ref_pad_free_clips"]
-    ref_pad_schedule = params.get("ref_pad_schedule")
-
-    resolution_warning = params.get("resolution_warning") or check_trained_resolution_struct(width, height)
-    if resolution_warning:
-        log_vram(f"WARN off-distribution resolution: {resolution_warning['message']}")
-
-    generate_seed_clip = needs_seed_clip(params)
-    if not generate_seed_clip and not params.get("ref_image_path"):
-        raise ValueError("ref_image_path is required when no seed clip is generated")
-
-    scheduler = FlowMatchScheduler(template="Wan")
-    scheduler.set_timesteps(
-        num_inference_steps=params["num_inference_steps"], shift=params["sigma_shift"]
-    )
-    if params.get("fixed_sigmas"):
-        scheduler.set_fixed_sigmas(params["fixed_sigmas"])
-    timesteps = scheduler.timesteps
-
-    total_latent_frames = (frames_per_clip - 1) // 4 + 1
-    lat_h = height // 8
-    lat_w = width // 8
-
-    expert_selector = ExpertSelector(boundary=switch_boundary)
-    blocks_to_swap: int = params["blocks_to_swap"]
-
-    _notify(worker, "svi2.video.progress", {"fraction": 0.01, "stage": "loading_text_encoder"})
-    with _ProgressHeartbeat(worker, "loading_text_encoder", 0.01):
-        text_encoder = (
-            prebuilt.text_encoder if prebuilt is not None else _build_text_encoder(params)
-        )
-        if device == "cuda":
-            text_encoder.to_cuda()
-    _notify(worker, "svi2.video.progress", {"fraction": 0.03, "stage": "encoding_prompts"})
-    unique_prompts = list(dict.fromkeys(prompts[i % len(prompts)] for i in range(num_clips)))
-    ctx_cache = {p: text_encoder.encode_text(p).to("cpu") for p in unique_prompts}
-    neg_context = (
-        text_encoder.encode_text(negative_prompt).to("cpu") if cfg_scale != 1.0 else None
-    )
-    if device == "cuda":
-        text_encoder.to_cpu()
-        torch.cuda.empty_cache()
-    if prebuilt is None:
-        del text_encoder
-        gc.collect()
-    log_vram("stage1 done: prompts encoded, text encoder released")
-
-    vae = prebuilt.vae if prebuilt is not None else _build_vae(params)
-    writer = StreamingFrameWriter()
-    stitcher = RollingCrossfadeStitcher(num_overlap_frame, mode=params["stitch_mode"])
-    t2v_audit: dict[str, object] = {}
-    seed_clip_frames: list = []
-    seed_clip_last_latent: Any = None
-
-    # Text-to-video seed: generate clip 0 with the Wan2.2-T2V experts (freed
-    # before the i2v experts load), then seed the chain from its last frame.
-    if generate_seed_clip:
-        _notify(worker, "svi2.video.progress", {"fraction": 0.02, "stage": "loading_t2v_experts"})
-        # Heartbeat covers the silent T2V-expert load inside _generate_t2v_clip0;
-        # the first denoise step (on_step) means the load is done, so stop it
-        t2v_load_hb = _ProgressHeartbeat(worker, "loading_t2v_experts", 0.02)
-        t2v_load_hb.start()
-        first_prompt = prompts[0]
-        seed_ctx_posi = ctx_cache[first_prompt].to(device)
-        seed_ctx_nega = neg_context.to(device) if neg_context is not None else seed_ctx_posi
-
-        def _t2v_seed_on_step(step: int, num_steps: int, seconds: float) -> None:
-            t2v_load_hb.stop()
-            _notify(
-                worker,
-                "svi2.video.clip.step",
-                {
-                    "clip_index": 0,
-                    "step": step,
-                    "total_steps": num_steps,
-                    "seconds_per_step": round(seconds, 2),
-                },
-            )
-            frac = 0.02 + 0.03 * (step / max(num_steps, 1))
-            _notify(worker, "svi2.video.progress", {"fraction": round(frac, 4), "stage": "t2v_seed_clip"})
-
-        try:
-            t2v_clip = _generate_t2v_clip0(
-                params,
-                context_posi=seed_ctx_posi,
-                context_nega=seed_ctx_nega,
-                vae=vae,
-                scheduler=scheduler,
-                timesteps=timesteps,
-                device=device,
-                build_t2v_experts=build_t2v_experts,
-                on_step=_t2v_seed_on_step,
-                cancel_event=cancel_event,
-            )
-        finally:
-            t2v_load_hb.stop()
-        seed_clip_frames = t2v_clip.frames
-        seed_clip_last_latent = t2v_clip.last_latent
-        t2v_audit = t2v_clip.audit
-        ref_image = fit_to_resolution(seed_clip_frames[-1], width, height)
-        writer.write_many(stitcher.push(seed_clip_frames))
-        del seed_clip_frames
-        _notify(worker, "svi2.video.clip.completed", {"clip_index": 0, "num_clips": num_clips})
-    else:
-        ref_image = fit_to_resolution(
-            Image.open(str(params["ref_image_path"])).convert("RGB"), width, height
-        )
-
-    # Stage 2 — anchor/end keyframes through the (small) VAE before the
-    # experts exist, so the encode never overlaps the 28 GiB expert load.
-    _notify(worker, "svi2.video.progress", {"fraction": 0.05, "stage": "encoding_anchors"})
-    vae.to_cuda() if device == "cuda" else vae.to_cpu()
-    anchor_lat = vae.encode_image(ref_image)[0]
-    end_lat = None
-    if params.get("last_image_path"):
-        end_image = fit_to_resolution(Image.open(params["last_image_path"]).convert("RGB"), width, height)
-        end_lat = vae.encode_image(end_image)[0]
-    if device == "cuda":
-        vae.to_cpu()
-        torch.cuda.empty_cache()
-    log_vram("stage2 done: anchors encoded")
-
-    # Stage 3 — the two fp8 experts, the only stage that needs big RAM.
-    _notify(worker, "svi2.video.progress", {"fraction": 0.06, "stage": "loading_experts"})
-    if prebuilt is not None:
-        high, low = prebuilt.high, prebuilt.low
-        audit = prebuilt.audit
-    else:
-        with _ProgressHeartbeat(worker, "loading_experts", 0.06):
-            high, low = _build_experts(params)
-        audit = {
-            "high_fp8": high.fp8_audit,
-            "low_fp8": low.fp8_audit,
-            "high_lora": high.lora_audit,
-            "low_lora": low.lora_audit,
-        }
-    models = RenderModels(high=high, low=low, vae=vae, text_encoder=None, audit=audit)
-    log_vram("stage3 done: experts loaded")
-
-    teacache_thresh: float = params["teacache_thresh"]
-    teacache_on = teacache_thresh > 0.0
-    models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
-    models.low.dit.configure_tea_cache(teacache_on, teacache_thresh)
-
-    mst, msh, msw = params["motion_scale_t"], params["motion_scale_h"], params["motion_scale_w"]
-    motion_schedule = params.get("motion_scale_schedule")  # per-clip temporal ramp
-    if not motion_schedule and (mst, msh, msw) != (1.0, 1.0, 1.0):
-        models.high.dit.configure_motion_scale(mst, msh, msw)
-        models.low.dit.configure_motion_scale(mst, msh, msw)
-
-    def _move_to(tier: str) -> None:
-        if device != "cuda":
-            return
-        keep = models.high.dit if tier == "high" else models.low.dit
-        drop = models.low.dit if tier == "high" else models.high.dit
-        drop.to(torch.device("cpu"))
-        drop.blocks_to_swap = 0
-        keep.block_swap(
-            blocks_to_swap,
-            main_device=torch.device("cuda"),
-            offload_device=torch.device("cpu"),
-        )
-        torch.cuda.empty_cache()
-
-    # The t2v seed clip is global index 0 (its latents seed the motion carry and
-    # AdaIN reference), so the i2v chain resumes at 1; pure i2v starts at 0.
-    chain_start = 1 if generate_seed_clip else 0
-    prev_last_latent: Any = seed_clip_last_latent if generate_seed_clip else None
-    adain_reference: Any = seed_clip_last_latent if generate_seed_clip else None
-    adain_factor: float = params["adain_factor"]
-
-    denoise_span = 0.90 / max(num_clips, 1)
+    set_attention_override(params.get("attention"))
+    _ab._logged = False
 
     try:
-        for clip_idx in range(chain_start, num_clips):
-            if cancel_event is not None and cancel_event.is_set():
-                raise RenderCancelled()
-            log_vram(f"clip {clip_idx} start")
-            _notify(
-                worker,
-                "svi2.video.clip.started",
-                {"clip_index": clip_idx, "num_clips": num_clips},
-            )
-            if teacache_on:
-                models.high.dit.reset_tea_cache()
-                models.low.dit.reset_tea_cache()
-            if motion_schedule:
-                ms = float(motion_schedule[min(clip_idx, len(motion_schedule) - 1)])
-                models.high.dit.configure_motion_scale(ms, msh, msw)
-                models.low.dit.configure_motion_scale(ms, msh, msw)
-                log_vram(f"clip {clip_idx} motion_scale_t={ms}")
-            prompt = prompts[clip_idx % len(prompts)]
-            seed = params["seed_multiplier"] * clip_idx
-            torch.manual_seed(seed)
+        prebuilt = build_models(params) if build_models is not None else None
 
-            context_posi = ctx_cache[prompt].to(device)
-            context_nega = neg_context.to(device) if neg_context is not None else context_posi
+        num_clips: int = params["num_clips"]
+        prompts: list[str] = params["prompts"]
+        negative_prompt: str = params["negative_prompt"]
+        frames_per_clip: int = params["frames_per_clip"]
+        num_overlap_frame: int = params["num_overlap_frame"]
+        num_motion_latent: int = params["num_motion_latent"]
+        cfg_scale: float = params["cfg_scale"]
+        fps: int = params["fps"]
+        height: int = params["height"]
+        width: int = params["width"]
+        switch_boundary: float = params["switch_boundary"]
+        pixel_re_encode: bool = params["pixel_re_encode"]
+        num_motion_frame: int = params["num_motion_frame"]
+        icn_scale: float = params["image_cond_noise_scale"]
+        icn_schedule = params.get("image_cond_noise_schedule")
+        icn_bg_protect: float = params["image_cond_noise_bg_protect"]
+        ref_pad_num: int = params["ref_pad_num"]
+        ref_pad_free_clips: int = params["ref_pad_free_clips"]
+        ref_pad_schedule = params.get("ref_pad_schedule")
 
-            noise = torch.randn(
-                1, _WAN22_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
-                generator=torch.Generator(device="cpu").manual_seed(seed),
-            ).to(device=device, dtype=torch.bfloat16)
-            latent = noise
+        resolution_warning = params.get("resolution_warning") or check_trained_resolution_struct(width, height)
+        if resolution_warning:
+            log_vram(f"WARN off-distribution resolution: {resolution_warning['message']}")
 
-            clip_icn = (
-                float(icn_schedule[min(clip_idx, len(icn_schedule) - 1)])
-                if icn_schedule
-                else icn_scale
-            )
-            if clip_icn > 0.0:
-                log_vram(f"clip {clip_idx} image_cond_noise_scale={clip_icn}")
-            clip_ref_pad = ref_pad_for_clip(
-                clip_idx, num_clips, ref_pad_num, ref_pad_free_clips, ref_pad_schedule
-            )
-            if clip_ref_pad != 0:
-                log_vram(f"clip {clip_idx} ref_pad_num={clip_ref_pad}")
-            y = _build_image_conditioning(
-                anchor_lat.to(device),
-                prev_last_latent,
-                total_latent_frames=total_latent_frames,
-                num_frames=frames_per_clip,
-                height=height,
-                width=width,
-                num_motion_latent=num_motion_latent,
-                image_cond_noise_scale=clip_icn,
-                image_cond_noise_bg_protect=icn_bg_protect,
-                end_lat=end_lat.to(device) if end_lat is not None else None,
-                ref_pad_num=clip_ref_pad,
-            )
+        generate_seed_clip = needs_seed_clip(params)
+        if not generate_seed_clip and not params.get("ref_image_path"):
+            raise ValueError("ref_image_path is required when no seed clip is generated")
 
-            def _on_step(
-                step: int, total_steps: int, seconds: float, _clip_idx: int = clip_idx
-            ) -> None:
+        scheduler = FlowMatchScheduler(template="Wan")
+        scheduler.set_timesteps(
+            num_inference_steps=params["num_inference_steps"], shift=params["sigma_shift"]
+        )
+        if params.get("fixed_sigmas"):
+            scheduler.set_fixed_sigmas(params["fixed_sigmas"])
+        timesteps = scheduler.timesteps
+
+        total_latent_frames = (frames_per_clip - 1) // 4 + 1
+        lat_h = height // 8
+        lat_w = width // 8
+
+        expert_selector = ExpertSelector(boundary=switch_boundary)
+        blocks_to_swap: int = params["blocks_to_swap"]
+
+        _notify(worker, "svi2.video.progress", {"fraction": 0.01, "stage": "loading_text_encoder"})
+        with _ProgressHeartbeat(worker, "loading_text_encoder", 0.01):
+            text_encoder = (
+                prebuilt.text_encoder if prebuilt is not None else _build_text_encoder(params)
+            )
+            if device == "cuda":
+                text_encoder.to_cuda()
+        _notify(worker, "svi2.video.progress", {"fraction": 0.03, "stage": "encoding_prompts"})
+        unique_prompts = list(dict.fromkeys(prompts[i % len(prompts)] for i in range(num_clips)))
+        ctx_cache = {p: text_encoder.encode_text(p).to("cpu") for p in unique_prompts}
+        neg_context = (
+            text_encoder.encode_text(negative_prompt).to("cpu") if cfg_scale != 1.0 else None
+        )
+        if device == "cuda":
+            text_encoder.to_cpu()
+            torch.cuda.empty_cache()
+        if prebuilt is None:
+            del text_encoder
+            gc.collect()
+        log_vram("stage1 done: prompts encoded, text encoder released")
+
+        vae = prebuilt.vae if prebuilt is not None else _build_vae(params)
+        writer = StreamingFrameWriter()
+        stitcher = RollingCrossfadeStitcher(num_overlap_frame, mode=params["stitch_mode"])
+        t2v_audit: dict[str, object] = {}
+        seed_clip_frames: list = []
+        seed_clip_last_latent: Any = None
+
+        # Text-to-video seed: generate clip 0 with the Wan2.2-T2V experts (freed
+        # before the i2v experts load), then seed the chain from its last frame.
+        if generate_seed_clip:
+            _notify(worker, "svi2.video.progress", {"fraction": 0.02, "stage": "loading_t2v_experts"})
+            # Heartbeat covers the silent T2V-expert load inside _generate_t2v_clip0;
+            # the first denoise step (on_step) means the load is done, so stop it
+            t2v_load_hb = _ProgressHeartbeat(worker, "loading_t2v_experts", 0.02)
+            t2v_load_hb.start()
+            first_prompt = prompts[0]
+            seed_ctx_posi = ctx_cache[first_prompt].to(device)
+            seed_ctx_nega = neg_context.to(device) if neg_context is not None else seed_ctx_posi
+
+            def _t2v_seed_on_step(step: int, num_steps: int, seconds: float) -> None:
+                t2v_load_hb.stop()
                 _notify(
                     worker,
                     "svi2.video.clip.step",
                     {
-                        "clip_index": _clip_idx,
+                        "clip_index": 0,
                         "step": step,
-                        "total_steps": total_steps,
+                        "total_steps": num_steps,
                         "seconds_per_step": round(seconds, 2),
                     },
                 )
-                fraction = 0.07 + denoise_span * (_clip_idx + step / max(total_steps, 1))
-                _notify(
-                    worker,
-                    "svi2.video.progress",
-                    {"fraction": round(min(fraction, 0.97), 4), "stage": "denoising"},
-                )
+                frac = 0.02 + 0.03 * (step / max(num_steps, 1))
+                _notify(worker, "svi2.video.progress", {"fraction": round(frac, 4), "stage": "t2v_seed_clip"})
 
-            latent = _denoise_clip(
-                models=models,
-                latent=latent,
-                y=y,
-                context_posi=context_posi,
-                context_nega=context_nega,
-                timesteps=timesteps,
-                cfg_scale=cfg_scale,
-                expert_selector=expert_selector,
-                scheduler=scheduler,
-                move_to=_move_to,
-                on_step=_on_step,
-                cancel_event=cancel_event,
+            try:
+                t2v_clip = _generate_t2v_clip0(
+                    params,
+                    context_posi=seed_ctx_posi,
+                    context_nega=seed_ctx_nega,
+                    vae=vae,
+                    scheduler=scheduler,
+                    timesteps=timesteps,
+                    device=device,
+                    build_t2v_experts=build_t2v_experts,
+                    on_step=_t2v_seed_on_step,
+                    cancel_event=cancel_event,
+                )
+            finally:
+                t2v_load_hb.stop()
+            seed_clip_frames = t2v_clip.frames
+            seed_clip_last_latent = t2v_clip.last_latent
+            t2v_audit = t2v_clip.audit
+            ref_image = fit_to_resolution(seed_clip_frames[-1], width, height)
+            writer.write_many(stitcher.push(seed_clip_frames))
+            del seed_clip_frames
+            _notify(worker, "svi2.video.clip.completed", {"clip_index": 0, "num_clips": num_clips})
+        else:
+            ref_image = fit_to_resolution(
+                Image.open(str(params["ref_image_path"])).convert("RGB"), width, height
             )
 
-            # Cap colour/exposure drift down the continuation chain: match each
-            # later clip's per-channel latent stats toward clip-0 (AdaIN). Off at 0.
-            if clip_idx == chain_start and not generate_seed_clip:
-                adain_reference = latent.detach()[0]
-            elif adain_factor > 0.0 and adain_reference is not None:
-                adjusted = adain_normalize_latent(latent[0], adain_reference, adain_factor)
-                latent = adjusted.unsqueeze(0)
-                log_vram(f"clip {clip_idx} adain factor={adain_factor}")
+        # Stage 2 — anchor/end keyframes through the (small) VAE before the
+        # experts exist, so the encode never overlaps the 28 GiB expert load.
+        _notify(worker, "svi2.video.progress", {"fraction": 0.05, "stage": "encoding_anchors"})
+        vae.to_cuda() if device == "cuda" else vae.to_cpu()
+        anchor_lat = vae.encode_image(ref_image)[0]
+        end_lat = None
+        if params.get("last_image_path"):
+            end_image = fit_to_resolution(Image.open(params["last_image_path"]).convert("RGB"), width, height)
+            end_lat = vae.encode_image(end_image)[0]
+        if device == "cuda":
+            vae.to_cpu()
+            torch.cuda.empty_cache()
+        log_vram("stage2 done: anchors encoded")
 
-            prev_last_latent = latent.detach()[0]
+        # Stage 3 — the two fp8 experts, the only stage that needs big RAM.
+        _notify(worker, "svi2.video.progress", {"fraction": 0.06, "stage": "loading_experts"})
+        if prebuilt is not None:
+            high, low = prebuilt.high, prebuilt.low
+            audit = prebuilt.audit
+        else:
+            with _ProgressHeartbeat(worker, "loading_experts", 0.06):
+                high, low = _build_experts(params)
+            audit = {
+                "high_fp8": high.fp8_audit,
+                "low_fp8": low.fp8_audit,
+                "high_lora": high.lora_audit,
+                "low_lora": low.lora_audit,
+            }
+        models = RenderModels(high=high, low=low, vae=vae, text_encoder=None, audit=audit)
+        log_vram("stage3 done: experts loaded")
 
-            log_vram(f"clip {clip_idx} denoise done")
+        teacache_thresh: float = params["teacache_thresh"]
+        teacache_on = teacache_thresh > 0.0
+        models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
+        models.low.dit.configure_tea_cache(teacache_on, teacache_thresh)
+
+        mst, msh, msw = params["motion_scale_t"], params["motion_scale_h"], params["motion_scale_w"]
+        motion_schedule = params.get("motion_scale_schedule")  # per-clip temporal ramp
+        if not motion_schedule and (mst, msh, msw) != (1.0, 1.0, 1.0):
+            models.high.dit.configure_motion_scale(mst, msh, msw)
+            models.low.dit.configure_motion_scale(mst, msh, msw)
+
+        def _move_to(tier: str) -> None:
+            if device != "cuda":
+                return
+            keep = models.high.dit if tier == "high" else models.low.dit
+            drop = models.low.dit if tier == "high" else models.high.dit
+            drop.to(torch.device("cpu"))
+            drop.blocks_to_swap = 0
+            keep.block_swap(
+                blocks_to_swap,
+                main_device=torch.device("cuda"),
+                offload_device=torch.device("cpu"),
+            )
+            torch.cuda.empty_cache()
+
+        # The t2v seed clip is global index 0 (its latents seed the motion carry and
+        # AdaIN reference), so the i2v chain resumes at 1; pure i2v starts at 0.
+        chain_start = 1 if generate_seed_clip else 0
+        prev_last_latent: Any = seed_clip_last_latent if generate_seed_clip else None
+        adain_reference: Any = seed_clip_last_latent if generate_seed_clip else None
+        adain_factor: float = params["adain_factor"]
+
+        denoise_span = 0.90 / max(num_clips, 1)
+
+        try:
+            for clip_idx in range(chain_start, num_clips):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise RenderCancelled()
+                log_vram(f"clip {clip_idx} start")
+                _notify(
+                    worker,
+                    "svi2.video.clip.started",
+                    {"clip_index": clip_idx, "num_clips": num_clips},
+                )
+                if teacache_on:
+                    models.high.dit.reset_tea_cache()
+                    models.low.dit.reset_tea_cache()
+                if motion_schedule:
+                    ms = float(motion_schedule[min(clip_idx, len(motion_schedule) - 1)])
+                    models.high.dit.configure_motion_scale(ms, msh, msw)
+                    models.low.dit.configure_motion_scale(ms, msh, msw)
+                    log_vram(f"clip {clip_idx} motion_scale_t={ms}")
+                prompt = prompts[clip_idx % len(prompts)]
+                seed = params["seed_multiplier"] * clip_idx
+                torch.manual_seed(seed)
+
+                context_posi = ctx_cache[prompt].to(device)
+                context_nega = neg_context.to(device) if neg_context is not None else context_posi
+
+                noise = torch.randn(
+                    1, _WAN22_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
+                    generator=torch.Generator(device="cpu").manual_seed(seed),
+                ).to(device=device, dtype=torch.bfloat16)
+                latent = noise
+
+                clip_icn = (
+                    float(icn_schedule[min(clip_idx, len(icn_schedule) - 1)])
+                    if icn_schedule
+                    else icn_scale
+                )
+                if clip_icn > 0.0:
+                    log_vram(f"clip {clip_idx} image_cond_noise_scale={clip_icn}")
+                clip_ref_pad = ref_pad_for_clip(
+                    clip_idx, num_clips, ref_pad_num, ref_pad_free_clips, ref_pad_schedule
+                )
+                if clip_ref_pad != 0:
+                    log_vram(f"clip {clip_idx} ref_pad_num={clip_ref_pad}")
+                y = _build_image_conditioning(
+                    anchor_lat.to(device),
+                    prev_last_latent,
+                    total_latent_frames=total_latent_frames,
+                    num_frames=frames_per_clip,
+                    height=height,
+                    width=width,
+                    num_motion_latent=num_motion_latent,
+                    image_cond_noise_scale=clip_icn,
+                    image_cond_noise_bg_protect=icn_bg_protect,
+                    end_lat=end_lat.to(device) if end_lat is not None else None,
+                    ref_pad_num=clip_ref_pad,
+                )
+
+                def _on_step(
+                    step: int, total_steps: int, seconds: float, _clip_idx: int = clip_idx
+                ) -> None:
+                    _notify(
+                        worker,
+                        "svi2.video.clip.step",
+                        {
+                            "clip_index": _clip_idx,
+                            "step": step,
+                            "total_steps": total_steps,
+                            "seconds_per_step": round(seconds, 2),
+                        },
+                    )
+                    fraction = 0.07 + denoise_span * (_clip_idx + step / max(total_steps, 1))
+                    _notify(
+                        worker,
+                        "svi2.video.progress",
+                        {"fraction": round(min(fraction, 0.97), 4), "stage": "denoising"},
+                    )
+
+                latent = _denoise_clip(
+                    models=models,
+                    latent=latent,
+                    y=y,
+                    context_posi=context_posi,
+                    context_nega=context_nega,
+                    timesteps=timesteps,
+                    cfg_scale=cfg_scale,
+                    expert_selector=expert_selector,
+                    scheduler=scheduler,
+                    move_to=_move_to,
+                    on_step=_on_step,
+                    cancel_event=cancel_event,
+                )
+
+                # Cap colour/exposure drift down the continuation chain: match each
+                # later clip's per-channel latent stats toward clip-0 (AdaIN). Off at 0.
+                if clip_idx == chain_start and not generate_seed_clip:
+                    adain_reference = latent.detach()[0]
+                elif adain_factor > 0.0 and adain_reference is not None:
+                    adjusted = adain_normalize_latent(latent[0], adain_reference, adain_factor)
+                    latent = adjusted.unsqueeze(0)
+                    log_vram(f"clip {clip_idx} adain factor={adain_factor}")
+
+                prev_last_latent = latent.detach()[0]
+
+                log_vram(f"clip {clip_idx} denoise done")
+                if device == "cuda":
+                    models.vae.to_cuda()
+                frames = models.vae.decode_latents(latent)
+                pil_frames = _to_pil_frames(frames)
+
+                is_last_clip = clip_idx == num_clips - 1
+                if pixel_re_encode and num_motion_frame > 0 and not is_last_clip:
+                    reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
+                    prev_last_latent = reenc.to(device=device, dtype=prev_last_latent.dtype)
+                    log_vram(f"clip {clip_idx} pixel re-encode tail={num_motion_frame}")
+
+                if device == "cuda":
+                    models.vae.to_cpu()
+                    torch.cuda.empty_cache()
+                log_vram(f"clip {clip_idx} vae decode done")
+
+                # Stream finalized frames to disk as each clip completes (rolling
+                # crossfade holds only the overlap tail) so length is unbounded by RAM.
+                writer.write_many(stitcher.push(pil_frames))
+                del pil_frames, frames
+                _notify(
+                    worker,
+                    "svi2.video.clip.completed",
+                    {"clip_index": clip_idx, "num_clips": num_clips},
+                )
+                if device == "cuda":
+                    _notify(
+                        worker,
+                        "runtime.memory_stats",
+                        {
+                            "vram_peak_gib": round(peak_allocated() / 1024**3, 2),
+                            "vram_used_gib": round(torch.cuda.memory_allocated() / 1024**3, 2),
+                        },
+                    )
+
+            _notify(worker, "svi2.video.progress", {"fraction": 0.97, "stage": "stitching"})
+            writer.write_many(stitcher.flush())
+            total_frames = writer.count
+            video_path = writer.finalize(output_path, fps=fps)
+        finally:
+            models = high = low = vae = None
+            gc.collect()
             if device == "cuda":
-                models.vae.to_cuda()
-            frames = models.vae.decode_latents(latent)
-            pil_frames = _to_pil_frames(frames)
-
-            is_last_clip = clip_idx == num_clips - 1
-            if pixel_re_encode and num_motion_frame > 0 and not is_last_clip:
-                reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
-                prev_last_latent = reenc.to(device=device, dtype=prev_last_latent.dtype)
-                log_vram(f"clip {clip_idx} pixel re-encode tail={num_motion_frame}")
-
-            if device == "cuda":
-                models.vae.to_cpu()
                 torch.cuda.empty_cache()
-            log_vram(f"clip {clip_idx} vae decode done")
+            log_vram("experts released post-render")
 
-            # Stream finalized frames to disk as each clip completes (rolling
-            # crossfade holds only the overlap tail) so length is unbounded by RAM.
-            writer.write_many(stitcher.push(pil_frames))
-            del pil_frames, frames
-            _notify(
-                worker,
-                "svi2.video.clip.completed",
-                {"clip_index": clip_idx, "num_clips": num_clips},
+        # Optional Maxine RTX super-resolution BEFORE interpolation — fewer frames
+        # to upscale at native fps, and RIFE then interpolates at the final size.
+        upscale_factor: int = params["upscale_factor"]
+        upscale_engine = ""
+        base_path = video_path
+        if upscale_factor > 0:
+            from .rtx_upscale import try_rtx_upscale
+
+            _notify(worker, "svi2.video.progress", {"fraction": 0.975, "stage": "upscaling"})
+            up_out = output_path.parent / (
+                f"{output_path.stem}_x{upscale_factor}{output_path.suffix}"
             )
-            if device == "cuda":
-                _notify(
-                    worker,
-                    "runtime.memory_stats",
-                    {
-                        "vram_peak_gib": round(peak_allocated() / 1024**3, 2),
-                        "vram_used_gib": round(torch.cuda.memory_allocated() / 1024**3, 2),
-                    },
-                )
+            upscaled = try_rtx_upscale(
+                video_path,
+                up_out,
+                upscale_factor,
+                quality=params["upscale_quality"],
+                fps=fps,
+                logger=getattr(worker, "logger", None),
+            )
+            if upscaled:
+                video_path = up_out
+                upscale_engine = "maxine_vsr"
+                log_vram(f"rtx upscale x{upscale_factor} ({params['upscale_quality']})")
+            else:
+                log_vram("rtx upscale unavailable — keeping native resolution")
 
-        _notify(worker, "svi2.video.progress", {"fraction": 0.97, "stage": "stitching"})
-        writer.write_many(stitcher.flush())
-        total_frames = writer.count
-        video_path = writer.finalize(output_path, fps=fps)
+        # Optional frame interpolation: native render stays at fps; this adds frames
+        # to reach interpolate_fps (smooth high-fps, no speed-up). Off when 0/<=fps.
+        interpolate_fps: int = params["interpolate_fps"]
+        interp_engine = ""
+        if interpolate_fps and interpolate_fps > fps:
+            _notify(worker, "svi2.video.progress", {"fraction": 0.98, "stage": "interpolating"})
+            from .interpolate import interpolate_video, resolve_rife_method
+
+            interp_engine = resolve_rife_method(
+                params["interpolate_method"], device=device, rife_bin=params.get("rife_bin")
+            )
+            interp_out = output_path.parent / f"{output_path.stem}_{interpolate_fps}fps{output_path.suffix}"
+            video_path = interpolate_video(
+                video_path,
+                interp_out,
+                src_fps=fps,
+                target_fps=interpolate_fps,
+                method=interp_engine,
+                rife_bin=params.get("rife_bin"),
+                rife_model=params.get("rife_model"),
+                rife_weights=params.get("rife_weights"),
+                device=device,
+                src_frame_count=total_frames,
+            )
+            log_vram(f"interpolated {fps}->{interpolate_fps}fps via {interp_engine}")
+
+        report_data = {
+            "output_path": str(video_path),
+            "base_output_path": str(base_path),
+            "mode": params["mode"],
+            "seed_origin": seed_origin(params),
+            "seed_value": params.get("seed"),
+            "interpolated_fps": interpolate_fps if interpolate_fps > fps else 0,
+            "interpolate_method": params["interpolate_method"],
+            "interpolate_engine": interp_engine,
+            "upscale_factor": upscale_factor if upscale_engine else 0,
+            "upscale_quality": params["upscale_quality"],
+            "upscale_engine": upscale_engine,
+            "num_clips": num_clips,
+            "frames": total_frames,
+            "height": height,
+            "width": width,
+            "fps": fps,
+            "peak_vram_bytes": peak_allocated(),
+            "model_audit": {**audit, **t2v_audit} if t2v_audit else audit,
+            "stitch_mode": params["stitch_mode"],
+            "pixel_re_encode": pixel_re_encode,
+            "resolution_warning": resolution_warning,
+        }
+        write_render_report(output_path.parent, report_data)
+
+        return {"status": "ok", "output_path": str(video_path)}
     finally:
         set_attention_override(None)
-        models = high = low = vae = None
-        gc.collect()
-        if device == "cuda":
-            torch.cuda.empty_cache()
-        log_vram("experts released post-render")
-
-    # Optional Maxine RTX super-resolution BEFORE interpolation — fewer frames
-    # to upscale at native fps, and RIFE then interpolates at the final size.
-    upscale_factor: int = params["upscale_factor"]
-    upscale_engine = ""
-    base_path = video_path
-    if upscale_factor > 0:
-        from .rtx_upscale import try_rtx_upscale
-
-        _notify(worker, "svi2.video.progress", {"fraction": 0.975, "stage": "upscaling"})
-        up_out = output_path.parent / (
-            f"{output_path.stem}_x{upscale_factor}{output_path.suffix}"
-        )
-        upscaled = try_rtx_upscale(
-            video_path,
-            up_out,
-            upscale_factor,
-            quality=params["upscale_quality"],
-            fps=fps,
-            logger=getattr(worker, "logger", None),
-        )
-        if upscaled:
-            video_path = up_out
-            upscale_engine = "maxine_vsr"
-            log_vram(f"rtx upscale x{upscale_factor} ({params['upscale_quality']})")
-        else:
-            log_vram("rtx upscale unavailable — keeping native resolution")
-
-    # Optional frame interpolation: native render stays at fps; this adds frames
-    # to reach interpolate_fps (smooth high-fps, no speed-up). Off when 0/<=fps.
-    interpolate_fps: int = params["interpolate_fps"]
-    interp_engine = ""
-    if interpolate_fps and interpolate_fps > fps:
-        _notify(worker, "svi2.video.progress", {"fraction": 0.98, "stage": "interpolating"})
-        from .interpolate import interpolate_video, resolve_rife_method
-
-        interp_engine = resolve_rife_method(
-            params["interpolate_method"], device=device, rife_bin=params.get("rife_bin")
-        )
-        interp_out = output_path.parent / f"{output_path.stem}_{interpolate_fps}fps{output_path.suffix}"
-        video_path = interpolate_video(
-            video_path,
-            interp_out,
-            src_fps=fps,
-            target_fps=interpolate_fps,
-            method=interp_engine,
-            rife_bin=params.get("rife_bin"),
-            rife_model=params.get("rife_model"),
-            rife_weights=params.get("rife_weights"),
-            device=device,
-            src_frame_count=total_frames,
-        )
-        log_vram(f"interpolated {fps}->{interpolate_fps}fps via {interp_engine}")
-
-    report_data = {
-        "output_path": str(video_path),
-        "base_output_path": str(base_path),
-        "mode": params["mode"],
-        "seed_origin": seed_origin(params),
-        "seed_value": params.get("seed"),
-        "interpolated_fps": interpolate_fps if interpolate_fps > fps else 0,
-        "interpolate_method": params["interpolate_method"],
-        "interpolate_engine": interp_engine,
-        "upscale_factor": upscale_factor if upscale_engine else 0,
-        "upscale_quality": params["upscale_quality"],
-        "upscale_engine": upscale_engine,
-        "num_clips": num_clips,
-        "frames": total_frames,
-        "height": height,
-        "width": width,
-        "fps": fps,
-        "peak_vram_bytes": peak_allocated(),
-        "model_audit": {**audit, **t2v_audit} if t2v_audit else audit,
-        "stitch_mode": params["stitch_mode"],
-        "pixel_re_encode": pixel_re_encode,
-        "resolution_warning": resolution_warning,
-    }
-    write_render_report(output_path.parent, report_data)
-
-    return {"status": "ok", "output_path": str(video_path)}
 
 
 def _to_pil_frames(frames: Any) -> list:

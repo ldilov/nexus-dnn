@@ -21,9 +21,7 @@ def test_register_attention_handlers_exposes_capabilities_method():
 def test_capabilities_handler_returns_backends():
     w = _Worker()
     register_attention_handlers(w)
-    result = asyncio.get_event_loop().run_until_complete(
-        w.handlers[Methods.ATTENTION_CAPABILITIES](None)
-    )
+    result = asyncio.run(w.handlers[Methods.ATTENTION_CAPABILITIES](None))
     assert "backends" in result
     assert len(result["backends"]) == 5
     ids = [b["id"] for b in result["backends"]]
@@ -34,9 +32,7 @@ def test_capabilities_handler_returns_backends():
 def test_capabilities_handler_has_sm_and_cuda():
     w = _Worker()
     register_attention_handlers(w)
-    result = asyncio.get_event_loop().run_until_complete(
-        w.handlers[Methods.ATTENTION_CAPABILITIES](None)
-    )
+    result = asyncio.run(w.handlers[Methods.ATTENTION_CAPABILITIES](None))
     assert "sm" in result and isinstance(result["sm"], list)
     assert "cuda_available" in result and isinstance(result["cuda_available"], bool)
     assert "default" in result

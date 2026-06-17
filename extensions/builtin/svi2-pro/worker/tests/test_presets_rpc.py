@@ -27,7 +27,7 @@ def test_register_preset_handlers_exposes_list_method():
     w = _Worker()
     register_preset_handlers(w)
     assert "svi2.presets.list" in w.handlers
-    result = asyncio.get_event_loop().run_until_complete(w.handlers["svi2.presets.list"](None))
+    result = asyncio.run(w.handlers["svi2.presets.list"](None))
     ids = {p["id"] for p in result["presets"]}
     assert "svi-canonical" in ids
     assert len(ids) == 11
