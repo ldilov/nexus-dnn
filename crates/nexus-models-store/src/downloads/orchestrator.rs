@@ -430,6 +430,16 @@ impl DownloadOrchestrator {
             response.content_length()
         };
 
+        if let Some(file_size) = advertised_total {
+            if target.expected_bytes.is_none() {
+                let _ = self
+                    .inner
+                    .store
+                    .raise_total_bytes(&job.job_id, file_size)
+                    .await;
+            }
+        }
+
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = resume_from;
         let mut last_flush = tokio::time::Instant::now();

@@ -591,6 +591,22 @@ impl JobStore {
         Ok(())
     }
 
+    /// Raise a job's `total_bytes` to `bytes` if it is currently absent
+    /// or smaller — monotonic max, never lowers an existing good value.
+    pub async fn raise_total_bytes(&self, id: &JobId, bytes: u64) -> JobStoreResult<()> {
+        let value = i64::try_from(bytes).unwrap_or(i64::MAX);
+        sqlx::query(
+            "UPDATE download_jobs
+                SET total_bytes = MAX(COALESCE(total_bytes, 0), ?2)
+                WHERE job_id = ?1",
+        )
+        .bind(id.to_string())
+        .bind(value)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_target_progress(
         &self,
         id: &JobId,
@@ -747,6 +763,44 @@ mod tests {
 
         let latest = store.latest_for_family(&family).await.unwrap().unwrap();
         assert_eq!(latest, second.job_id);
+    }
+
+    #[tokio::test]
+    async fn raise_total_bytes_is_monotonic() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let mut params = sample_params();
+        params.targets[0].expected_bytes = None;
+        let job = store.create(params).await.unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            None
+        );
+
+        store
+            .raise_total_bytes(&job.job_id, 1_000_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            Some(1_000_000)
+        );
+
+        store.raise_total_bytes(&job.job_id, 500_000).await.unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            Some(1_000_000),
+            "lower value must not overwrite a larger existing total"
+        );
+
+        store
+            .raise_total_bytes(&job.job_id, 2_000_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            Some(2_000_000)
+        );
     }
 
     #[tokio::test]
