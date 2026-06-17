@@ -27,7 +27,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use reqwest::StatusCode;
-use reqwest::header::{HeaderMap, HeaderValue, RANGE};
+use reqwest::header::{CONTENT_RANGE, HeaderMap, HeaderValue, RANGE};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, watch};
 use tokio_util::sync::CancellationToken;
@@ -418,6 +418,18 @@ impl DownloadOrchestrator {
             .await
             .map_err(|e| TargetFailure::Io(format!("seek: {e}")))?;
 
+        // Size the server promises for THIS request: a 206 carries the full
+        // size in Content-Range's total, a 200 in Content-Length.
+        let advertised_total = if partial {
+            response
+                .headers()
+                .get(CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_content_range_total)
+        } else {
+            response.content_length()
+        };
+
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = resume_from;
         let mut last_flush = tokio::time::Instant::now();
@@ -474,7 +486,55 @@ impl DownloadOrchestrator {
             .store
             .update_target_progress(&job.job_id, &target.artifact_id, downloaded)
             .await;
+
+        // A stream that ends early (HF/Xet throttle, dropped connection) looks
+        // identical to success; reject it so a partial never marks Downloaded.
+        match verify_transfer_size(downloaded, advertised_total, target.expected_bytes) {
+            SizeVerdict::Ok => {}
+            SizeVerdict::Unverifiable => tracing::warn!(
+                target: "model_store",
+                file = %target.filename,
+                received = downloaded,
+                "download size unverifiable — no Content-Length, Content-Range, or manifest size"
+            ),
+            SizeVerdict::Mismatch { expected, received } => {
+                return Err(TargetFailure::Upstream(format!(
+                    "truncated transfer for {}: received {received} of {expected} bytes",
+                    target.filename
+                )));
+            }
+        }
         Ok(())
+    }
+}
+
+/// Total size parsed from a `Content-Range: bytes START-END/TOTAL` header.
+/// `None` for an unknown total (`*`) or a malformed value.
+fn parse_content_range_total(value: &str) -> Option<u64> {
+    let total = value.rsplit('/').next()?.trim();
+    if total == "*" {
+        return None;
+    }
+    total.parse::<u64>().ok()
+}
+
+/// Verdict on whether a finished transfer received every byte it should have.
+#[derive(Debug, PartialEq, Eq)]
+enum SizeVerdict {
+    Ok,
+    Mismatch { expected: u64, received: u64 },
+    Unverifiable,
+}
+
+fn verify_transfer_size(
+    received: u64,
+    advertised: Option<u64>,
+    manifest: Option<u64>,
+) -> SizeVerdict {
+    match advertised.or(manifest).filter(|&n| n > 0) {
+        Some(expected) if received == expected => SizeVerdict::Ok,
+        Some(expected) => SizeVerdict::Mismatch { expected, received },
+        None => SizeVerdict::Unverifiable,
     }
 }
 
@@ -726,5 +786,75 @@ mod tests {
         let entry = index.get(&job_id.to_string()).expect("index entry present");
         assert_eq!(entry.family_id, "huggingface:acme/model");
         assert_eq!(entry.repo, "acme/model");
+    }
+
+    #[test]
+    fn content_range_total_parses_full_size() {
+        assert_eq!(parse_content_range_total("bytes 0-1000/1001"), Some(1001));
+        assert_eq!(parse_content_range_total("bytes 500-1000/1001"), Some(1001));
+        assert_eq!(parse_content_range_total("bytes 0-1/2 "), Some(2));
+    }
+
+    #[test]
+    fn content_range_total_rejects_unknown_or_garbage() {
+        assert_eq!(parse_content_range_total("bytes 0-100/*"), None);
+        assert_eq!(parse_content_range_total("garbage"), None);
+        assert_eq!(parse_content_range_total(""), None);
+    }
+
+    /// The regression for the DGX I2V-LOW failure: the server advertised the
+    /// full size but the stream ended early — a truncated transfer must be a
+    /// Mismatch, never silently accepted.
+    #[test]
+    fn truncated_transfer_is_a_mismatch() {
+        assert_eq!(
+            verify_transfer_size(7_350_000_000, Some(15_000_000_000), Some(15_000_000_000)),
+            SizeVerdict::Mismatch {
+                expected: 15_000_000_000,
+                received: 7_350_000_000,
+            }
+        );
+    }
+
+    #[test]
+    fn complete_transfer_is_ok() {
+        assert_eq!(
+            verify_transfer_size(1001, Some(1001), None),
+            SizeVerdict::Ok
+        );
+        assert_eq!(
+            verify_transfer_size(1001, None, Some(1001)),
+            SizeVerdict::Ok
+        );
+    }
+
+    #[test]
+    fn advertised_size_wins_over_manifest() {
+        // Server is authoritative for this transfer: matching its advertised
+        // length is complete even when a stale manifest size disagrees.
+        assert_eq!(
+            verify_transfer_size(1001, Some(1001), Some(999)),
+            SizeVerdict::Ok
+        );
+        // Falls short of the advertised length → mismatch despite manifest.
+        assert_eq!(
+            verify_transfer_size(500, Some(1001), Some(500)),
+            SizeVerdict::Mismatch {
+                expected: 1001,
+                received: 500,
+            }
+        );
+    }
+
+    #[test]
+    fn unknown_size_is_unverifiable_not_a_failure() {
+        assert_eq!(
+            verify_transfer_size(1001, None, None),
+            SizeVerdict::Unverifiable
+        );
+        assert_eq!(
+            verify_transfer_size(1001, Some(0), Some(0)),
+            SizeVerdict::Unverifiable
+        );
     }
 }
