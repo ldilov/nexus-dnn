@@ -45,6 +45,47 @@ function buildArtifactPath(deploymentId: string, suffix = ""): string {
   return `${EXTENSION_PREFIX}/deployments/${deploymentId}/artifacts${suffix}`;
 }
 
+/** Fetch the artifact and trigger a browser download via a blob object URL.
+ * The host runs inside a custom-element / memory-router shell where a plain
+ * `<a download href>` silently no-ops, so we drive the download programmatically
+ * (same pattern as `exports_client.downloadExportBlob`). */
+async function downloadArtifactBlob(
+  deploymentId: string,
+  utteranceId: string,
+  filename: string,
+): Promise<void> {
+  const resp = await fetch(buildArtifactPath(deploymentId, `/${utteranceId}/download`), {
+    headers: { accept: "application/octet-stream" },
+  });
+  if (!resp.ok) throw new Error(`download failed: HTTP ${resp.status}`);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Soft-delete exactly the displayed utterances via the bulk endpoint's
+ * `utteranceIds` subset filter, leaving any not-shown rows untouched. */
+async function clearShownArtifacts(
+  deploymentId: string,
+  utteranceIds: readonly string[],
+): Promise<void> {
+  const csv = utteranceIds.map((id) => encodeURIComponent(id)).join(",");
+  const resp = await fetch(buildArtifactPath(deploymentId, `?utteranceIds=${csv}`), {
+    method: "DELETE",
+    headers: { accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`clear failed: HTTP ${resp.status}`);
+}
+
 interface UseRecentResult {
   readonly rows: readonly ArtifactRow[];
   readonly loading: boolean;
@@ -153,6 +194,8 @@ export function RecentGenerationsCard({
   const { rows, loading, error, refetch, tick } = useRecentUtterances(deploymentId);
   const voicesById = useVoicesByRun(deploymentId, tick);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
   const reducedMotion = useReducedMotion();
 
   // Drop the playing row when refresh starts a new fetch — if the previously
@@ -160,11 +203,43 @@ export function RecentGenerationsCard({
   // unmount mid-play with a stale id sitting in state.
   const handleRefresh = useCallback((): void => {
     setPlayingId(null);
+    setActionError(null);
     refetch();
   }, [refetch]);
 
+  const handleDownload = useCallback(
+    async (utteranceId: string, filename: string): Promise<void> => {
+      setActionError(null);
+      try {
+        await downloadArtifactBlob(deploymentId, utteranceId, filename);
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : "download failed");
+      }
+    },
+    [deploymentId],
+  );
+
   // `rows` is already capped to LIMIT in the fetch handler — see useRecentUtterances.
   const displayRows = rows;
+
+  const handleClear = useCallback(async (): Promise<void> => {
+    const ids = displayRows.map((r) => r.utteranceId);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Remove the ${ids.length} shown generation${ids.length === 1 ? "" : "s"} from this list?`)) {
+      return;
+    }
+    setClearing(true);
+    setActionError(null);
+    setPlayingId(null);
+    try {
+      await clearShownArtifacts(deploymentId, ids);
+      refetch();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : "clear failed");
+    } finally {
+      setClearing(false);
+    }
+  }, [displayRows, deploymentId, refetch]);
 
   if (!loading && !error && displayRows.length === 0) {
     return null; // Hidden until the user has at least one generation.
@@ -188,12 +263,22 @@ export function RecentGenerationsCard({
           >
             ↻
           </button>
+          <button
+            type="button"
+            className={css.refresh}
+            onClick={() => void handleClear()}
+            disabled={clearing || displayRows.length === 0}
+            aria-label="Clear list"
+            title="Clear the shown generations"
+          >
+            Clear
+          </button>
         </span>
       </header>
 
-      {error && (
+      {(error || actionError) && (
         <div className={css.error} role="alert">
-          {error}
+          {error ?? actionError}
         </div>
       )}
 
@@ -276,15 +361,15 @@ export function RecentGenerationsCard({
                     </div>
                   </div>
 
-                  <a
+                  <button
+                    type="button"
                     className={css.download}
-                    href={downloadHref}
-                    download={row.filename}
+                    onClick={() => void handleDownload(row.utteranceId, row.filename)}
                     aria-label={`Download ${row.filename}`}
                     title="Download"
                   >
                     ↓
-                  </a>
+                  </button>
                   </div>
 
                   {isPlaying && (
