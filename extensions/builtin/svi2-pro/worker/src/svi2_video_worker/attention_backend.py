@@ -222,9 +222,47 @@ def _is_usable(spec: BackendSpec, q_dtype: torch.dtype) -> Optional[str]:
     return None
 
 
+_ATTENTION_OVERRIDE: Optional[str] = None
+
+
+def set_attention_override(name: Optional[str]) -> None:
+    global _ATTENTION_OVERRIDE
+    _ATTENTION_OVERRIDE = name or None
+
+
 def _requested() -> str:
-    raw = os.environ.get("SVI2_ATTENTION", "auto").strip().lower()
+    raw = (
+        _ATTENTION_OVERRIDE
+        if _ATTENTION_OVERRIDE is not None
+        else os.environ.get("SVI2_ATTENTION", "auto")
+    )
+    raw = raw.strip().lower()
     return _ALIASES.get(raw, raw)
+
+
+def attention_capabilities() -> dict:
+    _ORDER = ("sdpa", "flash2", "flash3_fp4", "sage2", "sage3_fp4")
+    bf16 = torch.bfloat16
+    backends = []
+    for key in _ORDER:
+        spec = _REGISTRY[key]
+        reason = _is_usable(spec, bf16)
+        backends.append({
+            "id": key,
+            "installed": spec.available,
+            "supported": reason is None,
+            "reason": reason,
+            "min_arch": list(spec.min_arch),
+            "needs_triton": spec.needs_triton,
+            "bf16_only": spec.bf16_only,
+        })
+    return {
+        "sm": list(_SM),
+        "cuda_available": torch.cuda.is_available(),
+        "default": "flash2",
+        "auto_chain": list(_AUTO_CHAIN),
+        "backends": backends,
+    }
 
 
 def _strict() -> bool:

@@ -217,6 +217,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "models_dir": params.get("models_dir"),
         "output_path": params.get("output_path", "out.mp4"),
         "device": params.get("device"),
+        "attention": params.get("attention"),
     }
 
 
@@ -752,8 +753,14 @@ def _run_render(
     from .render_report import write_render_report
     from .vram import reset_peak, peak_allocated, log_vram
 
+    from .attention_backend import set_attention_override
+    import svi2_video_worker.attention_backend as _ab
+
     output_path = Path(params["output_path"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    set_attention_override(params.get("attention"))
+    _ab._logged = False
 
     device = params.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     reset_peak()
@@ -1094,6 +1101,7 @@ def _run_render(
         total_frames = writer.count
         video_path = writer.finalize(output_path, fps=fps)
     finally:
+        set_attention_override(None)
         models = high = low = vae = None
         gc.collect()
         if device == "cuda":

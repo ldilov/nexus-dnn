@@ -118,6 +118,56 @@ def test_denoise_clip_switches_expert_and_returns_finite_latent():
     assert "high" in selected_tiers and "low" in selected_tiers
 
 
+def test_attention_override_cleared_after_render(tmp_path, monkeypatch):
+    import svi2_video_worker.attention_backend as ab
+    import svi2_video_worker.ffmpeg_io as ffmpeg_io
+    from pathlib import Path
+
+    class _FakeWriter:
+        def __init__(self):
+            self.frames = []
+
+        def write(self, frame):
+            self.frames.append(frame)
+
+        def write_many(self, frames):
+            self.frames.extend(frames)
+
+        @property
+        def count(self):
+            return len(self.frames)
+
+        def finalize(self, out_path, *, fps=15, quality=7):
+            Path(out_path).write_bytes(b"fake-mp4")
+            return out_path
+
+    monkeypatch.setattr(ffmpeg_io, "StreamingFrameWriter", _FakeWriter)
+
+    ref_path = tmp_path / "ref.png"
+    from PIL import Image
+    Image.new("RGB", (16, 16), (0, 0, 0)).save(ref_path)
+
+    params = validate_render_params(
+        {
+            "ref_image_path": str(ref_path),
+            "prompts": ["test"],
+            "num_clips": 1,
+            "height": 16,
+            "width": 16,
+            "frames_per_clip": 5,
+            "num_inference_steps": 2,
+            "num_overlap_frame": 1,
+            "output_path": str(tmp_path / "out.mp4"),
+            "device": "cpu",
+            "attention": "sdpa",
+        }
+    )
+
+    assert params["attention"] == "sdpa"
+    _run_render(params, worker=None, build_models=lambda _p: _tiny_models(torch.bfloat16))
+    assert ab._ATTENTION_OVERRIDE is None
+
+
 def test_run_render_end_to_end_with_fakes(tmp_path, monkeypatch):
     import svi2_video_worker.ffmpeg_io as ffmpeg_io
     from pathlib import Path

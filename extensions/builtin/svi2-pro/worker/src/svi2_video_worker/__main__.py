@@ -14,6 +14,7 @@ def _hijack_stdout() -> None:
 def cli() -> int:
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     _hijack_stdout()
+    from .attention_rpc import register_attention_handlers
     from .installer import register_installer_handlers
     from .main import Worker
     from .pipeline_fake import register_fake_handlers
@@ -33,6 +34,7 @@ def cli() -> int:
     worker = Worker(profile=profile)
     register_installer_handlers(worker)
     register_preset_handlers(worker)
+    register_attention_handlers(worker)
     if profile == "fake":
         register_fake_handlers(worker)
     elif profile == "rtx50-fp8":

@@ -29,3 +29,4 @@ def test_ok_and_error_and_notification_framing():
 def test_method_and_notification_names():
     assert Methods.RENDER_START == "svi2.video.render.start"
     assert Notifications.CLIP_COMPLETED == "svi2.video.clip.completed"
+    assert Methods.ATTENTION_CAPABILITIES == "svi2.attention.capabilities"

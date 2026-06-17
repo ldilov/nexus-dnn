@@ -237,6 +237,10 @@
     "fixed_sigmas": {
       "type": ["array", "null"],
       "items": { "type": "number" }
+    },
+    "attention": {
+      "type": ["string", "null"],
+      "default": null
     }
   }
 }

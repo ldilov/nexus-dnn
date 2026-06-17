@@ -30,3 +30,18 @@ def test_schema_enforces_ranges():
         assert False
     except jsonschema.ValidationError:
         pass
+
+
+def test_schema_accepts_attention_string():
+    schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
+    jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"], "attention": "sage2"}, schema)
+
+
+def test_schema_accepts_attention_null():
+    schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
+    jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"], "attention": None}, schema)
+
+
+def test_schema_accepts_attention_omitted():
+    schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
+    jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"]}, schema)

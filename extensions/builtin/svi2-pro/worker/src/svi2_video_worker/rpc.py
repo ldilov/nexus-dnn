@@ -13,6 +13,7 @@ class Methods:
     INSTALL_START = "svi2.video.install.start"
     INSTALL_STATUS = "svi2.video.install.status"
     PRESETS_LIST = "svi2.presets.list"
+    ATTENTION_CAPABILITIES = "svi2.attention.capabilities"
 
 
 class Notifications:

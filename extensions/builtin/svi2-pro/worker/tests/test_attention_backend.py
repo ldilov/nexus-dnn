@@ -8,7 +8,9 @@ from svi2_video_worker.attention_backend import (
     FLASH_AVAILABLE,
     SAGE3_AVAILABLE,
     FLASH3_AVAILABLE,
+    attention_capabilities,
     scaled_attention,
+    set_attention_override,
 )
 
 
@@ -128,3 +130,71 @@ def test_unknown_backend_non_strict_sdpa(monkeypatch):
     spec, reason = ab._resolve("nonsense", _fake_q())
     assert spec.name == "sdpa"
     assert "unknown" in reason
+
+
+_EXPECTED_ORDER = ("sdpa", "flash2", "flash3_fp4", "sage2", "sage3_fp4")
+
+
+def test_attention_capabilities_shape():
+    caps = attention_capabilities()
+    assert "sm" in caps and isinstance(caps["sm"], list) and len(caps["sm"]) == 2
+    assert "cuda_available" in caps and isinstance(caps["cuda_available"], bool)
+    assert "default" in caps
+    assert "auto_chain" in caps and isinstance(caps["auto_chain"], list)
+    assert "backends" in caps
+    ids = [b["id"] for b in caps["backends"]]
+    assert ids == list(_EXPECTED_ORDER)
+
+
+def test_attention_capabilities_backend_fields():
+    caps = attention_capabilities()
+    for b in caps["backends"]:
+        assert "id" in b
+        assert "installed" in b and isinstance(b["installed"], bool)
+        assert "supported" in b and isinstance(b["supported"], bool)
+        assert "min_arch" in b and isinstance(b["min_arch"], list) and len(b["min_arch"]) == 2
+        assert "needs_triton" in b and isinstance(b["needs_triton"], bool)
+        assert "bf16_only" in b and isinstance(b["bf16_only"], bool)
+
+
+def test_attention_capabilities_unsupported_has_reason(monkeypatch):
+    monkeypatch.setattr(ab, "_SM", (0, 0))
+    caps = attention_capabilities()
+    non_sdpa = [b for b in caps["backends"] if b["id"] != "sdpa"]
+    for b in non_sdpa:
+        assert b["supported"] is False
+        assert b["reason"] is not None and len(b["reason"]) > 0
+
+
+def test_attention_capabilities_sdpa_always_supported(monkeypatch):
+    monkeypatch.setattr(ab, "_SM", (0, 0))
+    caps = attention_capabilities()
+    sdpa = next(b for b in caps["backends"] if b["id"] == "sdpa")
+    assert sdpa["supported"] is True
+    assert sdpa["reason"] is None
+
+
+def test_set_attention_override_takes_priority_over_env(monkeypatch):
+    monkeypatch.setenv("SVI2_ATTENTION", "sdpa")
+    monkeypatch.setattr(ab, "_ATTENTION_OVERRIDE", None)
+    assert ab._requested() == "sdpa"
+    set_attention_override("sage2")
+    assert ab._requested() == "sage2"
+    set_attention_override(None)
+    assert ab._requested() == "sdpa"
+
+
+def test_set_attention_override_none_restores_env_fallback(monkeypatch):
+    monkeypatch.delenv("SVI2_ATTENTION", raising=False)
+    monkeypatch.setattr(ab, "_ATTENTION_OVERRIDE", None)
+    set_attention_override("flash2")
+    assert ab._requested() == "flash2"
+    set_attention_override(None)
+    assert ab._requested() == "auto"
+
+
+def test_set_attention_override_empty_string_treated_as_none(monkeypatch):
+    monkeypatch.delenv("SVI2_ATTENTION", raising=False)
+    monkeypatch.setattr(ab, "_ATTENTION_OVERRIDE", None)
+    set_attention_override("")
+    assert ab._ATTENTION_OVERRIDE is None
