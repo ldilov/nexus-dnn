@@ -385,3 +385,138 @@ async fn stop_during_warmup_leaves_no_surviving_worker() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Bug #1 regression — warm-on-Start must AWAIT true model residency, not just a
+// spawned process. A `spawn_if_needed` that returns a Starting-state worker (or
+// any reused client) does NOT guarantee the model is loaded. The warm task must
+// explicitly send + await `model.load` per warmed worker so "Warming N/M" and
+// the ready badge reflect a genuinely-loaded model. This factory mints leases
+// whose every `send_rpc` is recorded, so the test can assert the warm path
+// issues exactly one `model.load` per warmed worker.
+
+/// Lease that records each `model.load` RPC against a shared counter and always
+/// reports `Ready`, so the provider's reuse path treats it as live.
+struct LoadRecordingLease {
+    id: RuntimeLeaseId,
+    model_loads: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl BackendRuntimeLease for LoadRecordingLease {
+    fn id(&self) -> RuntimeLeaseId {
+        self.id.clone()
+    }
+    fn state(&self) -> LeaseState {
+        LeaseState::Ready
+    }
+    async fn send_rpc(
+        &self,
+        method: &str,
+        _params: serde_json::Value,
+    ) -> Result<serde_json::Value, LeaseError> {
+        if method == "model.load" {
+            self.model_loads.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(serde_json::Value::Null)
+    }
+    async fn subscribe_notifications(&self) -> NotificationStream {
+        futures::stream::iter(Vec::<NotificationEnvelope>::new()).boxed()
+    }
+    async fn release(&self) -> Result<(), LeaseError> {
+        Ok(())
+    }
+}
+
+/// Mints a distinct `LoadRecordingLease` per acquire, all sharing one
+/// `model_loads` counter so the test can assert how many `model.load` RPCs the
+/// warm path issued across the whole pool.
+struct CountingLoadFactory {
+    model_loads: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl LeaseFactory for CountingLoadFactory {
+    async fn acquire(&self) -> DomainResult<SharedLease> {
+        Ok(Arc::new(LoadRecordingLease {
+            id: RuntimeLeaseId::new(),
+            model_loads: self.model_loads.clone(),
+        }))
+    }
+}
+
+struct LoadHarness {
+    router: axum::Router,
+    pool: Arc<LeaseProviderPool>,
+    model_loads: Arc<AtomicUsize>,
+}
+
+async fn load_harness(ceiling: usize) -> LoadHarness {
+    let model_loads = Arc::new(AtomicUsize::new(0));
+    let factory = Arc::new(CountingLoadFactory {
+        model_loads: model_loads.clone(),
+    });
+    let provider = Arc::new(LeaseProvider::new(factory.clone()));
+    let pool = Arc::new(LeaseProviderPool::with_ceiling(
+        factory,
+        provider.clone(),
+        ceiling,
+    ));
+    let repos = Repos::from_pool(fresh_pool().await);
+    let queue = Arc::new(RuntimeQueue::new());
+    let router = build_router_with_families(
+        repos,
+        queue,
+        "0.0.0-test",
+        Some(provider),
+        Some(pool.clone()),
+        None,
+        Arc::new(RunChannelRegistry::new()),
+        Arc::new(FamilyRegistry::new(Vec::new())),
+        default_reconciler(),
+    );
+    LoadHarness {
+        router,
+        pool,
+        model_loads,
+    }
+}
+
+#[tokio::test]
+async fn warmup_awaits_model_load_per_warmed_worker() {
+    let h = load_harness(4).await;
+
+    let status = post_start(&h.router, json!({ "numWorkers": 3, "warmup": true })).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "start stays non-blocking 202");
+
+    // The warm path must issue exactly one `model.load` per warmed worker —
+    // spawning the process is not enough; the model must be made resident.
+    let model_loads = h.model_loads.clone();
+    let loaded = poll_until(|| {
+        let model_loads = model_loads.clone();
+        async move { model_loads.load(Ordering::SeqCst) >= 3 }
+    })
+    .await;
+    assert!(
+        loaded,
+        "warmup must await model.load for all 3 active workers, saw {}",
+        h.model_loads.load(Ordering::SeqCst)
+    );
+
+    // Let any (incorrect) extra loads land before asserting the exact count.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        h.model_loads.load(Ordering::SeqCst),
+        3,
+        "warmup issues exactly one model.load per warmed worker, not the ceiling"
+    );
+
+    // And the pool reflects genuinely-warm workers once loads have settled.
+    let pool = h.pool.clone();
+    let all_warm = poll_until(|| {
+        let pool = pool.clone();
+        async move { pool.warm_counts().await.1 == 3 }
+    })
+    .await;
+    assert!(all_warm, "all warmed workers should report Ready");
+}
