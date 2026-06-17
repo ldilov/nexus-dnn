@@ -331,7 +331,7 @@ fn default_base_seed() -> i64 {
     42
 }
 fn default_cache_policy() -> String {
-    "use_cache".into()
+    "force_regenerate".into()
 }
 
 pub async fn create_run(

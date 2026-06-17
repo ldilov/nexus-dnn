@@ -145,7 +145,7 @@ export function RecipeView(): JSX.Element {
     const v = seededRecipeMeta["cachePolicy"];
     return v === "use_cache" || v === "force_regenerate" || v === "read_only_cache"
       ? v
-      : "use_cache";
+      : "force_regenerate";
   });
   // Mirror the deployment's default-voice id locally so `QuickVoicePicker`
   // updates propagate without a full loader refetch. `useLoaderData` only

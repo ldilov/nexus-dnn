@@ -149,6 +149,9 @@ pub fn spawn_dispatcher_pooled(
             let version_c = extension_version.clone();
             let base_c = output_root_base.clone();
             let queue_c = queue.clone();
+            // Concurrent-worker count for this run: gates the synthesis cache
+            // (disabled when >1 so every parallel item synthesises fresh).
+            let workers = queue.current_max_in_flight();
             // Run concurrently: do NOT await here, so the loop pops the next
             // run (up to the cap) immediately. The pool guard `pooled` rides
             tokio::spawn(async move {
@@ -157,7 +160,7 @@ pub fn spawn_dispatcher_pooled(
                 // kills the dispatcher nor leaks the in-flight slot.
                 let inner = tokio::spawn(async move {
                     run_loop::process_one(
-                        qrun, repos_c, provider, registry_c, store_c, version_c, base_c,
+                        qrun, repos_c, provider, registry_c, store_c, version_c, base_c, workers,
                     )
                     .await;
                 });

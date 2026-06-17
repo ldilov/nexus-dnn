@@ -27573,7 +27573,7 @@ function MU() {
     ..._U(j)
   })), [D, F] = g.useState(() => {
     const he = C.cachePolicy;
-    return he === "use_cache" || he === "force_regenerate" || he === "read_only_cache" ? he : "use_cache";
+    return he === "use_cache" || he === "force_regenerate" || he === "read_only_cache" ? he : "force_regenerate";
   }), [Z, J] = g.useState(
     t.defaultVoiceAssetId ?? null
   ), [P, ie] = g.useState(() => {

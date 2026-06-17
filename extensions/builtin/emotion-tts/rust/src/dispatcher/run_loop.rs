@@ -27,6 +27,7 @@ pub(crate) async fn process_one(
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
     extension_version: String,
     output_root_base: PathBuf,
+    workers: usize,
 ) {
     let run_id = qrun.run_id.clone();
     let run_id_str = run_id.as_str().to_string();
@@ -52,6 +53,7 @@ pub(crate) async fn process_one(
         artifact_store,
         &extension_version,
         &output_root_base,
+        workers,
     )
     .await;
 
@@ -121,6 +123,7 @@ async fn dispatch_inner(
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
     extension_version: &str,
     output_root_base: &Path,
+    workers: usize,
 ) -> crate::domain::Result<String> {
     let run_id = &qrun.run_id;
 
@@ -195,7 +198,10 @@ async fn dispatch_inner(
     };
     let prepared = prepare(repos, run_id, &cfg, extension_version).await?;
 
-    let policy_uses_cache = matches!(prepared.run.cache_policy.as_str(), "use_cache");
+    // Cache reads are disabled with >1 concurrent worker so every parallel
+    // item synthesises fresh instead of some completing instantly from cache.
+    let policy_uses_cache =
+        matches!(prepared.run.cache_policy.as_str(), "use_cache") && workers <= 1;
 
     let hashes: Vec<crate::domain::ContentHash> = prepared
         .utterances
