@@ -17907,7 +17907,7 @@ function o2({ deployment: t }) {
     /* @__PURE__ */ c.jsx("span", { children: t.backendRuntimePreference ?? "indextts.python" }),
     /* @__PURE__ */ c.jsx("span", { className: yr, children: "Badge" }),
     /* @__PURE__ */ c.jsx(jr, { tone: m2(b), pulse: b === "starting" || b === "installing", children: k1(b) }),
-    N > 0 && /* @__PURE__ */ c.jsxs("span", { style: h2, "aria-live": "polite", children: [
+    N > 0 && /* @__PURE__ */ c.jsxs("span", { style: h2, children: [
       "Warming ",
       R,
       "/",
@@ -17999,7 +17999,7 @@ const c2 = {
   height: 14,
   margin: 0,
   cursor: "pointer",
-  accentColor: "var(--accent, #7aa2f7)"
+  accentColor: "var(--accent, #ba9eff)"
 }, h2 = {
   fontSize: 11,
   color: "var(--on-surface-variant, #c4c7c5)",

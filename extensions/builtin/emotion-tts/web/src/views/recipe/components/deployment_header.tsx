@@ -80,7 +80,7 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
       </StatusPill>
 
       {workersWarming > 0 && (
-        <span style={WARMING_INDICATOR} aria-live="polite">
+        <span style={WARMING_INDICATOR}>
           Warming {workersWarm}/{workersActive}…
         </span>
       )}
@@ -188,7 +188,7 @@ const WARMUP_CHECKBOX: CSSProperties = {
   height: 14,
   margin: 0,
   cursor: "pointer",
-  accentColor: "var(--accent, #7aa2f7)",
+  accentColor: "var(--accent, #ba9eff)",
 };
 
 const WARMING_INDICATOR: CSSProperties = {
