@@ -105,6 +105,18 @@ impl LeaseProvider {
         self.state.lock().await.clone()
     }
 
+    /// Peeks the cached lease without ever spawning a worker. Returns the
+    /// client only when an already-running lease is serviceable, so metadata
+    /// queries never boot the 30GB Python+GPU worker just to be answered.
+    pub async fn current_if_ready(&self) -> Option<BackendClient> {
+        self.state
+            .lock()
+            .await
+            .as_ref()
+            .filter(|c| is_serviceable(c.lease().state()))
+            .cloned()
+    }
+
     pub async fn stop(&self) -> Result<()> {
         let mut slot = self.state.lock().await;
         if let Some(client) = slot.take() {

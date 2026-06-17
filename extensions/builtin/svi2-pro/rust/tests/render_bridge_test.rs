@@ -27,9 +27,23 @@ fn app(
 }
 
 #[tokio::test]
-async fn attention_capabilities_proxies_worker() {
+async fn attention_capabilities_proxies_worker_when_running() {
     let pool = fixtures::memory_pool().await;
     let router = app(pool, Arc::new(MockRenderFactory));
+
+    // Warm the worker via a route that legitimately spawns it; capabilities
+    // itself must never spawn, so it only answers once a lease is up.
+    let warm = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/presets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(warm.status(), StatusCode::OK);
 
     let resp = router
         .oneshot(
@@ -55,6 +69,26 @@ async fn attention_capabilities_proxies_worker() {
         .collect();
     assert!(ids.contains(&"sdpa"), "sdpa missing from {ids:?}");
     assert!(ids.contains(&"flash2"), "flash2 missing from {ids:?}");
+}
+
+#[tokio::test]
+async fn attention_capabilities_returns_503_when_worker_not_running() {
+    let pool = fixtures::memory_pool().await;
+    let router = app(pool, Arc::new(MockRenderFactory));
+
+    // No prior call warmed the worker, so the provider holds no lease. The
+    // route must report unavailable without booting one.
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri("/capabilities/attention")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
