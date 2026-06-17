@@ -17,6 +17,9 @@ export interface RunProgress {
   etaMs?: number | undefined;
   durationMs?: number | undefined;
   failureCategory?: string | undefined;
+  // The completed utterance's id, present once `status === "done"`. Lets the
+  // carousel preview the rendered audio via `/artifacts/{utteranceId}/download`.
+  utteranceId?: string | undefined;
 }
 
 /** Project a live `RunProgress` onto the carousel's `JobStatus` palette. The

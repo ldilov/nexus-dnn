@@ -128,6 +128,7 @@ export function ScriptSection({
           onQueueChange={onQueueChange}
           onJobsChange={onStoryboardJobsChange}
           jobProgress={jobProgress}
+          deploymentId={deployment.deploymentId}
         />
       ) : isRows ? (
         <CharacterRowsEditor

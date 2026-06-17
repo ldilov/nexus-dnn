@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Storyboard } from "./storyboard";
+import type { RunProgress } from "./storyboard_data";
+import type { StoryboardJob } from "../run_panel_items";
+import type { VoiceAsset } from "../../../../services/voice_assets_client";
 
 function renderBoard(text = "First phrase here. Second phrase too.\n\nThird stands alone.") {
   const onChange = (): void => {};
@@ -104,5 +107,91 @@ describe("Storyboard interaction flow", () => {
     expect(screen.getByText("SEG-001")).toBeTruthy();
     const cards = screen.getAllByText("Vesper");
     expect(cards.length).toBeGreaterThan(0);
+  });
+});
+
+const VOICE: VoiceAsset = {
+  voiceAssetId: "voice_alpha",
+  deploymentId: "dep_x",
+  displayName: "Alpha",
+  kind: "speaker",
+  audioArtifactRef: "artifact://mem/x",
+  contentSha256: "a".repeat(64),
+  referenceText: null,
+  sampleRate: 48000,
+  durationMs: 1000,
+  sourceType: "upload",
+  isActive: true,
+  createdAt: 0,
+  updatedAt: 0,
+};
+
+/** Cast the first word, capturing the generated job id the storyboard emits via
+ * `onJobsChange` so the test can key a live `jobProgress` entry to it. */
+function castFirstWord(): { jobId: string; rerender: (progress: ReadonlyMap<string, RunProgress>) => void } {
+  let captured: StoryboardJob[] = [];
+  const props = {
+    voiceAssets: [VOICE],
+    presets: [],
+    storyText: "Alpha word here.",
+    onStoryTextChange: () => {},
+    deploymentId: "dep_x",
+    onJobsChange: (jobs: StoryboardJob[]) => {
+      captured = jobs;
+    },
+  };
+  const view = render(<Storyboard {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cast" }));
+  const jobId = captured[0]?.jobId ?? "";
+  expect(jobId).not.toBe("");
+  return {
+    jobId,
+    rerender: (progress) => view.rerender(<Storyboard {...props} jobProgress={progress} />),
+  };
+}
+
+describe("Storyboard preview playback (FIX-4)", () => {
+  it("disables Preview while the segment is queued / not yet rendered", () => {
+    castFirstWord();
+    const preview = screen.getByRole("button", { name: /Preview audio/ });
+    expect((preview as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disables Preview while generating (no audio yet)", () => {
+    const { jobId, rerender } = castFirstWord();
+    rerender(new Map([[jobId, { jobId, runId: "runA", status: "generating" }]]));
+    const preview = screen.getByRole("button", { name: /Preview audio/ });
+    expect((preview as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("enables Preview and plays the artifact audio once the segment is done", () => {
+    const playSpy = vi
+      .spyOn(window.HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    const { jobId, rerender } = castFirstWord();
+    rerender(
+      new Map([
+        [jobId, { jobId, runId: "runA", status: "done", durationMs: 100, utteranceId: "utt_1" }],
+      ]),
+    );
+
+    const preview = screen.getByRole("button", { name: /Preview audio/ });
+    expect((preview as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(preview);
+
+    const audio = document.querySelector("audio");
+    expect(audio).not.toBeNull();
+    expect(audio?.getAttribute("src") ?? audio?.src ?? "").toContain(
+      "/deployments/dep_x/artifacts/utt_1/download",
+    );
+    playSpy.mockRestore();
+  });
+
+  it("disables Preview when done but lacking an artifact handle", () => {
+    const { jobId, rerender } = castFirstWord();
+    rerender(new Map([[jobId, { jobId, runId: "runA", status: "done", durationMs: 100 }]]));
+    const preview = screen.getByRole("button", { name: /Preview audio/ });
+    expect((preview as HTMLButtonElement).disabled).toBe(true);
   });
 });

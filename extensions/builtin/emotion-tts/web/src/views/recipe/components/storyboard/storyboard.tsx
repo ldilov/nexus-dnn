@@ -40,7 +40,19 @@ import {
 } from "./storyboard_data";
 import type { StoryboardJob } from "../run_panel_items";
 import { subscribeRunCompleted } from "../../lib/run_events";
+import { EXTENSION_PREFIX } from "../../../../services/http";
 import * as css from "./storyboard.css";
+
+/** URL for a rendered utterance's audio, mirroring the recent-generations card.
+ * Returns null when we lack the deployment or the utterance handle, so the
+ * carousel can gate the Preview control instead of pointing at a dead URL. */
+function artifactAudioUrl(
+  deploymentId: string | undefined,
+  utteranceId: string | undefined,
+): string | null {
+  if (!deploymentId || !utteranceId) return null;
+  return `${EXTENSION_PREFIX}/deployments/${deploymentId}/artifacts/${utteranceId}/download`;
+}
 
 interface StoryboardProps {
   voiceAssets: readonly VoiceAsset[];
@@ -56,6 +68,10 @@ interface StoryboardProps {
   // Live per-job progress (keyed by job id) streamed back from the run panel;
   // drives the carousel card status without a refetch.
   jobProgress?: ReadonlyMap<string, RunProgress> | undefined;
+  // Deployment id used to build artifact URLs for previewing rendered segments.
+  // Optional so the storyboard renders standalone (e.g. in tests) — Preview is
+  // gated off when absent.
+  deploymentId?: string | undefined;
 }
 
 type CastMode = "voice" | "character";
@@ -74,6 +90,7 @@ export function Storyboard({
   onQueueChange,
   onJobsChange,
   jobProgress,
+  deploymentId,
 }: StoryboardProps): JSX.Element {
   const voices = useMemo(() => buildVoices(voiceAssets), [voiceAssets]);
   const emotions = useMemo(() => buildEmotions(presets), [presets]);
@@ -678,6 +695,15 @@ export function Storyboard({
             const active = focusedJobId === j.id || hoveredJobId === j.id;
             const playing = playingJobId === j.id;
             const text = rangeText(paragraphs, j.segIds);
+            // Preview is available only once the segment is rendered AND we have
+            // a real artifact handle to play (segment_completed carries the
+            // utterance id). Otherwise the control is disabled so it never
+            // appears clickable with nothing to play.
+            const previewUrl =
+              visualStatus === "ready"
+                ? artifactAudioUrl(deploymentId, live?.utteranceId)
+                : null;
+            const canPreview = previewUrl != null;
             return (
               <div
                 key={j.id}
@@ -723,7 +749,8 @@ export function Storyboard({
                     type="button"
                     className={css.playBtn}
                     aria-label={playing ? "Pause preview" : "Preview audio"}
-                    onClick={(e) => { e.stopPropagation(); playJob(j.id); }}
+                    disabled={!canPreview && !playing}
+                    onClick={(e) => { e.stopPropagation(); if (canPreview || playing) playJob(j.id); }}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">{playing ? "pause_circle" : "play_circle"}</span>
                     {playing ? "Playing" : "Preview"}
@@ -737,10 +764,22 @@ export function Storyboard({
                     <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">close</span>
                   </button>
                 </div>
-                {playing && (
-                  <div className={css.scanRail}>
-                    <div style={scanStyle(v)} />
-                  </div>
+                {playing && previewUrl && (
+                  <>
+                    <audio
+                      src={previewUrl}
+                      controls
+                      autoPlay
+                      preload="auto"
+                      style={AUDIO_STYLE}
+                      onEnded={() => setPlayingJobId((cur) => (cur === j.id ? null : cur))}
+                    >
+                      <track kind="captions" />
+                    </audio>
+                    <div className={css.scanRail}>
+                      <div style={scanStyle(v)} />
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -759,6 +798,7 @@ export function Storyboard({
 }
 
 const HEADER_ROW: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 };
+const AUDIO_STYLE: CSSProperties = { width: "100%", height: 32, marginTop: 8, display: "block" };
 const TEXTAREA_STYLE: CSSProperties = {
   width: "100%", minHeight: 220, padding: 14, background: "var(--surface-floor, #000)",
   border: "1px solid rgba(70,72,74,0.3)", borderRadius: 12, color: "var(--on-surface)",
