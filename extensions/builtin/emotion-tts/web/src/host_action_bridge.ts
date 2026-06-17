@@ -24,7 +24,7 @@ import {
   type RuntimeBadge,
   type RuntimeHealth,
 } from "./services/runtime_client";
-import { getDesiredWorkers } from "./services/worker_pref";
+import { getDesiredWarmup, getDesiredWorkers } from "./services/worker_pref";
 
 interface ActionDecl {
   id: string;
@@ -129,7 +129,7 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
       if (isRunning) {
         await stopRuntime();
       } else {
-        await startRuntime(getDesiredWorkers());
+        await startRuntime(getDesiredWorkers(), getDesiredWarmup());
       }
       // Refresh health immediately so the label flips quickly.
       try {
