@@ -6,5 +6,5 @@ synthesis to upstream IndexTTS-2 through :mod:`indextts_adapter` (Phase 3).
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["__version__"]
