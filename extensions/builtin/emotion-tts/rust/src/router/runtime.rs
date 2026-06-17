@@ -148,8 +148,9 @@ fn normalize_handshake(raw: &Value) -> Value {
 /// Optional `POST /runtime/start` body. `numWorkers` selects how many TTS
 /// workers may run concurrently this session (each a full resident model,
 /// ~N× VRAM), clamped to `[1, EMOTIONTTS_MAX_WORKERS]`. Absent ⇒ 1.
-/// `warmup` (default `true`) pre-acquires all active workers in the background
-/// so the first parallel run hits warm models; set `false` to keep extras lazy.
+/// `warmup` (default `true`) preloads EVERY configured worker (the full
+/// `EMOTIONTTS_MAX_WORKERS` ceiling, ~ceiling× VRAM) in the background so all
+/// workers are resident; set `false` to keep them lazy.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartRequest {
@@ -179,10 +180,10 @@ async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest
     let active = state.queue.set_max_in_flight(requested);
 
     if req.warmup {
-        // Warm exactly the active worker count in the background — never the
-        // ceiling — so the first parallel run finds resident models. The model
+        // Preload warms the FULL pool ceiling — every configured worker —
+        // independent of the concurrent-worker cap, so "preload all" holds.
         let pool = state.pool.clone();
-        let warm = requested.min(pool.size());
+        let warm = pool.size();
         // Capture the generation BEFORE spawning. A concurrent Stop/Restart (or
         // a newer Start) bumps it, and the warm loop bails before re-acquiring a
         let gen = pool.next_generation();

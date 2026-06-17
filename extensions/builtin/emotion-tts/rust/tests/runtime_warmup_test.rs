@@ -1,4 +1,5 @@
-//! WS-I #3 — `POST /runtime/start` warms the active worker count by default
+//! WS-I #3 — `POST /runtime/start` preloads the FULL pool ceiling (every
+//! configured worker, independent of the concurrent-worker cap) by default
 //! (opt-out via `{"warmup": false}`), and `/runtime/health` reports warm/
 //! warming counts. The start response stays non-blocking 202; warming runs in
 //! the background, so the test polls the pool until it settles.
@@ -160,33 +161,35 @@ where
 }
 
 #[tokio::test]
-async fn start_with_warmup_true_warms_all_active_workers() {
+async fn start_with_warmup_true_warms_full_ceiling() {
     let h = harness(4).await;
 
+    // numWorkers=3 caps concurrency at 3, but preload warms the FULL ceiling
+    // (all 4 configured workers) — that's the "preload all workers" contract.
     let status = post_start(&h.router, json!({ "numWorkers": 3, "warmup": true })).await;
     assert_eq!(status, StatusCode::ACCEPTED, "start stays non-blocking 202");
 
     let acquired = h.acquired.clone();
     let warmed = poll_until(|| {
         let acquired = acquired.clone();
-        async move { acquired.load(Ordering::SeqCst) >= 3 }
+        async move { acquired.load(Ordering::SeqCst) >= 4 }
     })
     .await;
     assert!(
         warmed,
-        "warmup must acquire all 3 active workers, saw {}",
+        "warmup must acquire all 4 configured workers, saw {}",
         h.acquired.load(Ordering::SeqCst)
     );
     assert_eq!(
         h.acquired.load(Ordering::SeqCst),
-        3,
-        "warmup acquires exactly the active worker count, not the ceiling"
+        4,
+        "warmup preloads the full ceiling, not just the active worker count"
     );
 
     let pool = h.pool.clone();
     let all_warm = poll_until(|| {
         let pool = pool.clone();
-        async move { pool.warm_counts().await.1 == 3 }
+        async move { pool.warm_counts().await.1 == 4 }
     })
     .await;
     assert!(all_warm, "all warmed workers should report Ready");
@@ -216,7 +219,7 @@ async fn health_reports_warm_and_warming_counts() {
     let pool = h.pool.clone();
     poll_until(|| {
         let pool = pool.clone();
-        async move { pool.warm_counts().await.1 == 3 }
+        async move { pool.warm_counts().await.1 == 4 }
     })
     .await;
 
@@ -246,8 +249,8 @@ async fn health_reports_warm_and_warming_counts() {
     );
     assert_eq!(
         body["workersWarm"].as_u64(),
-        Some(3),
-        "3 Ready workers ⇒ workersWarm=3: {body}"
+        Some(4),
+        "preload warms the full ceiling ⇒ workersWarm=4: {body}"
     );
 }
 
@@ -494,12 +497,12 @@ async fn warmup_awaits_model_load_per_warmed_worker() {
     let model_loads = h.model_loads.clone();
     let loaded = poll_until(|| {
         let model_loads = model_loads.clone();
-        async move { model_loads.load(Ordering::SeqCst) >= 3 }
+        async move { model_loads.load(Ordering::SeqCst) >= 4 }
     })
     .await;
     assert!(
         loaded,
-        "warmup must await model.load for all 3 active workers, saw {}",
+        "warmup must await model.load for all 4 configured workers, saw {}",
         h.model_loads.load(Ordering::SeqCst)
     );
 
@@ -507,15 +510,15 @@ async fn warmup_awaits_model_load_per_warmed_worker() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(
         h.model_loads.load(Ordering::SeqCst),
-        3,
-        "warmup issues exactly one model.load per warmed worker, not the ceiling"
+        4,
+        "warmup issues one model.load per worker across the full ceiling"
     );
 
     // And the pool reflects genuinely-warm workers once loads have settled.
     let pool = h.pool.clone();
     let all_warm = poll_until(|| {
         let pool = pool.clone();
-        async move { pool.warm_counts().await.1 == 3 }
+        async move { pool.warm_counts().await.1 == 4 }
     })
     .await;
     assert!(all_warm, "all warmed workers should report Ready");
