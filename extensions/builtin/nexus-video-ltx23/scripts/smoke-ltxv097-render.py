@@ -116,7 +116,6 @@ def main() -> int:
               f"mp4={mp4} ({mp4.stat().st_size}B)")
         # Aggressive inter-scene VRAM free before the conditioned
         # scene 2 (drop this scene's GPU-derived tensors, reset the
-        # allocator peak so each scene's peak is reported in isolation).
         import gc
         del frames, flist
         gc.collect()

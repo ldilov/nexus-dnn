@@ -108,8 +108,6 @@ def scrub_sensitive(message: str) -> str:
 
 # Subset of host env vars passed through to subprocess (uv sync, etc).
 # Anything not on this list is dropped — prevents `HF_TOKEN`, `AWS_*`,
-# `GITHUB_TOKEN`, etc from being inherited by a subprocess that logs
-# its argv/env on failure.
 _UV_ENV_ALLOWLIST = frozenset(
     {
         # Shell / locale

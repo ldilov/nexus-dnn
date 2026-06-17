@@ -50,7 +50,6 @@ def main() -> int:
 
     # (1)+(2) exercise the REAL module: import it and use its path
     # resolver — proves the shipped module imports under this stack and
-    # its resolution logic finds the staged weights.
     try:
         from ltx_video_worker import pipeline_ltxv097 as mod  # type: ignore
     except Exception as e:  # noqa: BLE001

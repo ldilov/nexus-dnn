@@ -58,7 +58,6 @@ def probe(force: bool = False) -> ProbeResult:
     try:
         # Triton is the common failure point on Windows-CUDA. Import
         # is best-effort — ``torch.compile`` itself may still work on
-        # a reduced backend if triton is missing.
         import triton  # type: ignore[import-not-found]  # noqa: F401
 
         has_triton = True

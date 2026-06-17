@@ -66,9 +66,6 @@ async def test_plan_expand_use_llm_true_no_lease_falls_back(
 ):
     # Spec 049: with NEXUS_HOST_PORT unset, default_lease_client() returns
     # NoLeaseClient which raises LeaseUnavailableError; the expander then
-    # falls back to the deterministic compiler and labels the result
-    # `llm_fallback_deterministic` so callers can distinguish "LLM not
-    # configured" from "LLM not requested".
     monkeypatch.delenv("NEXUS_HOST_PORT", raising=False)
     handler = real_profile_worker.handlers[Methods.PLAN_EXPAND]
     result = await handler(

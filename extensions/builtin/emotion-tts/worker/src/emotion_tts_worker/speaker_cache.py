@@ -43,7 +43,6 @@ class SpeakerCacheKey:
     def __post_init__(self) -> None:
         # Content hashes are always 64-char lowercase hex in this project
         # (mirrors domain::ContentHash on the Rust side). The stricter check
-        # catches "someone passed an ArtifactRef by mistake" early.
         if len(self.content_hash) != 64:
             raise ValueError(
                 f"content_hash must be 64-char hex; got {len(self.content_hash)}"
@@ -120,8 +119,6 @@ class SpeakerCache(Generic[T]):
             if existing is not None:
                 # Idempotent — same key keeps the first-inserted value per
                 # R-34-05 ("speaker conditioning is idempotent, first-write
-                # wins"). Refresh LRU position so the repeated put doesn't
-                # age out the entry.
                 self._entries.move_to_end(key, last=True)
                 existing.last_hit_ns = time.monotonic_ns()
                 return
@@ -151,7 +148,6 @@ class SpeakerCache(Generic[T]):
     def _maybe_release_tensor(self, value: Any) -> None:
         # Best-effort CUDA reclaim. If ``torch`` isn't installed, or the
         # value isn't a tensor, we silently drop the reference — the GC
-        # handles the rest.
         try:
             import torch  # type: ignore[import-not-found]
         except ImportError:

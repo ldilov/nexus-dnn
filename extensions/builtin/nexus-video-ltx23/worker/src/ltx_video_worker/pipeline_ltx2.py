@@ -102,7 +102,6 @@ _BASE_DIR_REL = "rootonchair/LTX-2-19b-distilled"
 
 # Sampling defaults for the distilled checkpoint (the ltxv2-distilled-q4
 # generation profile). 8 steps + guidance 1.0 is the documented
-# distilled operating point — guidance 1.0 skips the uncond branch.
 _DEF_STEPS = 8
 _DEF_GUIDANCE = 1.0
 _DEF_WIDTH = 768
@@ -115,7 +114,6 @@ _DEF_OUTPUT_FPS = 32
 _DEF_KEYFRAME_STRENGTH = 1.0
 # i2v keyframe-latent noise — 0.0 keeps a clean keyframe (the validated
 # default; a per-step re-noise sweep found it inert for motion). An
-# optional configurable knob, off by default.
 _DEF_IMAGE_COND_NOISE_SCALE = 0.0
 _DEF_TWO_STAGE = True
 _DEF_SOFT_PIN_SCALE = 0.5
@@ -259,7 +257,6 @@ def register_ltx2_handlers(worker) -> None:
 
 # --------------------------------------------------------------------------
 # Path resolution
-# --------------------------------------------------------------------------
 
 
 _ALLOWED_SAFETENSORS_OFFLOAD: tuple[str, ...] = (
@@ -387,7 +384,6 @@ def _resolve_paths() -> _ResolvedPaths:
 
 # --------------------------------------------------------------------------
 # Prompt embedding — stage 1 (Gemma encode, then unload)
-# --------------------------------------------------------------------------
 
 
 def _gemma_register_count(paths: _ResolvedPaths, logger: Any) -> int:
@@ -548,7 +544,6 @@ def encode_prompts_with_gemma(
 
     # Unload Gemma — drop every strong reference then collapse the CUDA
     # allocator cache so the encoder footprint is reclaimed before the
-    # 19B transformer loads.
     del text_encoder
     del tokenizer
     gc.collect()
@@ -573,7 +568,6 @@ def _encode_prompt_with_gemma(
 
 # --------------------------------------------------------------------------
 # Native stack assembly — stage 2 (transformer + connector)
-# --------------------------------------------------------------------------
 
 
 class _NativeStack:
@@ -694,7 +688,6 @@ def _ensure_stack(
 
 # --------------------------------------------------------------------------
 # Sampling resolution
-# --------------------------------------------------------------------------
 
 
 def _coerce_int(value: Any, default: int) -> int:
@@ -1011,7 +1004,6 @@ def _write_render_sidecar(
 
 # --------------------------------------------------------------------------
 # Render loop — mirrors the pipeline_ltxv097 / pipeline_fake contract
-# --------------------------------------------------------------------------
 
 
 async def _render_loop(
@@ -1341,7 +1333,6 @@ async def _render_loop(
 
 # --------------------------------------------------------------------------
 # Native generation
-# --------------------------------------------------------------------------
 
 
 def _build_video_context(
@@ -2046,7 +2037,6 @@ def _decode_video_latent(
 
 # --------------------------------------------------------------------------
 # IO helpers
-# --------------------------------------------------------------------------
 
 
 def _write_frames_as_mp4(frames: Any, path: Path, frame_rate: int) -> None:

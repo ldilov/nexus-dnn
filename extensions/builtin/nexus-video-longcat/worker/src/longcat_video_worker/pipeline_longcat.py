@@ -42,9 +42,6 @@ _ICN_CEILING = 0.25
 _INTENSE_ICN_DELTA_SCALE = 0.4
 # Reseed stride for NaN-recovery retries. FP8 (e4m3, max ~448) activation
 # overflow that produces NaN/inf is stochastic per noise pattern — re-running
-# the same segment with a different seed almost always dodges the exact
-# overflow without touching the prompt. Prime stride keeps retry seeds far
-# from the per-scene seeds used elsewhere.
 _NAN_RETRY_SEED_STRIDE = 7919
 
 
@@ -68,18 +65,9 @@ def _sanitize_frames(frames: Any) -> Any:
     return _np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
 # Refinement-step cap for intense scenes. Lowered from the default 12 to
 # reduce the refinement LoRA's sharpening of already-stretched intense
-# drafts, but kept >= 8: at 6 steps the refinement sigma schedule on very
-# dark / high-contrast scenes occasionally diverges to NaN (observed on the
-# demonic-nun "pitch black voids" + rain scene). 8 keeps the anti-amplify
-# benefit with numerical headroom; the NaN guard in _run_refinement_pass is
-# the belt-and-suspenders backstop.
 _INTENSE_REFINE_STEPS_CAP = 8
 # Auto-injected into negative_prompt when scene.motion_intensity == "intense"
 # AND use_distill is on. The distill LoRA's 8-step training distribution does
-# not cover impossible-geometry asks (facial transformations, multi-head, etc.)
-# so we steer the model AWAY from the failure modes we know it has via the
-# negative-prompt channel. Operator's own negative_prompt is preserved verbatim
-# and these tokens are appended only when absent.
 _ANTI_MELT_NEGATIVE_TOKENS = (
     "deformed face",
     "mutated face",
@@ -249,85 +237,48 @@ class LongCatRenderRequest:
     offload_kv_cache: bool = False
     # Apply LongCat_refinement_lora_rank128_bf16 + run generate_refine on the
     # draft after the primary render. Quality pass for distill-mode smudge
-    # and 720p upscale (refinement LoRA was trained for both).
     apply_refinement: bool = False
     refinement_steps: int = 12
     refinement_guidance: float = 1.0
     # Default True: keep draft frame count, only spatial upscale. Doubling
     # frame count via temporal interp roughly doubles DiT latent VRAM and
-    # spills past 16 GiB on RTX 5070 Ti at 480p draft → 720p refine even
-    # with block-swap=46. Flip False only when card has slack OR draft
-    # was rendered at a much smaller spatial resolution.
     refinement_spatial_only: bool = True
 
     # Native long-video via upstream generate_vc(use_kv_cache=True).
     # When target_frames > num_frames, the primary t2v/i2v render is
-    # extended by chained generate_vc calls. Each call adds
-    # `num_frames - continuation_overlap_frames` fresh frames. Stops once
-    # accumulated frame count >= target_frames (last clip may overshoot
-    # slightly; output is trimmed to exactly target_frames).
-    #
-    # Constraints upstream enforces:
-    #   * (num_frames - 1) % vae_scale_factor_temporal == 0
-    #   * continuation_overlap_frames must follow the same modulo
-    #   * use_distill and enhance_hf are MUTUALLY EXCLUSIVE — when
-    #     use_distill=True the loop forces enhance_hf=False
     target_frames: Optional[int] = None
     continuation_overlap_frames: int = 13
     continuation_enhance_hf: Optional[bool] = None  # None = auto (= not use_distill)
 
     # Multi-scene composition. When set, the initial clip is rendered with
     # scenes[0].prompt (uses request.image_path for i2v / no image for t2v),
-    # then each subsequent scene is rendered via generate_vc with
-    # use_kv_cache=False (KV cache cleared per scene to prevent prompt-token
-    # bleed). Mutually exclusive with target_frames — set one or the other.
     scenes: Optional[list[Scene]] = None
 
     # NVIDIA Maxine VFX SDK upscale post-process. None or 1 → skipped.
     # Scale in (2, 3, 4) runs VideoSuperRes on the assembled frame stack
-    # AFTER all generation + continuation + scene work completes.
-    # Requires the [rtx] extra (nvvfx) + an RTX-class GPU; failure of the
-    # gate is logged and the un-upscaled frames are written instead.
     rtx_upscale_scale: Optional[int] = None
     rtx_upscale_quality: str = "HIGH"
     # Opt-in: keep model-based refinement pass even when RTX upscale is
     # set. Default False because dual-LoRA refinement at 720p spills past
-    # 16 GiB on Blackwell (see embrace cycle 2026-05-24). Enable only
-    # when running smaller drafts (e.g. 384p) where the refinement
-    # latent footprint fits OR on cards with >=24 GiB headroom.
     force_refinement_with_upscale: bool = False
 
     # Per-render offload + cache overrides. When None, the values fall
     # back to NEXUS_VIDEO_LONGCAT_OFFLOAD_MODE / NEXUS_VIDEO_LONGCAT_BLOCK_SWAP
-    # env vars (operator-level defaults). Explicit request values always
-    # win. Useful when one recipe wants aggressive offload (e.g. 720p
-    # refinement) and another wants tight residency (low-res draft +
-    # RTX upscale where VRAM headroom is the priority).
     offload_mode: Optional[str] = None  # "none" | "partial" | "sequential"
     block_swap_count: Optional[int] = None
 
     # Multiscene chaining — AdaIN colour-match factor applied to each
     # scene-N>1 tail BEFORE it is fed into generate_vc as conditioning.
-    # 0.0 disables (= prior hard-pin behaviour). 0.1-0.3 is the usable
-    # band — higher flattens intended lighting changes. Anchor is captured
-    # from scene-1's refined tail; subsequent scenes pull their tail
-    # toward it. See chaining.adain_color_match for the math.
     adain_factor: float = 0.0
 
     image_cond_noise_scale: float = 0.15
 
     # Per-boundary transition descriptors (spec: longcat_video_plan.transitions).
     # Length MUST be len(scenes) - 1 when present. transitions[i] describes the
-    # boundary scenes[i] -> scenes[i+1]. When None or empty, every boundary
-    # falls back to the legacy hard-pin path (byte-exact tail fed into
-    # generate_vc with no prompt bridging and no ICN bump).
     transitions: Optional[list[Transition]] = None
 
     # S4: Micro-perturbation magnitudes applied to the pin frame (frame 0
     # of the tail) ONLY when the boundary transition is type='soft'. Both
-    # default to 0.0 (off) — operator opts in once per render after the
-    # smoke (S5) validates visual cost. Capped internally at MAX_JITTER_PX
-    # (0.5 px) and MAX_GRAIN_SIGMA (0.05) regardless of operator input.
     boundary_jitter_px: float = 0.0
     boundary_grain_sigma: float = 0.0
 
@@ -401,7 +352,6 @@ def _load_text_encoder(
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir / "tokenizer"))
     # UMT5-XXL is ~10 GiB in bf16. Load to CPU; accelerate.cpu_offload below
     # moves it to GPU only during encode_prompt forward. Saves ~9 GiB VRAM
-    # during the entire denoise loop.
     text_encoder = UMT5EncoderModel.from_pretrained(
         str(model_dir / "text_encoder"),
         torch_dtype=compute_dtype,
@@ -415,8 +365,6 @@ def _load_vae(model_dir: Path, compute_dtype: Any, device: Any) -> Any:
 
     # AutoencoderKLWan is ~500 MiB — small enough to stay resident, but the
     # decode forward allocates per-frame activations that can spike. Keep
-    # the weights GPU-resident; the VideoProcessor handles tiling for memory
-    # control. If 8GB cards complain, add _attach_cpu_offload here too.
     vae = AutoencoderKLWan.from_pretrained(
         str(model_dir / "vae"), torch_dtype=compute_dtype
     )
@@ -500,17 +448,10 @@ def _load_dit(
     config = json.loads(dit_config_path.read_text(encoding="utf-8"))
     # Single-GPU mode: upstream DiT forward subscripts cp_split_hw
     # unconditionally (longcat_video_dit.py:329); None is a multi-GPU
-    # placeholder. Force [1,1] so the no-op branch still passes shape check.
     if config.get("cp_split_hw") is None:
         config["cp_split_hw"] = [1, 1]
     # Attention backend selection. NEXUS_VIDEO_LONGCAT_ATTN env-var picks
     # the upstream kernel. 'auto' DOES NOT enable xformers here — even
-    # when xformers imports successfully, the C++/CUDA kernels are
-    # rejected on Blackwell (sm_120) and fa3/fa2/cutlass paths all
-    # return "no operator found". Leaving all upstream flags False
-    # delegates to longcat_native_loader._patch_attention_to_use_sdpa
-    # whose own 'auto' picker tries sage → flashattn2 → sdpa with a real
-    # importability + capability check.
     config["enable_flashattn2"] = False
     config["enable_flashattn3"] = False
     config["enable_bsa"] = False
@@ -635,9 +576,6 @@ def _maybe_load_distill_lora(
 def _patch_lora_utils_for_fp8() -> None:
     # Upstream `lora_utils.LoRANetwork.__init__` and `LoRAModule.__init__`
     # only whitelist `"Linear"` and `"QuantizedLinear"` as LoRA-target
-    # class names — FP8Linear is silently skipped, yielding 0 modules.
-    # Rebuild the relevant chunks of those methods at import time to add
-    # "FP8Linear" to the whitelist.
     import longcat_video.modules.lora_utils as _lu
 
     if getattr(_lu, "_NEXUS_FP8_PATCHED", False):
@@ -655,9 +593,6 @@ def _patch_lora_utils_for_fp8() -> None:
         )
         # Temporarily relax the upstream assertion by routing through the
         # original init with a fake-named wrapper. Simpler: replicate the
-        # init body inline. But to avoid re-implementing every line we
-        # cheat: alias the class name on this instance so the upstream
-        # assert sees "Linear".
         original_class = org_module.__class__
         try:
             if cls == "FP8Linear":
@@ -700,9 +635,6 @@ def _patch_lora_utils_for_fp8() -> None:
 def _encode_lora_module_path(key: str) -> str:
     # Upstream LoRANetwork stores LoRAModule instances via `add_module(name)`
     # which forbids '.' in `name`. Upstream therefore encodes module paths
-    # with `___lorahyphen___` separators (decoded back to '.' on lookup).
-    # Kijai LoRA files ship with plain dot-separated paths — encode them
-    # before handing to upstream.
     candidates: list[int] = []
     if ".lora_" in key:
         candidates.append(key.find(".lora_"))
@@ -719,17 +651,6 @@ def _encode_lora_module_path(key: str) -> str:
 def _strip_diffusion_model_prefix(lora_sd: dict) -> dict:
     # Kijai LoRA files prefix every module path with `diffusion_model.`
     # (ComfyUI convention) AND use the Kijai block-attribute names
-    # (`self_attn`, `modulation`, `norm3`, `self_attn.o`, etc.) instead of
-    # the upstream LongCatVideoTransformer3DModel attribute names
-    # (`attn`, `adaLN_modulation`, `pre_crs_attn_norm`, `attn.proj`, ...).
-    #
-    # Three transforms applied per key:
-    #   1. Strip `diffusion_model.` ComfyUI prefix.
-    #   2. Apply `longcat_native_loader.KJ_BLOCK_INTERNAL_RENAMES` so the
-    #      module path lands on the upstream DiT's attribute names.
-    #   3. Encode the module path with `___lorahyphen___` separators
-    #      because upstream LoRANetwork uses `nn.Module.add_module()`
-    #      which rejects '.' in submodule names.
     from .longcat_native_loader import (
         KJ_BLOCK_INTERNAL_RENAMES,
         KJ_TOP_LEVEL_PREFIX_RENAMES,
@@ -741,7 +662,6 @@ def _strip_diffusion_model_prefix(lora_sd: dict) -> dict:
         key = k[len(prefix):] if k.startswith(prefix) else k
         # Top-level prefix rename (head→final_layer, patch_embedding→
         # x_embedder.proj, time_embedding→t_embedder.mlp, text_embedding→
-        # y_embedder.y_proj).
         for kj_pref, up_pref in KJ_TOP_LEVEL_PREFIX_RENAMES.items():
             if key.startswith(kj_pref + ".") or key == kj_pref:
                 key = up_pref + key[len(kj_pref):]
@@ -761,7 +681,6 @@ def _state_config_key(
 ) -> tuple:
     # Cache key for _STATE. Any field that materially changes how the
     # pipeline is constructed must be in here, otherwise a second
-    # render() call w/ different knobs silently reuses the first config.
     attn = os.environ.get("NEXUS_VIDEO_LONGCAT_ATTN", "auto").lower()
     return (bool(use_distill), str(offload_mode), int(block_swap_count), attn)
 
@@ -782,7 +701,6 @@ def _ensure_state(
         cached_key = getattr(_STATE, "config_key", None)
         # Reuse on match. Treat a missing config_key (legacy / test-injected
         # state) as compatible to avoid breaking callers that hand-build the
-        # singleton.
         if cached_key is None or cached_key == requested_key:
             return _STATE
         logger.warning(
@@ -910,8 +828,6 @@ def render(
 
     # Per-render override > kwarg > env-var > default. Request fields are
     # the highest-precedence source so a recipe can pin a tight residency
-    # config (low-res draft + RTX upscale) without touching env or
-    # editing the call site.
     if request.offload_mode is not None:
         offload_mode = request.offload_mode
     if offload_mode is None:
@@ -966,7 +882,6 @@ def render(
         if request.scenes is not None and len(request.scenes) > 0:
             # First scene drives the initial t2v / i2v render using the
             # scene's own prompt + duration, then _run_scene_loop chains
-            # the remaining scenes via generate_vc.
             primary_request = _request_with_scene_overrides(request, request.scenes[0])
             frames = _dispatch_generate(
                 primary_request, state, generator, attn_kwargs
@@ -975,9 +890,6 @@ def render(
             frames = _dispatch_generate(request, state, generator, attn_kwargs)
         # Layer 2/3 on the primary (scene-0) render. A reseeded retry then a
         # sanitize fallback so a one-off fp8 overflow on the very first clip
-        # never poisons the whole chain. Scene-0 is conditioned on a clean
-        # image (i2v) or pure noise (t2v) so NaN here is rare, but the chain
-        # cannot recover from a bad scene 0 — guard it anyway.
         if not _frames_finite(frames):
             import torch as _torch_primary
 
@@ -1046,11 +958,6 @@ def render(
 
     # When RTX upscale is enabled, skip the model-based refinement pass.
     # Rationale: refinement was a workaround for distill smudge at 720p,
-    # which doubled the DiT latent count and spilled past 16 GiB even
-    # with spatial_only + block-swap=46. RTX VideoSuperRes handles
-    # spatial polish + denoise without touching the DiT, so the two
-    # post-processes are redundant + the refinement is the one that
-    # spills VRAM.
     skip_refine_for_rtx = (
         request.apply_refinement
         and request.rtx_upscale_scale is not None
@@ -1083,11 +990,6 @@ def render(
     ):
         # Two-stage quality pass: write draft to a temp MP4 + run
         # generate_refine on it. Refinement LoRA + low-CFG few-step
-        # second pass cleans up distill smudge + 720p artifacts.
-        #
-        # Skipped when scenes mode already refined each clip in-flight
-        # (refining the joined output would over-process the boundaries
-        # AND spill VRAM at >49 frame counts).
         phase = "refinement"
         try:
             frames = _run_refinement_pass(
@@ -1166,27 +1068,11 @@ def _run_refinement_pass(
 ) -> Any:
     # Stage 2: refinement LoRA + low-CFG few-step generate_refine on the
     # draft frames. Refinement LoRA is purpose-built for this pass and
-    # must NOT be merged into FP8 weights (Kijai rule). Apply additively
-    # before generate_refine and remove after.
-    #
-    # Upstream `generate_refine(stage1_video=...)` type hint says `Optional[str]`
-    # but the body calls `.height`/`.width` on `stage1_video[0]` and runs
-    # `np.array(stage1_video)` on the iterable — i.e. it expects a list
-    # of PIL Images, not a file path. Type hint is wrong upstream.
     import numpy as np
     from PIL import Image
 
     # FU-LORA-DETACH (2026-05-24): the distill LoRA loaded earlier sits on
     # GPU consuming ~5 GiB of bf16 rank-128 LoRA tensors. Refinement
-    # loads a SECOND rank-128 LoRA on top, stacking dual-LoRA to ~10 GiB
-    # of pure LoRA tensors + 720p activations + DiT residency → spills
-    # past 16 GiB on Blackwell.
-    #
-    # Move distill LoRA params to CPU before loading refinement; restore
-    # in the finally block so subsequent renders in the same _PipelineState
-    # retain it. set_use_lora(False) + .to('cpu') is safe even if the
-    # LoRA is wired into DiT forward (use_lora gate skips the hook
-    # before any device-mismatched op runs).
     import torch as _torch
 
     distill_was_resident = False
@@ -1252,9 +1138,6 @@ def _run_refinement_pass(
     try:
         # generate_refine accepts: image, video, prompt, stage1_video,
         # num_cond_frames, num_inference_steps, num_videos_per_prompt,
-        # generator, latents, output_type, return_dict, attention_kwargs,
-        # max_sequence_length, t_thresh, spatial_refine_only.
-        # NOT accepted: negative_prompt, num_frames, use_distill, guidance_scale.
         refined = state.pipeline.generate_refine(
             stage1_video=pil_frames,
             prompt=request.prompt,
@@ -1267,7 +1150,6 @@ def _run_refinement_pass(
     finally:
         # Best-effort refinement-LoRA detach so subsequent renders don't
         # carry it. Move refinement tensors off GPU regardless of how
-        # the pass exited (success, OOM, or any other exception).
         try:
             refinement_net.to("cpu")
         except Exception as exc:
@@ -1299,11 +1181,6 @@ def _run_refinement_pass(
 
     # NaN/inf guard: a diverged refinement pass (e.g. an unlucky sigma
     # schedule on a very dark scene) can emit non-finite frames. If we let
-    # those propagate, the cast to uint8 yields a BLACK tail, which then
-    # poisons the NEXT scene's conditioning (black cond -> black render).
-    # Detect non-finite output and fall back to the unrefined draft for
-    # this scene — a slightly-less-polished but VALID clip beats a dead
-    # black one.
     refined_arr = np.asarray(refined)
     if refined_arr.dtype.kind == "f" and not np.all(np.isfinite(refined_arr)):
         logger.warning(
@@ -1370,18 +1247,6 @@ def _run_continuation_loop(
 ) -> Any:
     # Native long-video orchestration: chain generate_vc(use_kv_cache=True)
     # calls until total frame count reaches request.target_frames.
-    #
-    # Each iteration:
-    #   1. Take last `overlap` frames of accumulated output as cond video
-    #      (list of PIL Images — upstream signature).
-    #   2. Call generate_vc with num_cond_frames=overlap, num_frames=req.num_frames.
-    #   3. Drop the first `overlap` frames of the returned clip (= the
-    #      conditioning frames upstream regenerates verbatim).
-    #   4. Concat fresh frames to accumulator.
-    #
-    # Clears KV-cache on entry only; subsequent calls reuse cache across
-    # the chain for temporal coherence. Final accumulator trimmed to
-    # exactly target_frames.
     import numpy as np
     from PIL import Image
 
@@ -1425,7 +1290,6 @@ def _run_continuation_loop(
         if tail.dtype.kind == "f":
             # Sanitize non-finite values before cast — a diverged prior-scene
             # refinement can leave NaN/inf in the tail, which would cast to a
-            # black conditioning frame and poison this scene's render.
             tail = np.nan_to_num(tail, nan=0.0, posinf=1.0, neginf=0.0)
             tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
         else:
@@ -1499,9 +1363,6 @@ def _request_with_scene_overrides(
 ) -> LongCatRenderRequest:
     # Build a per-scene request: override prompt + num_frames from the
     # scene spec while keeping everything else (resolution, distill,
-    # guidance, seed) inherited from the base request. num_frames is
-    # quantised to the (n - 1) % 4 == 0 constraint upstream enforces
-    # (vae_scale_factor_temporal = 4 for LongCat).
     from dataclasses import replace
 
     raw_frames = max(1, int(round(scene.duration_seconds * 24)))
@@ -1536,17 +1397,6 @@ def _request_with_scene_overrides(
 def _set_distill_active(state: _PipelineState, target_active: bool) -> Optional[bool]:
     # Toggle distill LoRA between GPU-active and CPU-detached.
     #
-    # When scene N flips use_distill from prior pipeline state, the distill
-    # LoRA must be physically moved off GPU (set_use_lora False + .to('cpu'))
-    # before running generate_vc — otherwise the LoRA hook still injects
-    # rank-128 deltas into every Linear forward and contaminates dev-model
-    # output. Mirrors the FU-LORA-DETACH pattern from _run_refinement_pass
-    # (2026-05-24) but for per-scene model swaps inside the scene loop.
-    #
-    # Returns the previous `use_lora` flag so the caller can restore the
-    # state at the next iteration or in a finally block. Returns None if
-    # state.lora_network is missing (no distill ever loaded — base request
-    # was already use_distill=False; nothing to toggle).
     if state.lora_network is None:
         return None
     import torch as _torch
@@ -1602,21 +1452,6 @@ def _run_scene_loop(
 ) -> Any:
     # Multi-scene chained render. Each scene after the first calls
     # generate_vc with use_kv_cache=False — the KV cache is cleared
-    # explicitly between scenes so the prior scene's text-token cache
-    # cannot bleed into the new scene's denoise.
-    #
-    # Accumulator semantics: scene N contributes `quantised_frames - overlap`
-    # fresh frames (the leading `overlap` frames upstream regenerates
-    # verbatim and are dropped from the output).
-    #
-    # Per-scene refinement (2026-05-24): when request.apply_refinement is
-    # True, refinement is applied to EACH rendered clip in-flight, BEFORE
-    # the overlap-drop concat. Refining a 49-57 frame clip at 720p fits
-    # in 16 GiB after distill-detach; refining the JOINED 97-frame output
-    # spilled past the budget. The refined tail also becomes a
-    # higher-quality cond input for the next scene's generate_vc.
-    # render() skips its global refinement call when scenes refinement
-    # has already run.
     import numpy as np
     from PIL import Image
 
@@ -1637,12 +1472,6 @@ def _run_scene_loop(
         scene_request = _request_with_scene_overrides(request, scene_obj)
         # F2: cap refinement_steps on intense scenes. The refinement LoRA
         # sharpens whatever the draft produced; on intense drafts whose
-        # geometry is already stretched (distill's 8-step training
-        # distribution does not cover impossible-motion asks) extra steps
-        # amplify ghost-face / doubled-feature artifacts rather than
-        # recovering detail. The cap kicks in only when the scene asks for
-        # MORE steps than the cap; explicit lower per-scene overrides are
-        # honoured as-is.
         if scene_obj.motion_intensity == "intense":
             current_steps = scene_request.refinement_steps
             if current_steps > _INTENSE_REFINE_STEPS_CAP:
@@ -1686,7 +1515,6 @@ def _run_scene_loop(
 
     # Refine scene 1 (the initial t2v/i2v primary) before scene 2 reads
     # its tail. The first scene gets the same per-clip refinement
-    # treatment as the rest so the entire output is consistent quality.
     acc = _maybe_refine(acc, 1, scenes[0])
     acc = np.asarray(acc)
     if acc.ndim == 5:
@@ -1694,7 +1522,6 @@ def _run_scene_loop(
 
     # Capture the colour anchor from the refined scene-1 output. Used by
     # scene-N>1 AdaIN to cap per-channel drift across the chain. Computed
-    # on uint8 RGB so it matches the units we pass into generate_vc.
     color_anchor = None
     if any(
         (s.adain_factor if s.adain_factor is not None else request.adain_factor) > 0
@@ -1760,7 +1587,6 @@ def _run_scene_loop(
         if tail.dtype.kind == "f":
             # Sanitize non-finite values before cast — a diverged prior-scene
             # refinement can leave NaN/inf in the tail, which would cast to a
-            # black conditioning frame and poison this scene's render.
             tail = np.nan_to_num(tail, nan=0.0, posinf=1.0, neginf=0.0)
             tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
         else:
@@ -1785,7 +1611,6 @@ def _run_scene_loop(
 
         # S4: Micro-perturb the pin frame on soft transitions. Applied
         # AFTER AdaIN so the perturbation rides on top of the colour-matched
-        # tail. No-op when either magnitude is 0 or transition is not 'soft'.
         transition_preview = _resolve_transition(request.transitions, idx - 1)
         if (
             transition_preview is not None
@@ -1825,9 +1650,6 @@ def _run_scene_loop(
 
         # Plan B (2026-05-25): toggle distill LoRA to match scene's
         # use_distill before generate_vc. Detaches the rank-128 LoRA off
-        # GPU when a scene wants dev-model output (more prompt influence
-        # for big prompt-deltas), re-attaches when next scene wants
-        # distill. No-op when state matches or no LoRA was loaded.
         _set_distill_active(state, scene_req.use_distill)
 
         scene_icn = (
@@ -1838,10 +1660,6 @@ def _run_scene_loop(
 
         # S3: soft-transition bridging. transitions[idx-2] describes the
         # boundary into the current scene (idx is 1-indexed display value;
-        # current scene's zero-based index is idx-1). For type='soft' we
-        # prepend the bridge sentence to the scene prompt and bump ICN to
-        # release the latent pin. type='hard_cut' (or absent) preserves
-        # legacy byte-exact behavior.
         transition = _resolve_transition(request.transitions, idx - 1)
         scene_prompt_effective = scene.prompt
         if transition is not None and transition.type == "soft":
@@ -1864,9 +1682,6 @@ def _run_scene_loop(
 
         # F1' — anti-melt negative-prompt augmentation. Always-on. Steers the
         # model away from failure modes that surface across scene types
-        # (deformed faces, ghost limbs, doubled anatomy). Operator's own
-        # negative_prompt is preserved verbatim; tokens already present are
-        # not duplicated.
         effective_negative_prompt = _augment_negative_prompt(request.negative_prompt)
         if effective_negative_prompt != request.negative_prompt:
             logger.info(
@@ -1905,8 +1720,6 @@ def _run_scene_loop(
             new_clip = _call_generate_vc(scene_generator)
             # Layer 2 — NaN-recovery via reseed. FP8 overflow is seed-specific;
             # one retry with a perturbed seed recovers the scene at full
-            # quality without depending on the prompt. Layer 3 (sanitize) only
-            # fires if the retry ALSO diverges, which is rare.
             if not _frames_finite(new_clip):
                 import torch as _torch_retry
 
@@ -1960,12 +1773,6 @@ def _run_scene_loop(
         fresh = new_arr[overlap:]
         # Resolution-uniformity guard. Per-scene refinement spatially
         # promotes a clip (e.g. 640x360 draft -> 768x512 refined). When a
-        # scene's refinement is discarded (NaN fallback returns the
-        # unrefined draft) its frames stay at draft res while the
-        # accumulator holds refined-res frames — np.concatenate then fails
-        # on the H/W axes. Resize the incoming fresh frames to the
-        # accumulator's H x W (bilinear) so the chain stays uniform
-        # regardless of which scenes were refined.
         if fresh.shape[1:3] != acc.shape[1:3]:
             target_h, target_w = int(acc.shape[1]), int(acc.shape[2])
             logger.warning(
@@ -2016,8 +1823,6 @@ def _dispatch_generate(
         prompt=request.prompt,
         # F1' always-on: scene-0 (t2v/i2v primary) also benefits from the
         # anti-melt token list. The augment helper is idempotent so any
-        # tokens already present in the operator-supplied negative_prompt
-        # are not duplicated.
         negative_prompt=_augment_negative_prompt(request.negative_prompt),
         num_frames=request.num_frames,
         num_inference_steps=request.num_inference_steps,
@@ -2060,9 +1865,6 @@ def _dispatch_generate(
         resolution = "720p" if request.height >= 720 else "480p"
         # `offload_kv_cache` is already routed through attention_kwargs via
         # `common` (see attn_kwargs build above). Passing it again as a bare
-        # kwarg here would either shadow the attention_kwargs entry or
-        # raise TypeError on generate_vc(...) signatures that don't accept
-        # it as a top-level arg. Audit 2026-05-24 caught this.
         return pipeline.generate_vc(
             video=frames_pil,
             resolution=resolution,
@@ -2168,8 +1970,6 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             params.setdefault("guidance_scale", 1.0)
             # 16 = distill LoRA training step count (LongCat paper Sec. 4.2).
             # Running below this with distill produces bursty motion pacing
-            # because FlowMatchEuler timestep allocation is compressed past
-            # the LoRA's training distribution.
             params.setdefault("num_inference_steps", 16)
 
         scenes_raw = params.get("scenes")
@@ -2388,7 +2188,6 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
     async def _release_memory(_params: dict[str, Any]) -> dict[str, int]:
         # REQUIRED: every nexus worker implements runtime.release_memory.
         # Evict the resident pipeline first, then the generic gc +
-        # empty_cache sweep measures + reports remaining allocation.
         from .main import _cuda_memory_mb, base_release_memory
 
         before, _ = _cuda_memory_mb()

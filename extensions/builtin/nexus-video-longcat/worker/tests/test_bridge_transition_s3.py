@@ -247,7 +247,6 @@ class TestSceneLoopWiring:
     def test_soft_transition_with_empty_bridge_does_not_blow_up(self):
         # _coerce_transitions in plan_llm would downgrade this to hard_cut,
         # but if a caller hand-builds a soft transition with empty bridge,
-        # the compose helper falls back to the raw prompt safely.
         ts = [
             Transition(from_scene=0, to_scene=1, type="soft", bridge_text=""),
             Transition(from_scene=1, to_scene=2, type="hard_cut"),

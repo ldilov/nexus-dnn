@@ -134,7 +134,6 @@ class TestValidatorRejects:
         }
         # Empty list is treated as "no transitions" which is legacy hard-pin
         # behavior. This is intentional — the validator only enforces count
-        # when the operator/LLM emits a non-empty list.
         result = validate_plan(payload)
         assert result["ok"]
 

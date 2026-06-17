@@ -25,12 +25,6 @@ def _loader() -> Any:
 
 # ---------------------------------------------------------------------------
 # Pure-Python / constant tests (no torch required)
-# These import only the constants that are defined before the torch import in
-# the loader.  Because the loader does `import torch.nn as _nn` at the top
-# level we cannot import it without torch; instead we verify the constants by
-# importing the module only when torch is available and assert hard-coded
-# expected values here so any linter-driven rename still causes a failure.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(not _has_torch_fp8(), reason="torch float8_e4m3fn unavailable")
@@ -82,7 +76,6 @@ def test_partition_extras() -> None:
 
 # ---------------------------------------------------------------------------
 # Torch-dependent tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(not _has_torch_fp8(), reason="torch float8_e4m3fn unavailable")

@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Key-rename tables
-# ---------------------------------------------------------------------------
 
 KJ_TOP_LEVEL_PREFIX_RENAMES: dict[str, str] = {
     "patch_embedding": "x_embedder.proj",
@@ -68,7 +67,6 @@ VENDOR_MODULES: tuple[str, ...] = (
 
 # ---------------------------------------------------------------------------
 # Exceptions
-# ---------------------------------------------------------------------------
 
 
 class VendorMissing(Exception):
@@ -85,7 +83,6 @@ class BuildDitPatchFailed(Exception):
 
 # ---------------------------------------------------------------------------
 # Key rename
-# ---------------------------------------------------------------------------
 
 
 def rename_kj_keys(state_dict: dict) -> dict:
@@ -114,7 +111,6 @@ def rename_kj_keys(state_dict: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # Vendor verification + import
-# ---------------------------------------------------------------------------
 
 
 def _verify_vendor(vendor_dir: Path) -> None:
@@ -145,7 +141,6 @@ def _import_dit_class(vendor_dir: Path) -> Any:
 
 # ---------------------------------------------------------------------------
 # Attention patching
-# ---------------------------------------------------------------------------
 
 
 def _patch_attention_to_split_qkv(model: Any) -> int:
@@ -191,7 +186,6 @@ def _patch_attention_to_split_qkv(model: Any) -> int:
 
         # Bind a replacement forward that uses the three split linears.
         # The original logic: qkv = self.qkv(x), reshape, unbind → q, k, v.
-        # Our replacement is equivalent without the fused tensor.
         def _split_forward(
             self: Any,
             x: Any,
@@ -236,9 +230,6 @@ def _patch_attention_to_split_qkv(model: Any) -> int:
 
         # generate_vc with use_kv_cache=True calls Attention.forward_with_kv_cache
         # which also dereferences self.qkv. Patch it to use the split linears
-        # too, otherwise continuation crashes with "'Attention' object has no
-        # attribute 'qkv'". Mirror the upstream body exactly (including the
-        # cached-batch broadcast and rope_3d pad-and-slice trick).
         def _split_forward_with_kv_cache(
             self: Any,
             x: Any,
@@ -419,7 +410,6 @@ def _patch_cross_attention_to_split_kv(model: Any) -> int:
 
 # ---------------------------------------------------------------------------
 # build_dit
-# ---------------------------------------------------------------------------
 
 
 def build_dit(config: dict, vendor_dir: Path, install_device: str = "meta") -> Any:
@@ -445,8 +435,6 @@ def build_dit(config: dict, vendor_dir: Path, install_device: str = "meta") -> A
     _patch_cross_attention_to_split_kv(model)
     # SDPA / sage / flashattn2 monkey-patch is engaged only when no upstream
     # backend (xformers / native flashattn2 / native flashattn3 / bsa) is
-    # enabled on the model itself. NEXUS_VIDEO_LONGCAT_ATTN env var picks
-    # the kernel for the monkey-patch path.
     if not _any_upstream_attn_enabled(model):
         import os
 
@@ -533,7 +521,6 @@ def _patch_attention_to_use_sdpa(model: Any, backend: str = "sdpa") -> int:
         if backend == "sage" and sage_fn is not None:
             # sageattn expects [B, H, S, D] (HND layout) like SDPA. Returns
             # same shape. softmax_scale not exposed in v1; v2 accepts
-            # `sm_scale=` kwarg. Try with kwarg + fall back without.
             try:
                 return sage_fn(q, k, v, sm_scale=scale)
             except TypeError:
@@ -551,11 +538,6 @@ def _patch_attention_to_use_sdpa(model: Any, backend: str = "sdpa") -> int:
     def _sdpa_cross(self: Any, x: Any, cond: Any, kv_seqlen: Any) -> Any:
         # Cross-attn split-KV path. x: [B, N_q, C], cond: [1, sum(kv_seqlen), C].
         # Mirrors upstream view layout (B-flattened single sequence) when
-        # all kv_seqlen entries are equal (B=1 always satisfies). For B>1
-        # with ragged kv lengths SDPA cannot model the block-diagonal mask
-        # without padding; we pad cond to max(kv_seqlen) and apply a
-        # boolean mask. Single-batch path is the common smoke / inference
-        # case.
         B, N_q, C = x.shape
         H, D = self.num_heads, self.head_dim
         max_kv = max(kv_seqlen)
@@ -608,7 +590,6 @@ def _patch_attention_to_use_sdpa(model: Any, backend: str = "sdpa") -> int:
 
 # ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _meta_param_names(model: Any) -> list[str]:
@@ -633,6 +614,5 @@ def read_embedded_config(path: Path) -> dict:
 
 # ---------------------------------------------------------------------------
 # Legacy alias kept for longcat_safetensors_loader import compatibility
-# ---------------------------------------------------------------------------
 
 rename_comfy_keys = rename_kj_keys

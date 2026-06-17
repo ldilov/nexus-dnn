@@ -29,8 +29,6 @@ def _encode_png_dir(tmpdir: Path, out_path: Path, fps: int, quality: int) -> Pat
     ]
     # -nostats/-loglevel error keep ffmpeg's stderr tiny: a chatty progress
     # stream fills the OS pipe and deadlocks ffmpeg when it is launched through a
-    # wrapper shim that does not drain stderr (observed with the chocolatey ffmpeg
-    # shim + capture_output). stdin is closed so ffmpeg never blocks on a prompt.
     try:
         subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL, capture_output=True)
     except subprocess.CalledProcessError as exc:

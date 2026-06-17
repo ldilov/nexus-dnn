@@ -58,7 +58,6 @@ def test_frozen_clip_fails_static_and_frozen() -> None:
 def test_frozen_span_in_otherwise_moving_clip_fails_on_min() -> None:
     # 18 moving frames + a 6-frame frozen tail: mean stays well above
     # the hard floor, but min_delta collapses → must FAIL. This is the
-    # case first-vs-last and mean-only checks both miss.
     frames = _moving(18) + _frozen(6)
     m = motion_metrics(frames, with_flow=False)
     assert m["mean_delta"] > 0.004  # would pass a mean-only gate

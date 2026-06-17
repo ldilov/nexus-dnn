@@ -449,7 +449,6 @@ def main() -> int:
 
     # On-demand Qwen anchor edit (edit-then-animate): edit the ref/anchor BEFORE
     # animation so the video model propagates the transformation coherently,
-    # instead of per-frame editing the output (which flickers).
     if args.qwen_edit_prompt:
         if ref_image is None:
             print("[prereq FAIL] --qwen-edit-prompt needs a --ref-image to edit", file=sys.stderr)

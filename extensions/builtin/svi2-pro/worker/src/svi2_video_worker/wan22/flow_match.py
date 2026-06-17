@@ -145,8 +145,6 @@ class FlowMatchScheduler:
     def set_fixed_sigmas(self, sigmas) -> None:
         # Distilled models (lightx2v / Wan2.2-Lightning) require an EXACT sigma
         # schedule, not a shift-derived one. e.g. [1.0,0.9375001,0.8333333,0.625,0.0].
-        # The trailing 0.0 terminal is implicit in step() (sigma_=0 at last), so
-        # keep only the per-step sigmas. timestep = sigma * num_train_timesteps.
         s = torch.tensor([float(x) for x in sigmas], dtype=torch.float32)
         if s.numel() > 1 and float(s[-1].item()) == 0.0:
             s = s[:-1]

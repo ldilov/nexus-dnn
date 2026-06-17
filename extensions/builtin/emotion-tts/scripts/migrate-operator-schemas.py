@@ -124,8 +124,6 @@ def migrate_recipe(path: Path) -> None:
         out["recipe"]["thumbnail"] = data["thumbnail"]
     # Preserve the workflow reference + any fields the host parses permissively
     # under workflow_template by tucking them into a loose block the schema
-    # allows as additionalProperties. The host only mandates `recipe{...}`
-    # for the envelope.
     for key, value in data.items():
         if key in {"id", "version", "display_name", "summary", "description", "category"}:
             continue

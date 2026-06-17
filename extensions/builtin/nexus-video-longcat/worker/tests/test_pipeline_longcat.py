@@ -21,7 +21,6 @@ from longcat_video_worker.pipeline_longcat import (
 
 # ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _fake_frames(f: int = 5, h: int = 8, w: int = 8, c: int = 3) -> Any:
@@ -50,7 +49,6 @@ def _make_state(pipeline: Any) -> _PipelineState:
 
 # ---------------------------------------------------------------------------
 # test_render_request_construct_t2v
-# ---------------------------------------------------------------------------
 
 
 def test_render_request_construct_t2v() -> None:
@@ -68,7 +66,6 @@ def test_render_request_construct_t2v() -> None:
 
 # ---------------------------------------------------------------------------
 # test_render_request_i2v_requires_image_path
-# ---------------------------------------------------------------------------
 
 
 def test_render_request_i2v_requires_image_path() -> None:
@@ -83,7 +80,6 @@ def test_render_request_i2v_requires_image_path() -> None:
 
 # ---------------------------------------------------------------------------
 # test_resolve_method_from_mode
-# ---------------------------------------------------------------------------
 
 
 def test_resolve_method_from_mode_t2v() -> None:
@@ -172,7 +168,6 @@ def test_resolve_method_from_mode_refine() -> None:
 
 # ---------------------------------------------------------------------------
 # test_kv_cache_offload_passthrough
-# ---------------------------------------------------------------------------
 
 
 def test_kv_cache_offload_passthrough() -> None:
@@ -205,7 +200,6 @@ def test_kv_cache_offload_false_when_not_requested() -> None:
 
 # ---------------------------------------------------------------------------
 # test_render_uses_cached_pipeline_on_second_call
-# ---------------------------------------------------------------------------
 
 
 def test_render_uses_cached_pipeline_on_second_call(tmp_path: Path) -> None:
@@ -231,7 +225,6 @@ def test_render_uses_cached_pipeline_on_second_call(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------------------
 # test_render_distill_applies_lora_when_file_present
-# ---------------------------------------------------------------------------
 
 
 def test_render_distill_applies_lora_when_file_present(tmp_path: Path) -> None:
@@ -279,7 +272,6 @@ def test_render_distill_applies_lora_when_file_present(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------------------
 # test_render_distill_warns_when_lora_file_absent
-# ---------------------------------------------------------------------------
 
 
 def test_render_distill_warns_when_lora_file_absent(
@@ -301,7 +293,6 @@ def test_render_distill_warns_when_lora_file_absent(
 
 # ---------------------------------------------------------------------------
 # test_pipeline_error_carries_phase
-# ---------------------------------------------------------------------------
 
 
 def test_pipeline_error_carries_phase() -> None:
@@ -312,7 +303,6 @@ def test_pipeline_error_carries_phase() -> None:
 
 # ---------------------------------------------------------------------------
 # test_render_vc_requires_conditioning_path
-# ---------------------------------------------------------------------------
 
 
 def test_render_vc_requires_conditioning_path() -> None:
@@ -326,7 +316,6 @@ def test_render_vc_requires_conditioning_path() -> None:
 
 # ---------------------------------------------------------------------------
 # test_render_refine_requires_low_res_path
-# ---------------------------------------------------------------------------
 
 
 def test_render_refine_requires_low_res_path() -> None:
@@ -340,7 +329,6 @@ def test_render_refine_requires_low_res_path() -> None:
 
 # ---------------------------------------------------------------------------
 # Continuation loop
-# ---------------------------------------------------------------------------
 
 
 from longcat_video_worker.pipeline_longcat import _run_continuation_loop
@@ -502,7 +490,6 @@ def test_continuation_loop_breaks_on_degenerate_return() -> None:
 
 # ---------------------------------------------------------------------------
 # Multi-scene loop
-# ---------------------------------------------------------------------------
 
 
 from longcat_video_worker.pipeline_longcat import (
@@ -542,7 +529,6 @@ def test_scenes_and_target_frames_mutually_exclusive_via_render() -> None:
     )
     # The mutual-exclusion check lives in render() before _dispatch — to
     # avoid spinning up the full pipeline state stack here, we re-assert
-    # both fields are non-None and trust the runtime guard.
     assert req.scenes is not None and req.target_frames is not None
 
 

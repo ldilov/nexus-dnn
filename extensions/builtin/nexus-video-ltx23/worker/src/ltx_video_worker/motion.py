@@ -33,9 +33,6 @@ from typing import Any
 
 # Defaults are on the [0,1]-normalised consecutive-frame grayscale
 # delta scale (adjacent frames differ far less than first-vs-last, so
-# these are intentionally smaller than the old 0.02/0.05 endpoint
-# numbers). Recalibrate from the motion-gate smoke's logged values on
-# a verified-good render; do not treat as immutable.
 _DEF_MEAN_FAIL = 0.004
 _DEF_MEAN_WARN = 0.008
 _DEF_MIN_FAIL = 0.0015

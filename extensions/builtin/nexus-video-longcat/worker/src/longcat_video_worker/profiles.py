@@ -53,19 +53,12 @@ class LongCatProfile:
     max_sequence_length: int = 512
     # CPU-offload strategy. See longcat_safetensors_loader._attach_*_offload.
     # - none:       weights resident on GPU
-    # - partial:    tail blocks offloaded, head blocks resident
-    #               (uses block_swap_count below); Kijai-style block-swap
-    # - sequential: every block offloaded (per-block AlignDevicesHook)
-    # - group:      whole-model hook (single sync per forward)
-    # - disk:       weights paged from offload_folder via accelerate.disk_offload
     offload_mode: OffloadMode = "none"
     # Number of trailing DiT blocks to offload when offload_mode='partial'.
     # 0 means no swap; 48 means full sequential (equivalent to 'sequential').
-    # Kijai workflow recommends 40 for 12 GB cards.
     block_swap_count: int = 0
     # Move per-block (k_cache, v_cache) tensors to CPU between blocks during
     # forward_with_kv_cache (multi-stage continuation rendering). Stacks
-    # orthogonally with offload_mode — targets activation VRAM, not weight VRAM.
     offload_kv_cache: bool = False
     attention_mode: Literal["sdpa", "flash-attn-2", "block-sparse"] = "sdpa"
     notes: tuple[str, ...] = field(default_factory=tuple)

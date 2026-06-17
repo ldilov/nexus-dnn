@@ -133,7 +133,6 @@ def preprocess(
 
 # ---------------------------------------------------------------------------
 # Stage drivers
-# ---------------------------------------------------------------------------
 
 
 def _run_stage(
@@ -198,7 +197,6 @@ class _DependencyMissing(Exception):
 
 # ---------------------------------------------------------------------------
 # Stage implementations — each returns (waveform, extra_dict).
-# ---------------------------------------------------------------------------
 
 
 def _decode(path: Path) -> tuple["np.ndarray", int]:
@@ -331,7 +329,6 @@ def _truncate(waveform: "np.ndarray", sample_rate: int) -> tuple["np.ndarray", d
 
     # Pick the highest-RMS window of soft-target length. If the clip exceeds
     # the hard cap, we still pick from within the hard cap so we never keep
-    # content beyond the 30 s boundary (R-34-01 policy).
     search_max = min(len(waveform), hard_samples)
     search = waveform[:search_max]
     best_start = _highest_rms_window(search, soft_samples)

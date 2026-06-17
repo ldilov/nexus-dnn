@@ -82,7 +82,6 @@ class FamilySwitcher:
         if desc is None:
             # Unknown family — surfaced as -32013 per contract (the
             # family is "incompatible with the worker" because the
-            # worker doesn't know about it).
             raise FamilyIncompatible(f"family '{family_id}' is not in the registry")
 
         if self._loader.active_family_id == family_id:
@@ -117,15 +116,10 @@ class FamilySwitcher:
         self._adapter.set_active_model_family(family_id)
         # Lazily load — ensure_model() is invoked on the first
         # synthesis after the switch. Avoids a compile/load round-trip
-        # on every toggle flip.
         load_duration_ms = int((time.perf_counter() - start) * 1000)
 
         # FR-223 invalidation: drop every cache entry — both old and new
         # family — so stale embeddings from a long-lived worker don't
-        # leak across switches. Also clears the incoming family's
-        # entries (which should be empty the first time, but we're
-        # defensive — a repeated switch cycle would otherwise keep
-        # stale data warm).
         dropped_old = self._adapter.clear_speaker_cache_family(old_family)
         dropped_new = self._adapter.clear_speaker_cache_family(family_id)
 
@@ -133,8 +127,6 @@ class FamilySwitcher:
 
         # Post-condition required by spec 034 I1 remediation: after the
         # switch the cache is empty of any entries belonging to either
-        # family. The adapter's cache holds other families' entries
-        # only if they were populated pre-switch (uncommon in practice).
         assert (dropped_old + dropped_new) >= 0, "clear_speaker_cache_family returned negative"
 
         return FamilySwitchResult(

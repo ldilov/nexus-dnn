@@ -47,8 +47,6 @@ logger = logging.getLogger(__name__)
 
 # Pinned to meituan-longcat/LongCat-Video main HEAD as of 2026-05-23.
 # Upstream has no `longcat_video/__init__.py` (implicit namespace package);
-# the 8 entries below are the complete required surface for build_dit +
-# pipeline_longcat. Re-pin + recompute when bumping to a tagged release.
 VENDOR_COMMIT: str = "8334da9343fcf9bc8156a35d1df19d4cdfa98615"
 
 VENDOR_MODULES: list[tuple[str, str | None]] = [
@@ -122,8 +120,6 @@ VENDOR_MODULES: list[tuple[str, str | None]] = [
 
 # Upstream uses implicit namespace packages — these __init__.py files do
 # NOT exist in the git tree. Create them locally as empty files after the
-# fetch step so the vendored dir becomes a regular Python package importable
-# via `sys.path.insert + import longcat_video.modules....`.
 VENDOR_LOCAL_INIT_PACKAGES: tuple[str, ...] = (
     "longcat_video/__init__.py",
     "longcat_video/context_parallel/__init__.py",
@@ -139,9 +135,6 @@ PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
                 "LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors",
                 # Distill LoRA needed for the 12-step CFG=1 schedule that the
                 # distill profile applies; refinement LoRA drives the 720p
-                # generate_refine quality-pass. Both are small (~4 GiB total)
-                # and downloaded eagerly so any profile can switch into
-                # distill / refine mode without a second install pass.
                 "LongCat_distill_lora_alpha64_bf16.safetensors",
                 "LongCat_refinement_lora_rank128_bf16.safetensors",
             ],

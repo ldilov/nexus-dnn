@@ -109,27 +109,15 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
 
 # Minimum total VRAM for offload_mode="none". The NVFP4 transformer
 # is ~11 GB; with VAE + text encoder + activations the resident
-# footprint peaks around 13-14 GB. The floor is 15 GiB (≈16.1 GB
-# decimal) — a genuine 16 GB-class card reports ~15.9 GiB total to
-# `torch.cuda.mem_get_info()` (never a full 16 GiB; some is always
-# reserved by the driver), so a 16-GiB floor would wrongly reject
-# every 16 GB card by a ~80 MB margin. 15 GiB admits all 16 GB cards
-# while still rejecting 12 GB cards (~11.2 GiB total).
 _MIN_VRAM_BYTES_FOR_NONE = 15 * 1024**3
 
 # Block-level group-offload group size for offload_mode="group". The
 # LTX-2.3 transformer has 48 blocks; 1 block/group is the lowest-peak
-# setting (~1/48 of the transformer resident + the active component +
-# activations), which is what makes the GGUF Q4 22B transformer fit a
-# 16 GB card. Tune upward (2, 4, …) for throughput once it fits — more
-# blocks/group = fewer CPU↔GPU transfers but a higher VRAM peak.
 _GROUP_OFFLOAD_BLOCKS_PER_GROUP = 1
 
 
 # Inclusive bounds for the operator VRAM ceiling, mirroring the Rust
 # host's `schemas::{MIN,MAX}_GPU_VRAM_GIB`. Re-checked here as defence
-# in depth: a payload that skipped host validation must not drive an
-# absurd allocator fraction.
 _MIN_GPU_VRAM_GIB = 4
 _MAX_GPU_VRAM_GIB = 128
 
@@ -182,14 +170,6 @@ def _apply_vram_budget(
         return None
     # Denominator MUST be physical VRAM (`total_memory` from
     # get_device_properties) because that is exactly what
-    # `set_per_process_memory_fraction` divides by internally
-    # (cudaGetDeviceProperties().totalGlobalMem). Using
-    # `mem_get_info()`'s total instead is wrong on Windows WDDM, where
-    # it returns the driver-committed budget (< physical), so the
-    # resulting cap lands looser than the operator requested — the
-    # exact precision the spill-prevention feature exists to provide.
-    # Fall back to mem_get_info() only if device properties are
-    # unavailable (still safe, just slightly loose on WDDM).
     try:
         total_bytes = int(torch_mod.cuda.get_device_properties(0).total_memory)
     except Exception:  # noqa: BLE001 — fall back, never fatal
@@ -225,9 +205,6 @@ def _apply_vram_budget(
 
 # The placement the worker falls back to only when the host payload
 # predates the component_placement contract entirely (older queued
-# renders). Mirrors the historical sequential-offload default — every
-# component CPU-resident, paged per forward call — so an old payload
-# behaves exactly as it did before this feature.
 _LEGACY_PLACEMENT: dict[str, str] = {
     "transformer": "cpu",
     "vae": "cpu",
@@ -339,17 +316,10 @@ def _build_pipeline_quant_config(quant: str, compute_dtype: Any) -> Any:
     if quant == "gguf":
         # The transformer is supplied by the GGUF override
         # (gguf_loader) AFTER from_pretrained, so it must NOT be bnb-
-        # quantised here. But the Gemma-3 text encoder (~46 GB bf16) is
-        # NOT covered by the GGUF (transformer-only) and still cannot
-        # fit a 16 GB card unquantised — so bnb-NF4 it (~12 GB). The
-        # base transformer still materialises bf16 then gets replaced
-        # (the documented load-then-discard tax — a transient host-RAM
-        # cost, not GPU; tracked for the deferred G1 fork-probe).
         components = ["text_encoder"]
     else:
         # Quantise BOTH heavy components in the single from_pretrained
         # call. `text_encoder` is the Gemma-3 LLM (~46 GB bf16);
-        # `transformer` is the LTX-2.3 DiT (~36 GB bf16).
         components = ["transformer", "text_encoder"]
 
     return PipelineQuantizationConfig(
@@ -499,12 +469,6 @@ def _place_pipeline(
     elif offload_mode == "group":
         # Block-level group offload: pages the transformer in small
         # block-groups (peak ≈ num_blocks_per_group blocks + the
-        # active component) instead of the WHOLE component
-        # (model-offload) — the only mode that fits the GGUF Q4 22B
-        # transformer on 16 GB, since `sequential` is barred by the
-        # bnb-NF4 Gemma-3 text encoder (meta-tensor crash). Applied
-        # pipeline-level so the bnb text encoder + VAE are paged too.
-        # `low_cpu_mem_usage=True` keeps the offloaded copy lean.
         if not hasattr(pipe, "enable_group_offload"):
             raise _ModelLoadFailed(
                 "diffusers pipeline lacks enable_group_offload; "
@@ -524,11 +488,6 @@ def _place_pipeline(
         )
     # The offload hook OWNS every component's device placement: it
     # keeps stable weights on CPU and pages each submodule onto the
-    # GPU only while active, bridging cross-device tensors itself.
-    # Manually `.to()`-ing vae / text_encoder here would fight those
-    # hooks and reintroduce the cross-device mismatch that the manual
-    # split caused on 2026-05-15. So under model / sequential we do
-    # NOT place anything by hand — the triple is informational only.
     logger.info(
         "diffusers.load_pipeline.offload", mode=offload_mode, placement=placement
     )
@@ -596,21 +555,9 @@ class DiffusersRunState:
         self.generation_count = 0
         # Rung 7L resume offset (Item C). Set from the
         # `resumed_from_segment` field on render.start when the host
-        # re-issued the chain after a VRAM-supervisor breach. 0 (the
-        # default) means "first attempt". The render loop emits
-        # RESUME_ACKNOWLEDGED exactly once when this is non-zero so
-        # operators can correlate the worker's segment numbering
-        # against the host's restart counter.
         self.resumed_from_segment: int = 0
         # Strong reference to the background _load_then_render task.
         # CPython 3.11+ holds only WEAK references to asyncio tasks,
-        # so a `asyncio.create_task(...)` without a strong reference
-        # can be garbage-collected before the task ever runs —
-        # producing the exact symptom we hit on 2026-05-15: worker
-        # silent, no progress events, no error. Storing the Task on
-        # the per-run state object keeps it alive for the lifetime
-        # of the run (state[run_id] holds rs as long as the run is
-        # tracked). Same pattern applied to `_load_then_retry_segment`.
         self.bg_task: Any = None
 
 
@@ -659,17 +606,11 @@ def register_diffusers_handlers(worker) -> None:
 
         # Pipeline load can take minutes on a cold cache (22B fp8 →
         # CPU-offload pinned memory) and must NOT block the JSON-RPC
-        # reply — the host's send_rpc has a fixed timeout, and a
-        # blocking load times out before the render even starts.
-        # Reply immediately and run load+render in a background task.
         rs = DiffusersRunState(
             run_id=run_id, workdir=workdir, plan=plan, pipe=None, device=None
         )
         # Rung 7L: capture the host's resume offset onto the run
         # state. The render loop reads this once and emits the
-        # ack notification before the first segment. Non-int /
-        # negative values collapse to 0 so a malformed payload
-        # silently behaves like a first attempt.
         raw_offset = params.get("resumed_from_segment", 0)
         try:
             rs.resumed_from_segment = max(0, int(raw_offset))
@@ -752,10 +693,6 @@ class _ModelLoadFailed(Exception):
 
 # Pre-quantised diffusers tree for the nvfp4 profile. Same LTX-2.3
 # distilled architecture as the dg845 bf16 port (validated 2026-05-16:
-# byte-identical model_index.json + every render-critical transformer
-# config key matches), but already bnb-NF4 with a baked
-# `quantization_config`. Preferring it skips the ~89 GB bf16 read +
-# on-the-fly quantisation entirely (~29 GB direct load instead).
 _PREQUANTIZED_NF4_FAMILY = "OzzyGT/LTX-2.3-Distilled-bnb-nf4"
 
 
@@ -812,7 +749,6 @@ def _resolve_model_dir(profile: str) -> Path | None:
 
     # Prefer a pre-quantised tree when one is installed — avoids the
     # ~89 GB bf16 read + on-the-fly quant that otherwise stalls every
-    # cold nvfp4 load. Falls through to the bf16 family if absent.
     prequant = _prequantized_family_for(profile)
     if prequant is not None:
         cand = models_root.joinpath(*prequant.split("/"))
@@ -829,8 +765,6 @@ def _resolve_model_dir(profile: str) -> Path | None:
 
 # The GGUF Q4 profile's transformer lives in its own installed family
 # dir (NOT inside the dg845 base tree the profile borrows its config /
-# companions from). Schema proven clean against dg845 after the LTX2
-# key-rename (4186/4186 — see checkpoints/2026-05-17-gA-reprobe-*).
 _GGUF_FAMILY = "Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF"
 
 
@@ -900,9 +834,6 @@ def _expected_family_id(profile: str) -> str | None:
     if profile in ("rtx40-fp8", "rtx50-fp8", "rtx50-nvfp4", "rtx50-gguf"):
         # rtx50-gguf borrows dg845 ONLY for the transformer `config.json`
         # + companion VAE/text-encoder/scheduler; its transformer weights
-        # come from the GGUF override (Abiray family), not dg845's
-        # safetensors. The base transformer is loaded-then-replaced (a
-        # known, documented load-then-discard tax — G1 fork-probe).
         return "dg845/LTX-2.3-Distilled-Diffusers"
     return None
 
@@ -961,19 +892,10 @@ def _ensure_pipeline_loaded(
 
         # Pin the CUDA allocator below the operator's VRAM ceiling
         # BEFORE any weights are materialised, so the offload-hook
-        # path cannot bleed the nvfp4 transformer into Windows shared
-        # GPU memory. No-op under `none` / when no budget is set.
         _apply_vram_budget(torch, offload_mode, max_gpu_vram_gib, worker.logger)
 
         # Prefer the image-to-video class for scene chaining: scene N+1
         # is image-conditioned on scene N's last frame, which gives
-        # visual continuity across long-video segment boundaries.
-        # `LTX2ImageToVideoPipeline` shares the same sub-components as
-        # the text-to-video `LTX2Pipeline`, so we can force-instantiate
-        # it against the dg845 repo even though its `model_index.json`
-        # nominally declares LTX2Pipeline (validated 2026-05-13 on the
-        # RTX 5070 Ti — same weights load cleanly).
-        # Fallback chain handles older diffusers releases.
         try:
             from diffusers import LTX2ImageToVideoPipeline as _PipeClass  # type: ignore
         except ImportError:
@@ -1001,16 +923,6 @@ def _ensure_pipeline_loaded(
         load_start = time.perf_counter()
         # On-the-fly quantisation of the two heavy components
         # (transformer + Gemma-3 text encoder). The shipped bf16
-        # checkpoint (~89 GB) cannot run on a 16 GB card without it;
-        # nvfp4 resolves to nf4 on the host.
-        #
-        # BUT: if the resolved tree is ALREADY quantised on disk (it
-        # ships its own baked `quantization_config`), diffusers
-        # re-applies that natively at load — layering our own
-        # PipelineQuantizationConfig on top double-configures the
-        # quantiser and fails. Skip the on-the-fly pass entirely in
-        # that case (this is the ~89 GB→~29 GB fast path that makes a
-        # cold nvfp4 load practical).
         effective_quantization = quantization
         if _dir_is_prequantized(model_dir):
             effective_quantization = "none"
@@ -1038,10 +950,6 @@ def _ensure_pipeline_loaded(
 
         # GGUF-quantized transformers MUST be installed directly onto
         # their target device. Stock `pipe.to(...)` does not relocate
-        # GGUFParameter instances after the fact (their move semantics
-        # live in the quantizer, not nn.Module._apply). Under `none` the
-        # transformer's resolved placement decides; under model /
-        # sequential the offload hook pages from CPU so install on CPU.
         gguf_install_device = (
             placement.get("transformer", "cpu")
             if offload_mode == "none"
@@ -1053,11 +961,6 @@ def _ensure_pipeline_loaded(
 
             # The first-class gguf profile (Abiray family) carries
             # original LTX-2.3 key names → apply the LTX2 diffusers
-            # rename (proven schema-clean 4186/4186). strict_schema
-            # stays True: the re-probe proved it clean, so a future
-            # GGUF/diffusers drift must fail LOUDLY, not silently
-            # zero-fill. An env / drop-in override on a non-gguf
-            # profile keeps the historical no-rename behaviour.
             is_gguf_profile = _gguf_family_for(profile) is not None
             worker.logger.info(
                 "diffusers.load_pipeline.gguf_override",
@@ -1078,10 +981,6 @@ def _ensure_pipeline_loaded(
 
         # The host-resolved triple is authoritative. `_place_pipeline`
         # decides hook-vs-direct per offload_mode but always honours
-        # the triple — crucially keeping the ~11 GB T5 off the GPU for
-        # nvfp4-on-16GB so the transformer + activations actually fit.
-        # The 2026-05-15 hang was `pipe.to("cuda")` trying to make T5 +
-        # transformer (~22 GB) co-resident on a 16 GB card.
         pipe = _place_pipeline(
             pipe=pipe,
             offload_mode=offload_mode,
@@ -1192,12 +1091,6 @@ async def _load_then_render(
     )
     # Surface any in-render exception as an ltx.video.error notification
     # so the host runner sees a terminal event instead of waiting for
-    # RENDER_TIMEOUT (30 min) on a dead bg task. Without this catch,
-    # uncaught exceptions in _render_loop became asyncio "task exception
-    # was never retrieved" warnings on stderr — host log scrape only,
-    # no host-side state change. 2026-05-15: triggered by the null-
-    # guidance_scale TypeError; we want this safety net even after the
-    # primary fix lands.
     try:
         await _render_loop(worker, rs, raw_params, cache, profile)
     except Exception as err:  # noqa: BLE001 — render code can throw anything
@@ -1513,14 +1406,6 @@ async def _render_loop(
 
     # Hyperparameters — pulled from the top-level request_params (NOT the
     # `plan` dict, since these are user-facing knobs, not planner output).
-    # Defaults match the LTX 2.3 distilled pipeline's recommended values
-    # (guidance_scale 4.0, 8 inference steps for a distilled model).
-    #
-    # NOTE: the host's `build_render_params` emits these fields as JSON
-    # `null` when the user leaves them unset. `dict.get(k, default)`
-    # returns the default ONLY for missing keys — for `null` it returns
-    # None. `float(None)` crashes the render. `_or_default` collapses
-    # both paths to the default.
     advanced = raw_params.get("advanced") or {}
     guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
     num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
@@ -1555,9 +1440,6 @@ async def _render_loop(
 
     # Item C: ack a Rung 7L resume before the first segment fires.
     # Operators reading worker logs see this notification once when
-    # the host has re-issued render.start at a non-zero offset, and
-    # use it to confirm that the worker's segment numbering aligns
-    # with the host's restart_count.
     if rs.resumed_from_segment > 0:
         await worker.emit_notification(
             Notifications.RESUME_ACKNOWLEDGED,
@@ -1582,7 +1464,6 @@ async def _render_loop(
         seg_seed = int(seg.get("seed", 0))
         # Per-segment override from the planner's `scenes[]` zip; falls
         # back to the global action prompt when this segment isn't
-        # claimed by any scene in the script.
         seg_action_prompt = (seg.get("action_prompt") or global_action).strip()
         effective_prompt = _compose_prompt(
             character=character_anchor,
@@ -1607,8 +1488,6 @@ async def _render_loop(
 
         # Heartbeat callback fires at the end of each diffusers
         # inference step. The pipe runs inside `asyncio.to_thread`, so
-        # we capture the running loop here and schedule notifications
-        # via `run_coroutine_threadsafe` from the worker thread.
         loop = asyncio.get_running_loop()
 
         def emit_step(step_idx: int) -> None:
@@ -1715,7 +1594,6 @@ async def _render_loop(
 
         # Inter-segment cleanup: drop autograd graphs + intermediate tensors,
         # gc, empty_cache. Pipe + weights STAY in VRAM (supervisor decides
-        # whether to restart based on memory_stats).
         del frames
         gc.collect()
         if _LAZY_TORCH is not None and _LAZY_TORCH.cuda.is_available():
@@ -1726,8 +1604,6 @@ async def _render_loop(
 
     # Stitch + (optional RIFE 2×) + trim. RIFE doubles base_fps so the
     # output FPS matches plan.output_fps (typically 48). When RIFE is not
-    # installed the worker falls back to base_fps output — duration is
-    # still exact because trim_to_duration is the final step.
     final_dir = rs.workdir / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
     stitched_path = final_dir / "stitched.mp4"
@@ -1754,7 +1630,6 @@ async def _render_loop(
 
     # AC13 — terminal eviction. Pipe + weights leave VRAM here. The Rust
     # supervisor releases the lease right after `done` arrives, which kills
-    # the subprocess and frees the CUDA context too — belt + suspenders.
     cache["pipe"] = None
     evict_models(rs)
 
@@ -1846,9 +1721,6 @@ def _generate_segment(
     }
     # Optional LTX-2.3-specific knobs. None signals "use pipeline
     # default" and gets stripped here so we never pass an explicit
-    # None into the diffusers call (which would override the default
-    # with null and trip TypeError downstream — same class of bug as
-    # the 2026-05-15 guidance_scale=None incident).
     if decode_timestep is not None:
         call_kwargs["decode_timestep"] = decode_timestep
     if image_cond_noise_scale is not None:
@@ -1866,8 +1738,6 @@ def _generate_segment(
 
     # Per-inference-step heartbeat. diffusers calls
     # `callback_on_step_end(pipeline, step_index, timestep, callback_kwargs)`
-    # at the end of each denoising step and expects the dict back. We
-    # use this purely as a progress beacon — no kwargs are mutated.
     if step_heartbeat is not None and "callback_on_step_end" in sig_params:
         def _on_step_end(_pipe: Any, step_idx: int, _t: Any, cb_kwargs: dict[str, Any]) -> dict[str, Any]:
             try:
@@ -1959,8 +1829,6 @@ def _save_last_frame(frames: Any, path: Path) -> None:
 async def _emit_error(worker, run_id: str, code: int, message: str) -> None:
     # Cap message length + scrub token-like substrings before
     # forwarding. Diffusers / HuggingFace exceptions can carry multi-MB
-    # tensor dumps AND echo Authorization headers / HF_TOKEN values
-    # that would otherwise hit the SSE broker + DB row verbatim.
     safe = truncate_for_log(scrub_sensitive(message))
     await worker.emit_notification(
         Notifications.ERROR,
@@ -1970,9 +1838,6 @@ async def _emit_error(worker, run_id: str, code: int, message: str) -> None:
 
 # Strong references to fire-and-forget background tasks.
 # CPython 3.11+ only holds WEAK references to tasks, so a task created
-# without a strong reference can be GC'd before running. We add each
-# spawned task to this set and remove it via a done-callback. Pattern
-# straight from the Python 3.12 asyncio.create_task docstring.
 _FIRE_AND_FORGET_TASKS: set[Any] = set()
 
 

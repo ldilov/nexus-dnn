@@ -36,28 +36,11 @@ def _isolate_stdout_fd() -> object:
 
 # OpenMP duplicate-runtime workaround. PyTorch's MKL and scipy's OpenBLAS
 # each ship their own `libiomp5md.dll`; loading both into one process on
-# Windows can lock up indefinitely inside OMP's duplicate-detection path.
-# Setting this env var BEFORE any heavy import is what counts. Called from
-# `main()` so importing this module stays side-effect free (testable).
 def _set_omp_workaround() -> None:
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 # Make `ninja` findable by torch.utils.cpp_extension's
 # `verify_ninja_availability()`, which does
-# `subprocess.run(['ninja', '--version'])` against the OS PATH. The
-# `ninja` PyPI package vendors the binary inside its own package dir
-# and exposes `ninja.BIN_DIR` pointing at it; that's the most reliable
-# way to surface the binary regardless of venv style (uv, venv, conda).
-#
-# Falls back to `<sys.executable parent>` (Windows: `Scripts/`, POSIX:
-# `bin/`) when the package isn't importable yet — covers the case
-# where ninja is installed via `pip install --target` or other
-# unusual layouts. Prepending so the venv's ninja takes precedence
-# over any older system-wide one.
-#
-# Without this, BigVGAN's vocoder JIT logs:
-#     `RuntimeError('Ninja is required to load C++ extensions ...')`
-# even with `ninja>=1.11` declared in `pyproject.toml`.
 def _ensure_ninja_on_path() -> str | None:
     candidates: list[str] = []
     try:
@@ -148,8 +131,6 @@ def _do_heavy_imports_serially() -> None:
 def main() -> int:
     # Force line-buffering on stderr so each `print(..., flush=True)` flushes
     # immediately even when the parent (host) is reading our stderr through
-    # a pipe (Windows default-buffers pipe stderr in 4 KB blocks, which can
-    # hide our progress prints for minutes).
     try:
         sys.stderr.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
     except Exception:
@@ -164,12 +145,10 @@ def main() -> int:
 
     # Heavy imports BEFORE any thread spawns. See `_do_heavy_imports_serially`
     # docstring for the rationale — short version: avoids GIL-vs-loader-lock
-    # contention that intermittently stalls scipy.special for 5+ minutes.
     _do_heavy_imports_serially()
 
     # The warm-imports event is no longer used by ensure_model in this
     # arrangement (imports finish before any handler can run), but we set
-    # it for backwards-compat with any caller that still waits on it.
     from .warm import WARM_DONE
     WARM_DONE.set()
 

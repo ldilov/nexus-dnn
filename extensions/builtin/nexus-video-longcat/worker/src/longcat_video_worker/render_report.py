@@ -64,8 +64,6 @@ class RenderReport:
     memory: dict[str, Any]
     # S5 (additive, backward-compatible): boundary-transition descriptors
     # from the plan (one entry per boundary) and the boundary_telemetry
-    # `transition_break_score` array (one entry per boundary that fell in
-    # range). Both default to empty tuples so v1 consumers stay valid.
     transitions: tuple[dict[str, Any], ...] = ()
     boundary_scores: tuple[dict[str, Any], ...] = ()
 
@@ -145,7 +143,6 @@ def _atomic_write(path: Path, payload: bytes) -> None:
     try:
         # POSIX: 0o600 owner-only. Best-effort on Windows where chmod
         # is a no-op for read/write semantics; the ACL would need
-        # icacls to enforce, out of scope for v1.
         os.chmod(path, 0o600)
     except OSError:
         pass

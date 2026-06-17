@@ -29,7 +29,6 @@ from longcat_video_worker.longcat_native_loader import (
 
 # ---------------------------------------------------------------------------
 # rename_kj_keys — pure-Python dict ops, no torch required
-# ---------------------------------------------------------------------------
 
 
 def test_rename_kj_keys_top_level_prefixes() -> None:
@@ -138,7 +137,6 @@ def test_rename_kj_keys_ffn_passthrough() -> None:
 
 # ---------------------------------------------------------------------------
 # build_dit without vendor — must raise VendorMissing
-# ---------------------------------------------------------------------------
 
 
 def test_build_dit_raises_without_vendor() -> None:
@@ -148,7 +146,6 @@ def test_build_dit_raises_without_vendor() -> None:
 
 # ---------------------------------------------------------------------------
 # _meta_param_names — needs torch
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(not _has_torch(), reason="torch not installed")
@@ -172,7 +169,6 @@ def test_meta_param_names_returns_meta_tensors() -> None:
 
 # ---------------------------------------------------------------------------
 # _rebind_preprocessor_modules — no-op
-# ---------------------------------------------------------------------------
 
 
 def test_rebind_preprocessor_is_noop() -> None:
@@ -184,7 +180,6 @@ def test_rebind_preprocessor_is_noop() -> None:
 
 # ---------------------------------------------------------------------------
 # read_embedded_config
-# ---------------------------------------------------------------------------
 
 
 def test_read_embedded_config(tmp_path: Path) -> None:
@@ -206,7 +201,6 @@ def test_read_embedded_config(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------------------
 # rename_kj_keys — full round-trip with a realistic mini state-dict
-# ---------------------------------------------------------------------------
 
 
 def test_rename_kj_keys_realistic_mini() -> None:

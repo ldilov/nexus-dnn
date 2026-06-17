@@ -9,11 +9,6 @@ from pathlib import Path
 
 # Real-ESRGAN spatial super-resolution via the upstream
 # xinntao/Real-ESRGAN-ncnn-vulkan prebuilt binary (BSD/MIT, models
-# bundled in the release zip — provenance-clean, no pip build). Same
-# auto-stage + silent-fallback contract as fps_interp's RIFE binary:
-# if the binary can't be staged or the upscale fails, the caller keeps
-# the original frames so a render never aborts on this optional path.
-# `-t` tile-size bounds GPU memory so the SR stage can't spill.
 
 _ESRGAN_BIN_ENV = "NEXUS_VIDEO_LTX23_ESRGAN_BIN"
 _ESRGAN_AUTOSTAGE_ENV = "NEXUS_VIDEO_LTX23_ESRGAN_AUTOSTAGE"
@@ -23,8 +18,6 @@ _ESRGAN_TILE_ENV = "NEXUS_VIDEO_LTX23_ESRGAN_TILE"
 
 # The xinntao/Real-ESRGAN-ncnn-vulkan release zips are binary-ONLY
 # (no models). The main xinntao/Real-ESRGAN repo's v0.2.5.0 NCNN
-# portable zips (~43 MB) DO bundle the models/ dir — that is the one
-# that actually works as a self-contained staged binary.
 _ESRGAN_TAG = "20220424"
 _ESRGAN_BASE = (
     "https://github.com/xinntao/Real-ESRGAN/releases/download/"
@@ -218,8 +211,6 @@ def try_upscale(
                 return False
             # The binary resolves models RELATIVE to its working dir
             # (`./models/<name>.param`). Passing an absolute `-m` made
-            # it concat exedir + abs-path and fail. Run with
-            # cwd=exedir and no `-m` so it uses the bundled ./models.
             proc = subprocess.run(  # noqa: S603
                 [
                     str(bin_path),

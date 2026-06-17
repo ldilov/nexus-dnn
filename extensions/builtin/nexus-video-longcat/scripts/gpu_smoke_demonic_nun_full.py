@@ -40,8 +40,6 @@ _DEFAULT_SEED = 6661666
 _FPS = 24
 # Bumped 13 -> 17 (next 4n+1) so each new scene re-uses more of the prior
 # tail as conditioning. Stronger temporal pin = better identity continuity
-# across the chain; soft-pin work prevents the seam tell that a longer
-# overlap would otherwise amplify.
 _OVERLAP_FRAMES = 17
 _ADAIN_FACTOR = 0.2
 _BOUNDARY_JITTER_PX = 0.35
@@ -49,8 +47,6 @@ _BOUNDARY_GRAIN_SIGMA = 0.02
 _RTX_UPSCALE_QUALITY = "HIGH"
 # Bumped 16 -> 20 for the distill draft. 16 = the LoRA's trained step count
 # (LongCat paper Sec. 4.2 — going BELOW collapses motion pacing). Going above
-# is safe in-distribution and gives the denoise extra polish for tighter
-# temporal coherence.
 _NUM_INFERENCE_STEPS = 20
 
 _SCENES = [
@@ -76,9 +72,6 @@ _SCENES = [
     {
         # Possession-confirmation beat. Distill struggles with eye-color
         # transitions; the prompt asks for a STATE (eyes are pitch black
-        # voids) rather than a TRANSFORMATION (eyes turn black). The
-        # anti-melt negative tokens are auto-injected so doubled/ghost
-        # faces are suppressed.
         "prompt": (
             "extreme close-up of the same young nun's face brightly lit by "
             "warm candle light in the gothic chapel, her eyes slowly turning "
@@ -103,7 +96,6 @@ _SCENES = [
 
 # Bridge texts use only stems that appear in the adjacent scene prompts
 # (validator enforces on RPC path; smoke bypasses but we keep the same
-# discipline so the transitions stay portable).
 _TRANSITIONS_SPEC = [
     {
         "type": "soft",
@@ -241,8 +233,6 @@ def _build_request(profile, image_path=None, scenes_src=None, transitions_src=No
         rtx_upscale_quality=_RTX_UPSCALE_QUALITY,
         # F3: drop force_refinement_with_upscale; pick refinement OR RTX, not
         # both stacked. Refinement runs per-scene at draft res; RTX upscales
-        # the assembled stack at the end. Stacked dual-LoRA + RTX amplifies
-        # whatever artefacts the draft has.
         force_refinement_with_upscale=False,
     )
 
@@ -337,8 +327,6 @@ def main() -> int:
         if args.profile == "1080p" and preset.recommended_output_profile != "1080p":
             # CLI default is 1080p; honour preset's recommendation when CLI
             # was not explicitly overridden. argparse cannot distinguish
-            # "user set 1080p" from "default 1080p", so we apply preset's
-            # recommendation whenever it differs from the CLI default.
             args.profile = preset.recommended_output_profile
 
     profile = get_profile(args.profile)

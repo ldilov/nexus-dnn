@@ -153,12 +153,6 @@ class IndexTtsAdapter:
 
             # Wait for the heavy-import warmer to finish before doing our
             # own imports. Concurrent first-time scipy/sklearn loads from
-            # two threads on Windows can stall indefinitely (loader-lock
-            # contention between Python's per-module import lock and
-            # Win32's process-wide DLL loader lock). The warmer is started
-            # by `__main__.py` BEFORE the asyncio loop runs, so by the
-            # time we reach this point it has either finished (instant
-            # below) or is still grinding (we wait — usually <60s).
             from .warm import WARM_DONE
             if not WARM_DONE.is_set():
                 _ckpt("waiting for import warmer to finish (avoids loader-lock race)")
@@ -176,15 +170,6 @@ class IndexTtsAdapter:
 
             # Arm a watchdog: if the import hangs >120s, faulthandler
             # dumps every thread's Python stack to stderr so we can see
-            # which sub-import is blocked. 120s is generous because the
-            # scipy/sklearn/transformers chain on Windows with AV scanning
-            # can legitimately take 2-3 minutes on first-ever load — a
-            # 45s threshold produces nuisance dumps for slow-but-
-            # progressing imports. The `_warm_heavy_imports` daemon
-            # thread (kicked off in __main__.py) usually finishes this
-            # work in parallel with the handshake, so by the time we
-            # reach this line the module is already cached and the
-            # import is instant. The watchdog is the safety net.
             import faulthandler as _fh
             if not _fh.is_enabled():
                 _fh.enable()
@@ -253,9 +238,6 @@ class IndexTtsAdapter:
             except Exception as exc:
                 # Don't swallow silently — a failed `.to(device)` here means
                 # `synthesise(emotion_mode="qwen_template")` will either run
-                # on CPU (slow) or blow up two layers down with a confusing
-                # tensor-device mismatch. Log so the host stderr capture
-                # surfaces it instead of debugging from a torch traceback.
                 import logging
                 logging.getLogger("emotion_tts_worker").warning(
                     "qwen .to(%s) failed during load: %s — emotion_mode=qwen_template "
@@ -273,8 +255,6 @@ class IndexTtsAdapter:
     ) -> SegmentOutcome:
         # Direct-to-stderr checkpoints (same pattern as ensure_model) so a
         # silent hang inside `IndexTTS2.infer()` is debuggable instead of
-        # invisible. Each `[synth]` line bypasses Python logging buffers
-        # and pipes straight into the host log.
         import sys as _sys
         import traceback as _tb
         def _ckpt(label: str) -> None:
@@ -287,8 +267,6 @@ class IndexTtsAdapter:
 
         # Validate the speaker reference before we ever touch the model.
         # Without it, IndexTTS2.infer's internal speaker-conditioning path
-        # blocks waiting on a file that doesn't exist (no clean error),
-        # which is the symptom "Generate stuck at running, no CPU/GPU".
         if not segment.speaker_audio_abs:
             _ckpt("FAILED: no speaker_audio_abs supplied — character has no voice mapping")
             return SegmentOutcome(
@@ -334,7 +312,6 @@ class IndexTtsAdapter:
 
             # Apply `seed` to every RNG before the generate call instead of
             # forwarding it as a kwarg — recent transformers reject unknown
-            # `model.generate()` kwargs.
             seed_value = infer_kwargs.pop("__seed__", None)
             if seed_value is not None:
                 self._apply_seed(seed_value)
@@ -393,9 +370,6 @@ class IndexTtsAdapter:
 
         # `seed` is consumed at infer-time by `_apply_seed`, NOT forwarded
         # to upstream. Recent transformers versions strictly validate
-        # `model.generate()` kwargs and reject `seed`, so the value must
-        # be drained from `gen` here and applied as a torch / numpy /
-        # python RNG seed before the generate call.
         if "seed" in gen:
             kwargs["__seed__"] = gen.pop("seed")
         if "interval_silence" in gen:
@@ -445,12 +419,6 @@ class IndexTtsAdapter:
 
     # ------------------------------------------------------------------
     # Spec 034 US3 — public surface for the speaker-prefix cache. Real
-    # cut-in between "load reference" and the GPT sampling loop requires
-    # upstream `IndexTTS2.infer()` to accept a pre-computed conditioning
-    # tensor. Until that ships we expose a typed lookup helper that a
-    # wrapper (or a future patched upstream fork) can call; the cache
-    # bookkeeping + stats notification are already live.
-    # ------------------------------------------------------------------
 
     def speaker_cache_entry_key(self, ref_path: str) -> SpeakerCacheKey:
         return SpeakerCacheKey(

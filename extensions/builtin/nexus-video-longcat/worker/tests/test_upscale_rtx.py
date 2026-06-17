@@ -18,7 +18,6 @@ def test_is_rtx_vfx_available_no_torch() -> None:
     with patch.dict(sys.modules, {"torch": None}):
         # Force ImportError on `import torch` inside the function. Patching
         # sys.modules to None makes a subsequent import raise ImportError.
-        # The probe must catch and return False with a clear reason string.
         ok, reason = upscale_rtx.is_rtx_vfx_available()
     assert ok is False
     assert "torch" in reason.lower()

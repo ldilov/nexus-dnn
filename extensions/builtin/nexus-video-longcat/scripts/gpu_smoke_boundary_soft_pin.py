@@ -309,7 +309,6 @@ def main() -> int:
 
     # The soft boundary is the FIRST entry in boundary_frame_indices for both
     # runs (we only flip transition[0] to soft). Compare break_score at that
-    # boundary across the two runs.
     if not score_results["hard"]["scores"] or not score_results["soft"]["scores"]:
         log.error("no boundary scores produced; cannot assert")
         return 4

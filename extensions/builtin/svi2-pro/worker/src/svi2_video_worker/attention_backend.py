@@ -10,9 +10,6 @@ import torch.nn.functional as F
 
 # ---------------------------------------------------------------------------
 # Internal tensor contract: q/k/v are HND => [batch, heads, seq, head_dim].
-# SDPA / SageAttention2 / SageAttention3 consume HND natively. FlashAttention
-# wants NHD => [batch, seq, heads, head_dim], so the flash paths transpose.
-# ---------------------------------------------------------------------------
 
 _Attn = Callable[[torch.Tensor, torch.Tensor, torch.Tensor, bool], torch.Tensor]
 
@@ -139,7 +136,6 @@ def _attn_sage2(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, causal: bool)
 
     # Blackwell (sm120) parity with Wan2GP: explicit INT8-QK / FP8-PV CUDA
     # variant with per-warp quant granularity. pv_accum_dtype + smooth_v track
-    # the installed SageAttention version (2.2+ uses fused fp32+fp16).
     if _SM >= (12, 0):
         fn = getattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda", None)
         if fn is not None:
@@ -166,8 +162,6 @@ def _attn_sage3(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, causal: bool)
         raise RuntimeError("sage3_fp4 kernel not available")
     # SA3 FP4 is bfloat16-only; fp16 crashes the Triton quant kernel. Inputs are
     # already HND, which is the kernel's native layout (no transpose). The
-    # Blackwell symbol takes (q,k,v) and may or may not expose is_causal across
-    # builds, so pass it when accepted and fall back to the bare call.
     if q.dtype != torch.bfloat16:
         raise RuntimeError(f"sage3_fp4 requires bfloat16 (got {q.dtype})")
     try:
@@ -213,7 +207,6 @@ _ALIASES: dict[str, str] = {
 
 # Conservative auto chain: keep the render-proven flash2 path first, never
 # silently promote to quantized attention (correctness over speed). Operators
-# opt into sage2 / sage3_fp4 explicitly.
 _AUTO_CHAIN: tuple[str, ...] = ("flash2", "sdpa")
 
 

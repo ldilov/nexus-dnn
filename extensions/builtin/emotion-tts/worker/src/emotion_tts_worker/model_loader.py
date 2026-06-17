@@ -175,9 +175,6 @@ def orchestrate_load(
     except Exception as exc:
         # Log the full traceback to stderr so the host can capture it via
         # the worker's stderr stream. The RPC error response only carries
-        # `str(exc)` in `data.detail`, which loses framing — adding the
-        # traceback here means the host log shows the actual import error,
-        # tensor-size mismatch, missing-file path, etc.
         import logging
         import traceback as _tb
         logging.getLogger("emotion_tts_worker").error(

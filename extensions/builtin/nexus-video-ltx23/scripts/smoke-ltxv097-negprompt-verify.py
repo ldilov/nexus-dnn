@@ -203,7 +203,6 @@ def main() -> int:
         diff = _frame_diff(empty, strong)
         # CFG law: the negative branch is only used when guidance > 1.0.
         # At or below 1.0 it cancels (inert); above it conditions. A
-        # violation either way is a hard failure.
         cfg_off = guidance <= 1.0 + 1e-6
         if cfg_off:
             ok = diff < diff_eps

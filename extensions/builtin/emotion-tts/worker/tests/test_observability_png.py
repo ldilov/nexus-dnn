@@ -36,9 +36,6 @@ def test_renders_png_with_reasonable_size(tmp_path):
     assert rendered.exists()
     # Sanity bound — noisy random attention inflates the compressed PNG vs.
     # the clean-diagonal attention tensors produced by a real decoder
-    # (R-34-07 ships ~40 kB on a sparse diagonal). We just assert the
-    # output is within a generous ceiling so a truly degenerate rendering
-    # (10 MB, no compression) fails loudly.
     size = rendered.stat().st_size
     assert 500 < size < 2_000_000, f"unexpected PNG size {size} bytes"
 

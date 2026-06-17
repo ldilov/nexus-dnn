@@ -837,7 +837,6 @@ def _run_render(
         _notify(worker, "svi2.video.progress", {"fraction": 0.02, "stage": "loading_t2v_experts"})
         # Heartbeat covers the silent T2V-expert load inside _generate_t2v_clip0;
         # the first denoise step (on_step) means the load is done, so stop it
-        # there to hand the stage label cleanly over to t2v_seed_clip.
         t2v_load_hb = _ProgressHeartbeat(worker, "loading_t2v_experts", 0.02)
         t2v_load_hb.start()
         first_prompt = prompts[0]

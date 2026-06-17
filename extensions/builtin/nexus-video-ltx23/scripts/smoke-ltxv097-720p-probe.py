@@ -145,8 +145,6 @@ def main() -> int:
 
     # Stage 2 — load upsampler sharing the SAME vae instance. The
     # on-disk Lightricks checkpoint is a single safetensors (ComfyUI
-    # shape), not a diffusers tree — try from_single_file first, then
-    # the documented from_pretrained(HF id) path.
     up = None
     load_errs: list[str] = []
     if up_single and hasattr(LTXLatentUpsamplePipeline, "from_single_file"):

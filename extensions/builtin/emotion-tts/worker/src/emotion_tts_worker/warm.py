@@ -19,6 +19,4 @@ import threading
 
 # Set by ``_warm_heavy_imports`` once the import chain has fully run
 # (success or first-failure). Consumers waiting on this MUST tolerate
-# the warmer having failed — they can re-attempt the import themselves
-# and surface a structured error from the resulting traceback.
 WARM_DONE = threading.Event()

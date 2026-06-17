@@ -125,8 +125,6 @@ def _auto_fit_n_gpu_layers(profile=None) -> int:
         return -1
     # Conservative heuristic: a small Q4-Q8 instruction model layer is
     # typically 60-90 MiB resident. Leave 1 GiB headroom for activations
-    # and KV cache, then divide. Cap at 99 ("offload everything"); the
-    # worker will clamp to the real model layer count.
     headroom_mb = 1024
     per_layer_mb = 80
     usable = max(0, free_mb - headroom_mb)
@@ -196,12 +194,6 @@ class HttpLeaseClient:
     ) -> str:
         # Spec 051 D-B: client-side ctx_size enforcement (advisory upper
         # bound). The worker is the actual authority on its context
-        # window; if profile.context_size > worker.n_ctx the worker still
-        # truncates silently. We truncate the user-role text here using
-        # the conservative char-budget approximation (4 chars/token for
-        # English; under-estimates Chinese / code by ~30%) to avoid
-        # tiktoken's dep + cold-start cost. Reserves max_tokens of
-        # headroom so the model has space to actually generate.
         if ctx_size is not None and ctx_size > 0:
             char_budget = max(0, (ctx_size - max_tokens) * 4)
             if len(user) > char_budget:
@@ -569,7 +561,6 @@ def _llm_attempt(
         except TypeError:
             # LeaseClient implementation predates the kwargs (e.g.
             # scripted test doubles). Drop the optional fields and try
-            # the legacy 4-arg shape so the planner can still run.
             return lease_client.complete(system, user, LLM_MAX_TOKENS, timeout), None
     except LeaseTimeoutError as exc:
         return None, f"timeout: {exc}"

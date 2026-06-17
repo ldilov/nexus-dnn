@@ -20,10 +20,6 @@ def _hijack_stdout() -> None:
     sys.stdout = sys.stderr
     # PYTHONUNBUFFERED=1 from the host only unbuffers the C-level FILE*; it
     # does not touch Python's TextIOWrapper. Without this reconfigure, log
-    # lines from torch / diffusers / huggingface_hub (which all go through
-    # the stdlib `logging` module's StreamHandler) sit in the TextIOWrapper
-    # buffer and only flush when tqdm overflows it — observed as a 22-minute
-    # dead-silence window during model load on RTX 5070 Ti (2026-05-14).
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(line_buffering=True)
     if hasattr(sys.__nexus_jsonrpc_stdout__, "reconfigure"):
@@ -72,9 +68,6 @@ def cli() -> int:
 
     # Installer handlers are registered regardless of profile so any fresh
     # worker can drive a model download for ANY profile. The recipe UI's
-    # "Download weights" CTA wakes a fake-profile worker (cheapest spawn)
-    # and asks IT to fetch the FP8/NVFP4 repo — no need to first install
-    # the full diffusers extras just to download files.
     register_installer_handlers(worker)
 
     if profile == "fake":
@@ -82,8 +75,6 @@ def cli() -> int:
     elif "ltxv097" in profile:
         # LTX-Video 0.9.7 13B is a SEPARATE model line (T5 encoder, own
         # VAE, diffusers-native LTXConditionPipeline + from_single_file
-        # GGUF) — its own isolated module so it can't destabilise the
-        # LTX-2.3 path. Mirrors runtime_selection::is_ltxv097_family.
         try:
             from .pipeline_ltxv097 import register_ltxv097_handlers
         except ImportError as e:
@@ -98,9 +89,6 @@ def cli() -> int:
     elif "ltx2" in profile:
         # LTX-2 19B (Kijai distilled GGUF stack) is a THIRD model line —
         # diffusers LTX2Pipeline family, Gemma-3-12B encoder + embeddings
-        # connector, Kijai video/audio VAE. Its own isolated module so it
-        # cannot destabilise the LTX-2.3 or 0.9.7 paths. Mirrors
-        # runtime_selection::is_ltx2_family.
         try:
             from .pipeline_ltx2 import register_ltx2_handlers
         except ImportError as e:

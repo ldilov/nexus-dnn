@@ -39,13 +39,9 @@ class FakeRunState:
         self.generation_count = 0
         # Rung 7L resume offset (Item C). Mirrors the field on
         # DiffusersRunState — the fake pipeline emits the same
-        # RESUME_ACKNOWLEDGED notification so integration tests that
-        # exercise the supervisor restart loop without GPU hardware
-        # see the same observable behaviour as the real pipeline.
         self.resumed_from_segment: int = 0
         # Strong reference to the background render task. See the
         # matching DiffusersRunState.bg_task field for the full
-        # CPython-3.11 weak-task-ref bug story this guards against.
         self.bg_task: Any = None
 
 
@@ -94,8 +90,6 @@ def register_fake_handlers(worker) -> None:
 
         # Launch the async render task. The Task object is kept on
         # rs.bg_task so CPython's weak-ref-only task tracker can't
-        # GC it before it runs (see DiffusersRunState.bg_task for the
-        # full rationale).
         rs.bg_task = asyncio.create_task(
             _render_loop(worker, rs, emit_delay_ms, fail_at),
             name=f"fake-ltx-render-{run_id}",
@@ -411,10 +405,6 @@ async def _retry_segment_loop(
 
     # Note: the retry path intentionally does NOT emit DONE. The Rust
     # supervisor distinguishes retry-completion (just this segment) from
-    # render-completion (whole chain stitched + trimmed). The original
-    # final.mp4 — if it existed before the retry — is unaffected. The
-    # caller can spawn a fresh render_start to re-stitch with the new
-    # segment.
 
 
 def _default_segment_count(plan: dict[str, Any]) -> int:

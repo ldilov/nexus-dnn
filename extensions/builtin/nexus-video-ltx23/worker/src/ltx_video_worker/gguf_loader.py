@@ -143,13 +143,6 @@ def apply_ltx2_diffusers_rename(state_dict: dict[str, Any]) -> dict[str, Any]:
 
     # Supplemental: the diffusers converter's `adaln_single` special
     # handler only rewrites keys starting exactly `adaln_single.` /
-    # `audio_adaln_single.`. The Abiray GGUF additionally carries
-    # `prompt_adaln_single.*` / `audio_prompt_adaln_single.*`; the
-    # diffusers model attributes are `prompt_adaln` / `audio_prompt_adaln`
-    # (no `_single`). One substring rule fixes BOTH — `"audio_prompt_
-    # adaln_single."` contains `"prompt_adaln_single."`, so replacing
-    # that token also maps the audio variant to `audio_prompt_adaln.`.
-    # 1:1 (collision-free); without it 12 keys stay unmatched.
     out: dict[str, Any] = {}
     for k, v in renamed.items():
         nk = k.replace("prompt_adaln_single.", "prompt_adaln.")
@@ -369,14 +362,6 @@ def load_gguf_transformer(
     if rename_keys:
         # `convert_ltx2_transformer_to_diffusers` intentionally
         # normalises the 4444-key official checkpoint to the 4186-key
-        # diffusers layout (removes non-transformer keys by design) —
-        # a raw-length-equality check here is a FALSE collision signal
-        # (it failed G2 run #6 on a perfectly valid conversion). True
-        # silent weight drops are caught by `validate_state_dict
-        # _against_model` + `strict_schema` below (a lost weight = a
-        # `missing_in_gguf` key vs the target; G-A2 proved missing=0).
-        # `apply_ltx2_diffusers_rename` self-guards its OWN
-        # supplemental rule against genuine many-to-one collisions.
         state_dict = apply_ltx2_diffusers_rename(state_dict)
     report = validate_state_dict_against_model(state_dict, model)
 
@@ -447,9 +432,6 @@ def load_gguf_transformer(
 
     # Partial-load completion: any target param/buffer the GGUF did not
     # cover (the unconditional `audio_*` branch for a video-only GGUF)
-    # is still a meta tensor and would crash the first forward. Zero-
-    # fill it. Inert only if the video path never consumes it (R-GA-1,
-    # validated by a coherent G2 render — not by this code).
     zero_filled = zero_fill_meta_params(
         model, device=install_target_device, dtype=compute_dtype
     )

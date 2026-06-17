@@ -90,8 +90,6 @@ class TestComputeBoundaryBreakScores:
     def test_metric_is_sensitive_to_frozen_seam(self):
         # Build a uniform-derivative stack, then surgically set frame[B]
         # equal to frame[B-1] so the diff at the seam is 0 — i.e. a hard
-        # frozen pin tell. Its score MUST exceed the equivalent index in
-        # the unmodified stack.
         baseline = _make_uniform_stack(t=30)
         seam_idx = 15
         frozen = baseline.copy()

@@ -29,7 +29,6 @@ def _scene_color(prompt: str) -> tuple[int, int, int]:
 def e2e(tmp_path, monkeypatch):
     # RIFE autostage defaults ON in prod; force OFF so this GPU-free
     # wiring test uses the deterministic ffmpeg-minterpolate fallback
-    # instead of attempting a real binary download.
     monkeypatch.setenv("NEXUS_VIDEO_LTX23_RIFE_AUTOSTAGE", "0")
     w = Worker(profile="rtx50-ltxv097-gguf")
     m.register_ltxv097_handlers(w)

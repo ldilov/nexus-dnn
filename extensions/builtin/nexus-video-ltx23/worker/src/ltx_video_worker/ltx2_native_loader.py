@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
 # Embedded config KV
-# --------------------------------------------------------------------------
 
 
 def read_embedded_config(gguf_path: str | Path) -> dict[str, Any]:
@@ -79,7 +78,6 @@ def read_embedded_config(gguf_path: str | Path) -> dict[str, Any]:
 
     # A GGUF string KV is stored as one data part of uint8 bytes. Across
     # `gguf` package versions the part is either a numpy array or raw
-    # bytes — `bytes(memoryview(...))` normalises both.
     try:
         raw = field.parts[field.data[0]]
         text = bytes(memoryview(raw)).decode("utf-8")
@@ -108,16 +106,10 @@ def read_embedded_config(gguf_path: str | Path) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------
 # Comfy-key rename
-# --------------------------------------------------------------------------
 
 
 # The ComfyUI checkpoint prefix some LTX-2 GGUF exports carry. ltx-core's
 # `LTXV_MODEL_COMFY_RENAMING_MAP` SDOps strips exactly this, but its
-# `apply_to_key` returns None for any key WITHOUT the prefix — which
-# would silently drop an already-bare GGUF. The probed Kijai distilled
-# Q4 GGUF stores transformer keys already bare (`adaln_single.*` etc.),
-# so we strip-when-present and pass-through-when-absent rather than
-# delegating to the SDOps' drop-on-miss behaviour.
 _COMFY_TRANSFORMER_PREFIX = "model.diffusion_model."
 
 
@@ -158,7 +150,6 @@ def rename_comfy_keys(state_dict: dict[str, Any]) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------
 # Schema validation
-# --------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -263,7 +254,6 @@ def validate_against_model(
 
 # --------------------------------------------------------------------------
 # Transformer build
-# --------------------------------------------------------------------------
 
 
 @dataclass
@@ -376,8 +366,6 @@ def load_native_ltx2_transformer(
 
     # Swap nn.Linear -> GGUFLinear. GGUFLinear holds the packed weight as
     # a GGUFParameter and dequantizes it inside `forward` per matmul —
-    # the lazy-per-op dequant that keeps the resident footprint at the
-    # packed Q4 size (~12.65 GiB) instead of the bf16 size (~38 GiB).
     _replace_with_gguf_linear(
         model,
         compute_dtype,
@@ -387,13 +375,6 @@ def load_native_ltx2_transformer(
 
     # `_replace_with_gguf_linear` rebinds the model tree's `_modules` entry
     # but NOT plain-object references captured elsewhere. `LTXModel`'s
-    # `TransformerArgsPreprocessor`s capture the bare `patchify_proj` /
-    # `audio_patchify_proj` Linears at __init__ — those refs still point at
-    # the original meta `nn.Linear` after the swap, so the first
-    # `patchify_proj(latent)` of the denoise forward runs a meta matmul.
-    # (Container modules — adaln, caption_projection — swap their inner
-    # Linears in place, so their captured refs stay valid.) Re-point the
-    # preprocessors at the live tree modules before any weight install.
     _rebind_preprocessor_modules(model)
 
     installed_quantized = 0
@@ -476,10 +457,6 @@ def _meta_param_names(model: Any) -> list[str]:
 
 # The bare-Linear attributes that `LTXModel` stores BOTH as a tree
 # submodule and as a captured plain-object reference inside a
-# ``TransformerArgsPreprocessor``. A ``GGUFLinear`` swap replaces the tree
-# entry but leaves the preprocessor reference dangling at the stale meta
-# module — every other preprocessor-held module is a container whose inner
-# Linears swap in place, so only these two need re-pointing.
 _PATCHIFY_PROJ_ATTRS = ("patchify_proj", "audio_patchify_proj")
 
 
@@ -534,7 +511,6 @@ def _rebind_one(holder: Any, attr: str, live: Any) -> None:
 
 # --------------------------------------------------------------------------
 # Embeddings connector merge
-# --------------------------------------------------------------------------
 
 
 def build_embeddings_processor(
@@ -590,7 +566,6 @@ def build_embeddings_processor(
 
     # `EMBEDDINGS_PROCESSOR_KEY_OPS` is the ltx-core SDOps that maps the
     # Kijai connector key layout onto the EmbeddingsProcessor submodule
-    # names. `SafetensorsStateDictLoader.load` applies it while reading.
     loader = SafetensorsStateDictLoader()
     loaded = loader.load(str(path), sd_ops=EMBEDDINGS_PROCESSOR_KEY_OPS, device="cpu")
     remapped = {k: v.to(dtype) for k, v in loaded.sd.items()}
@@ -598,8 +573,6 @@ def build_embeddings_processor(
     missing, unexpected = processor.load_state_dict(remapped, strict=False)
     # The processor always builds an audio connector; a video-only render
     # never consumes it, so audio-connector keys missing from a
-    # video-only connector file are tolerated. A genuine divergence on
-    # the VIDEO branch is fatal.
     video_missing = [
         k for k in missing if not (audio is False and "audio_connector" in k)
     ]

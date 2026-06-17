@@ -228,5 +228,4 @@ class TestRefineCapConstant:
     def test_cap_value_is_sane(self):
         # Cap must be > 0 and well under the request default refinement_steps
         # (12 per LongCatRenderRequest default) to actually fire on the
-        # demonic-nun smoke configuration.
         assert 0 < _INTENSE_REFINE_STEPS_CAP < 12

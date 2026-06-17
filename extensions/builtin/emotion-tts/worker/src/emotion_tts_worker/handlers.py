@@ -118,7 +118,6 @@ def register_phase4_handlers(
     async def release_memory(_: Any) -> dict[str, int]:
         # REQUIRED: every nexus worker implements runtime.release_memory.
         # Full unload first (frees model VRAM), then the generic gc +
-        # empty_cache sweep measures + reports remaining allocation.
         if adapter is not None:
             try:
                 adapter.unload()

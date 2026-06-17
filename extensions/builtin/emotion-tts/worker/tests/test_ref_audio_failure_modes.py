@@ -76,8 +76,6 @@ def test_optional_stage_records_skipped_when_denoise_missing(monkeypatch, tmp_pa
 
     # Simulate "rnnoise_wheels not installed" by forcing an ImportError during
     # the stage call. We test the stage driver in isolation rather than running
-    # the whole pipeline — the real pipeline needs silero/pyloudnorm which may
-    # not be present.
     from emotion_tts_worker.ref_audio import _run_optional_stage, _DependencyMissing
 
     report = PreprocessingReport()

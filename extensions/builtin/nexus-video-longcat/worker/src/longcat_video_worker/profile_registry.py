@@ -38,13 +38,9 @@ class ModelProfile:
     requires_acknowledgement: bool = False
     # Spec 051 D-B (schema_version=2). `n_gpu_layers=None` means "ask the
     # caller's auto-fit"; an explicit integer overrides auto-fit. The
-    # value flows to the broker as an opaque int per the spec-050 PR-4
-    # `StartParams.n_gpu_layers` contract. -1 = all-layers offload, 0 =
-    # CPU only, positive = explicit count.
     n_gpu_layers: Optional[int] = None
     # Source schema version the entry was loaded from. Pre-Spec-051 v1
     # entries default to 1; v2 entries record 2. Lets downstream code
-    # branch on schema age without re-reading YAML.
     schema_version: int = 1
 
     def is_uncensored(self) -> bool:
@@ -172,8 +168,6 @@ def load_registry(path: Optional[Path] = None) -> ProfileRegistry:
             raise ProfileRegistryError(f"duplicate profile id: {profile.id}")
         # SECURITY B1: profile ids MUST be model-slug-style, never a host
         # runtime_install_id (ULID). An install-id key would couple the
-        # extension config to host-owned identity. Reject any id that
-        # parses as ULID-shaped (26 chars, Crockford base32).
         if _looks_like_install_id(profile.id):
             raise ProfileRegistryError(
                 f"profile id {profile.id!r} looks like a host install id (ULID); "

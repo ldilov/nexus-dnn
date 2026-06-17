@@ -77,13 +77,6 @@ Exit: 0 PASS, 1 FAIL/REVIEW, 2 prerequisite missing.
 
 # Possession arc (fictional). Seed shows the nun ALREADY possessed —
 # grinning, dark-eyed — so the arc escalates menace from that baseline.
-# Research operating-point pass (ltxv_13b_quality_research/06): the
-# prior max-violence prompts ("snaps head violently", "lurching off the
-# floor") overran LTX's per-window motion budget → the t6.5s face-smear.
-# Each scene now describes ONE moderate, chronological, renderable
-# motion and picks up the previous scene's end pose. The composed
-# prompt (CHARACTER + SCENE + STYLE) is kept short so it fits T5's
-# 128-token cap — the prior version truncated the style tail every run.
 CHARACTER = (
     "the same pale-faced young nun, black veil, white wimple, "
     "dark hollow eyes"
@@ -94,7 +87,6 @@ STYLE = (
 )
 # Research-aligned NEG (ltxv_13b_quality_research/09 + the identity /
 # continuation negatives) — targets face/hand melt, motion smear, and
-# the identity drift seen in the second half.
 NEG = (
     "worst quality, low quality, inconsistent motion, blurry, jittery, "
     "distorted, motion smear, motion artifacts, fused fingers, "
@@ -211,8 +203,6 @@ def _build_advanced() -> dict[str, float | int]:
             adv[key] = n
     # Option D — LongMultiPrompt temporal-window knobs. Ignored by
     # `_sampling_params`; consumed by `_generate_video_longmp`.
-    # `guiding_strength` is opt-in: when set, the seed is encoded and
-    # passed as `guidance_latents` (per-window identity re-injection).
     for key, env in (
         ("temporal_overlap_cond_strength", "NEXUS_I2V_OVERLAP_COND"),
         ("adain_factor", "NEXUS_I2V_ADAIN"),
@@ -259,11 +249,6 @@ def main() -> int:
 
     # Default 1024x576: exact 16:9, both /32, >= the operator-stated
     # 960x540 minimum. Any override is snapped to /32 (LTX requirement).
-    # Default to LTX 13B 0.9.7's native motion-friendly resolution
-    # (snap32-valid 16:9; 768x448 ~= 1.71:1 vs true 1.78). 1024x576 is
-    # extrapolation outside training distribution → produces dolly-out
-    # + freezes (Run F1 2026-05-20 GPU-proven motion+stable framing at
-    # native vs camera-pong at 1024x576).
     W = _snap32(_int("NEXUS_I2V_W", 768))
     H = _snap32(_int("NEXUS_I2V_H", 448))
     fps = _int("NEXUS_I2V_FPS", 15)
@@ -354,25 +339,17 @@ def main() -> int:
     worst_resv = 0.0
     # Per-window seed offset (research P1-9): each scene gets a distinct
     # but deterministic seed derived from its window-start frame index,
-    # so windows don't share noise and chunk continuation stays sane.
     global_seed = _int("NEXUS_I2V_GLOBAL_SEED", 108)
     # Hard VRAM residency guard (research P1-8): 16 GiB card - reserve
     # ~1 GiB for driver/runtime fragmentation. Spill to Windows shared
-    # GPU memory causes 10-20x slowdown without crashing; treat as a
-    # failure mode, not graceful degradation.
     vram_ceiling_gib = float(os.environ.get("NEXUS_I2V_VRAM_CEILING", "15.0"))
     # Two-stage latent upsample + refine (research P1-6). When enabled:
     # pipeline runs at native W,H -> upsampler -> refine pass at 2*W,2*H
-    # (denoise=0.4, ~steps/3 steps) -> resize to target_size. Skips the
-    # pixel-space ESRGAN path entirely. Stage-3 quadruples activation
-    # memory; the VRAM ceiling guard will catch any spill.
     two_pass = (os.environ.get("NEXUS_I2V_TWO_PASS", "0").strip().lower()
                 in ("1", "true", "yes", "on"))
     if longmp:
         # Option D: render every scene in ONE LongMultiPrompt call.
         # Latent-space window fusion replaces the manual per-scene loop +
-        # apply_seam — no VAE-decode handoff, so no compounding smudge.
-        # two_pass / the seam machinery do not apply on this path.
         tile = advanced.get("temporal_tile_size", mod._DEF_LONGMP_TILE)
         overlap = advanced.get(
             "temporal_overlap", mod._DEF_LONGMP_OVERLAP
@@ -381,7 +358,6 @@ def main() -> int:
         if total_frames is None:
             # Length-based estimate, then grow until the temporal-window
             # split yields >= n_scenes windows — otherwise a trailing
-            # scene prompt gets no window and is silently dropped.
             total_frames = _snap_8nplus1(int(round(secs * fps)) * n_scenes)
             while (mod._longmp_window_count(total_frames, tile, overlap)
                    < n_scenes):
@@ -500,10 +476,6 @@ def main() -> int:
             prev_seam_tail = fr[-tcount:]
             # In two-pass mode `fr` is target-res (e.g. 1920x1080); the
             # next scene generates at native W,H so its conditioning tail
-            # must be native too — feeding a target-res tail makes the
-            # pipeline VAE-encode huge frames and spikes VRAM past the
-            # 16 GB ceiling (2026-05-20 G2 scene-1 spill). The seam
-            # color-match still uses the full-res prev_seam_tail.
             if two_pass and fr[0].size != (W, H):
                 cond = [f.resize((W, H)) for f in fr[-tcount:]]
             else:

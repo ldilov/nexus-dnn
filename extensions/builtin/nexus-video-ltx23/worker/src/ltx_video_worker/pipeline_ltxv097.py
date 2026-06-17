@@ -56,33 +56,18 @@ from .vram import evict_models, memory_stats
 
 # Lazy torch handle, populated on first pipeline load (mirrors the
 # pipeline_diffusers `_LAZY_TORCH` pattern; the heavy import is
-# pre-warmed on the main thread in __main__).
 _LAZY_TORCH: Any = None
 
 # Default transformer quant from the wsbagnsv1 ladder. Q5_K_S
 # (~8.5 GiB) is the conditioned-fit sweet spot, GPU-verified
-# 2026-05-19: conditioned 2-scene peak 12.79 GiB on a 16 GB card, no
-# shared-mem crawl, 5-bit K-quant fidelity above Q4_K_M. Q6_K (~10 GiB)
-# was the prior default but the Q6 VRAM RCA (2026-05-18) proved its
-# +2 GiB resident deficit makes EVERY conditioned/multi-scene render
-# spill into Windows shared memory (~22-33 s/step crawl) — it is
-# unconditioned-only on 16 GB. Q4_K_M remains the lighter fallback;
-# the model dropdown makes this per-render selectable. Override with
-# NEXUS_VIDEO_LTX23_LTXV097_GGUF (or the model_id param).
 _DEFAULT_GGUF_BASENAME = "ltxv-13b-0.9.7-dev-Q5_K_S.gguf"
 _GGUF_REPO = "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF"
 # CORRECT diffusers base for the 13b-0.9.7-dev GGUF: the dedicated
 # diffusers-format repo (model_index + transformer/config + the proper
-# 0.9.7 `vae/` + T5 + tokenizer + scheduler). NOT the `Lightricks/
-# LTX-Video` monorepo (mixes 0.9.0–0.9.8 / 2B / 13B configs — pairing
-# the GGUF with its transformer/vae config produced pure-noise output,
-# RCA 2026-05-18). The companion ComfyUI VAE blob is NOT used: this
-# repo's `vae/` is the canonical diffusers 0.9.7 video VAE.
 _BASE_REPO = "Lightricks/LTX-Video-0.9.7-dev"
 
 # Official 0.9.7 spatial latent upscaler (two-pass 720p). The on-disk
 # asset is a single safetensors (ComfyUI shape) under the LTX-Video
-# repo dir, not a diffusers tree — resolution handles both + the HF id.
 _UPSCALER_REPO = "Lightricks/ltxv-spatial-upscaler-0.9.7"
 _UPSCALER_SINGLE_REL = (
     "models/Lightricks/LTX-Video/ltxv-spatial-upscaler-0.9.7.safetensors"
@@ -90,68 +75,34 @@ _UPSCALER_SINGLE_REL = (
 
 # Sampling baseline (the example workflow + diffusers LTXConditionPipeline
 # defaults). Every value is overridable via the render request's
-# `advanced` block — these are the defaults a stable render starts from.
 _BASE_W, _BASE_H = 768, 512          # native 13b-0.9.7 gen resolution
 _DEF_STEPS = 30
 # guidance_scale: the motion experiment (2026-05-18) showed g=3.0
 # (diffusers default) → near-static even with motion-rich prompts
-# (motion 0.029); g=6.0 + explicit motion language → genuine coherent
-# camera/scene motion (0.123) with NO quality loss (GGUF Q-quant has
-# no fp8 e4m3 saturation, so >5.5 is safe here, unlike the fp8/nvfp4
-# LTX-2.3 profiles). 6.0 is the established base-motion baseline.
-# NOTE: LTX is heavily prompt-driven for motion — static scene
-# descriptions still yield static video at any guidance; prompts must
-# describe camera/subject motion explicitly.
 _DEF_GUIDANCE = 6.0
 _DEF_DECODE_TIMESTEP = 0.05
 _DEF_DECODE_NOISE_SCALE = 0.025
 # image_cond_noise_scale: noise mixed into the conditioning frame. The
 # workflow's "Set VAE Decoder Noise [0.05, 0.025]" is decode_timestep
-# + decode_noise_scale — NOT this. 0.025 over-anchors → near-static
-# conditioned scene 2 (2026-05-18 visual RCA). diffusers' default 0.15
-# lets the continuation actually move while staying on-identity.
 _DEF_IMAGE_COND_NOISE_SCALE = 0.15
 # LTXVideoCondition.strength: 1.0 = fully anchor scene 2 to the prev
 # frame (over-preserved/static). < 1.0 lets it diverge & animate while
-# inheriting identity/style. 0.7 is the motion-vs-continuity baseline.
 _DEF_CONDITION_STRENGTH = 0.7
 # How many trailing frames of the previous scene to feed as the
 # continuation's VIDEO condition (vs a single still, which over-anchors
-# → static). One LTX latent temporal unit = 8 frames, so a meaningful
-# motion-bearing tail is a small multiple. 24 ≈ 1 s @ 24fps of motion
-# context; tunable via advanced.condition_tail_frames.
 _DEF_CONDITION_TAIL_FRAMES = 24
 # guidance_rescale (Lin et al. 2023, "Common Diffusion Noise Schedules
 # and Sample Steps are Flawed") rescales the predicted noise after CFG
-# to restore variance lost at high guidance scales. At LTX cfg>=7 the
-# guidance signal overshoots (variance collapse → trajectory
-# overconfidence → camera-dolly bias). 0.0 = off (production default,
-# unchanged behaviour). Operators tune via advanced.guidance_rescale;
-# canonical safe ladder is 0.3 → 0.5 → 0.7 (synthesis 2026-05-20).
 _DEF_GUIDANCE_RESCALE = 0.0
 
 # The timestep set LTX-Video 0.9.7-distilled was distilled against
 # (diffusers LTX docs). Denoising at these exact noise levels is the
-# documented best-quality path; uniform `num_inference_steps` spacing
-# lands the distilled student off its trained anchors. Opt-in via
-# advanced.timestep_schedule — LTXConditionPipeline.__call__ accepts a
-# bare `timesteps=` list (no sigmas double-pass), so no pipeline
-# subclass is needed.
 _OFFICIAL_DISTILLED_TIMESTEPS: list[float] = [
     1000.0, 993.0, 987.0, 981.0, 975.0, 909.0, 725.0, 0.03,
 ]
 
 # LongMultiPrompt (Option D) temporal-window defaults. tile/overlap are
 # in DECODED frames — diffusers scales them by the VAE temporal ratio
-# internally. The window-fusion happens in LATENT space, so there is no
-# per-scene VAE-decode handoff (the structural cause of the manual seam
-# path's error propagation). overlap_cond 0.5 and adain 0.25 match the
-# upstream ComfyUI-parity recipe.
-# tile/overlap: diffusers' own defaults are 80/24, but a tile-80 window
-# (10 latent frames) puts denoise activations + the GGUF transformer
-# past a 16 GiB card. 48 = 6 latent frames, GPU-proven 12.04 GiB peak
-# on the RTX 5070 Ti (smoke D1f 2026-05-20). Bigger cards just get more
-# (smaller) windows — still correct.
 _DEF_LONGMP_TILE = 48
 _DEF_LONGMP_OVERLAP = 16
 _DEF_LONGMP_OVERLAP_COND = 0.5
@@ -283,7 +234,6 @@ def register_ltxv097_handlers(worker) -> None:
 
 # --------------------------------------------------------------------------
 # Model resolution + pipeline construction (the only 0.9.7-specific code)
-# --------------------------------------------------------------------------
 
 
 def _safe_gguf_basename(model_id: str | None) -> str | None:
@@ -341,10 +291,6 @@ def _import_ltx_pipeline_class() -> Any:
     """
     # `LTXConditionPipeline` is the PRIMARY: it is the only class that
     # exposes the LTX decode controls (`decode_timestep`,
-    # `decode_noise_scale`) AND the scene-continuation API
-    # (`conditions=[LTXVideoCondition(image, frame_index)]`) — both
-    # mandatory for non-garbage 0.9.7 output (RCA 2026-05-18; the
-    # bare-`image=` ImageToVideo path lacks the decode controls).
     last: Exception | None = None
     for name in (
         "LTXConditionPipeline",
@@ -444,7 +390,6 @@ def _build_ltxv097_pipeline(
 
     # VAE + T5 + scheduler come from the 0.9.7-dev base repo's own
     # canonical diffusers components (its `vae/` is the correct 0.9.7
-    # video VAE — the ComfyUI companion blob is not used).
     pipe_cls = pipeline_cls or _import_ltx_pipeline_class()
     pipe = pipe_cls.from_pretrained(
         base_repo,
@@ -454,11 +399,6 @@ def _build_ltxv097_pipeline(
 
     # VAE tiling + slicing — MANDATORY for 16 GB. The LTX video-VAE
     # encode/decode is a dominant transient peak: a fresh (no-cond)
-    # scene fit at 11.7 GiB, but scene 2's `LTXVideoCondition`
-    # cond-image VAE-ENCODE pushed peak past 16 GB → Windows
-    # shared-mem crawl (~80 s/step vs 4 s/step), 2026-05-18. Tiling
-    # processes the latent in spatial tiles so the VAE peak is bounded
-    # regardless of resolution/conditioning; negligible quality cost.
     tiling_mode, tiling_kwargs = vae_tiling or ("default", {})
     vae = getattr(pipe, "vae", None)
     plan: list[tuple[Any, str, dict[str, int]]] = [
@@ -614,7 +554,6 @@ def _ensure_pipeline(
 
 # --------------------------------------------------------------------------
 # Render loop — mirrors pipeline_diffusers._render_loop's contract exactly
-# --------------------------------------------------------------------------
 
 
 async def _render_loop(
@@ -651,7 +590,6 @@ async def _render_loop(
 
     # Log the FULLY-RESOLVED param set (defaults filled for unset
     # fields) so an operator can diff what ran against what was sent —
-    # the safety control for the now-fully-exposed knob surface.
     try:
         worker.logger.info(
             "ltxv097.resolved_params",
@@ -808,9 +746,6 @@ async def _render_loop(
 
         # `last_frame_image` here still holds the PREVIOUS segment's
         # tail (or the seg-0 still / None) — the only point both
-        # boundary sides are in memory before `del frames`. apply_seam
-        # is a no-op unless that is a non-empty frame list, so the
-        # first conditioned segment passes through untouched.
         frames = apply_seam(
             last_frame_image, list(frames), seam, worker.logger
         )
@@ -819,14 +754,12 @@ async def _render_loop(
         _save_last_frame(frames, last_frame_path)
         # Carry the previous scene's last-N frames (the motion-bearing
         # VIDEO TAIL) as the next scene's condition — a single still
-        # over-anchors → static continuation (motion RCA 2026-05-18).
         _fl = list(frames)
         _tail_n = max(1, min(samp["condition_tail_frames"], len(_fl)))
         last_frame_image = _fl[-_tail_n:]
         if upscale:
             # Output is 720p but the next scene's stage-1 renders at
             # native res and VAE-encodes this tail as its condition —
-            # keep the condition at the generation resolution.
             last_frame_image = _resize_frames(last_frame_image, width, height)
         segment_paths.append(seg_path)
 
@@ -1031,9 +964,6 @@ async def _retry_segment_loop(
 
     # No seam treatment on retry: recovery conditions on the prior
     # segment's single last_frame.png (not the in-memory motion tail
-    # apply_seam needs), and the retry contract re-writes raw.mp4 in
-    # place without re-stitching — the boundary is re-treated when a
-    # full render re-runs the loop.
     _write_frames_as_mp4(frames, seg_path, base_fps=base_fps)
     _save_last_frame(frames, last_frame_path)
 
@@ -1074,8 +1004,6 @@ async def _retry_segment_loop(
 
 # --------------------------------------------------------------------------
 # Generation + IO helpers (self-contained — keeps this pipeline separate
-# from the 85 KB LTX-2.3 module; logic mirrors its proven equivalents)
-# --------------------------------------------------------------------------
 
 
 def _resolve_upscale_mode(advanced: dict[str, Any]) -> str:
@@ -1244,7 +1172,6 @@ def _generate_segment(
     }
     # Opt-in custom timestep schedule. LTXConditionPipeline.__call__ takes
     # a bare `timesteps=` list and overrides num_inference_steps from its
-    # length; signature-filtered below so fallback classes ignore it.
     schedule = samp.get("timestep_schedule")
     if schedule:
         call_kwargs["timesteps"] = list(schedule)
@@ -1252,11 +1179,6 @@ def _generate_segment(
 
     # `image` is either a single PIL frame (image-to-video / first
     # conditioned scene) OR a list of PIL frames = the previous
-    # scene's VIDEO TAIL. A single finished still at frame_index=0
-    # over-anchors → static continuation (2026-05-18 motion RCA);
-    # conditioning on the motion-bearing tail gives the model a
-    # velocity to continue, which is how LTX video-continuation is
-    # designed. `video=` wins when a tail is supplied.
     is_tail = isinstance(image, (list, tuple)) and len(image) > 0
     if image is not None:
         if "conditions" in sig_params:
@@ -1410,10 +1332,6 @@ def _build_upsampler(pipe: Any, logger: Any) -> Any:
     up.to("cuda")
     # Offload the upsampler's own network to CPU until first use. The
     # shared `vae` stays on cuda (the main pipe needs it resident). In
-    # multi-scene two-pass, keeping latent_upsampler resident across
-    # scenes pushed reserved VRAM past the 16 GB card's safe ceiling
-    # (2026-05-20 G2). `_generate_segment_2pass` streams it GPU<->CPU
-    # around the single upsample call.
     _lu = getattr(up, "latent_upsampler", None)
     if _lu is not None:
         _lu.to("cpu")
@@ -1532,7 +1450,6 @@ def _generate_segment_2pass(
 
     # Stream the upsampler network GPU<->CPU around its single call so
     # it does not hold VRAM during the stage-3 refine (multi-scene VRAM
-    # ceiling fix, 2026-05-20). The shared vae is untouched.
     _lu = getattr(upsampler, "latent_upsampler", None)
     if _lu is not None:
         _lu.to("cuda")
@@ -1918,14 +1835,6 @@ def _generate_video_longmp(
     }
     # Opt-in guidance_latents identity re-injection (Option D quality
     # pass). Active only when `advanced.guiding_strength` is set — absent
-    # leaves the working path untouched. The seed is encoded to a
-    # normalized latent and passed as a soft per-window identity anchor
-    # against last-window autoregressive drift. Debate gate 2026-05-20
-    # (Codex + adversary): keep guiding_strength low (~0.2 — higher
-    # suppresses motion since the static seed is appended as reference
-    # context every window) and pair it with a SMALL temporal_tile —
-    # guidance appends ~window-size reference tokens per window, so VRAM
-    # grows; tile must drop, not rise.
     guiding_strength = g("guiding_strength")
     if guiding_strength is not None and cond_image is not None:
         vae_t = getattr(
@@ -1953,9 +1862,6 @@ def _generate_video_longmp(
         )
     # Force framewise (temporal-tiled) VAE decoding before the call. The
     # LTX VAE's `_decode` only routes to the bounded
-    # `_temporal_tiled_decode` when `use_framewise_decoding` is True, and
-    # `enable_tiling()` never sets it — without this a whole-video decode
-    # runs every frame at once and spills the 16 GiB card.
     vae = getattr(pipe, "vae", None)
     if vae is not None:
         vae.use_framewise_decoding = True

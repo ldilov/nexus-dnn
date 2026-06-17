@@ -37,7 +37,6 @@ from .vram import evict_models, memory_stats
 
 # Soft-overlap continuation strength. The carried latent tail conditions
 # the next scene at denoise_mask = 1 - strength; ~0.5 leaves the overlap
-# re-denoisable under the new prompt instead of hard-pinning old content.
 _DEF_CONTINUATION_STRENGTH = 0.5
 # AdaIN blend factor — pulls each continuation scene's latent statistics
 # toward scene 0's to cap colour / exposure drift across the chain.
@@ -281,9 +280,6 @@ async def run_multiscene(
 
     # Soft latent-overlap continuation: the carried tail conditions the
     # next scene at denoise_mask = 1 - strength, so ~0.5 lets the overlap
-    # be re-denoised under the new prompt. A near-clean pin (0.9) carries
-    # the old prompt's content fingerprint and the 8-step distilled
-    # schedule cannot reconcile it on a prompt change.
     condition_strength = pl._coerce_float(
         advanced.get("condition_strength")
         or render_block.get("condition_strength"),
@@ -297,9 +293,6 @@ async def run_multiscene(
 
     # Stage 3 — denoise every scene with the transformer warm, carrying
     # the latent tail forward. Two-stage runs each scene as half-res
-    # stage 1 -> 2x upsample -> refine; the continuation tail is sliced
-    # from the half-res stage-1 grid so it conditions the next scene's
-    # stage-1 pass at the matching resolution.
     upsampler = None
     vae_encoder = None
     if two_stage:
@@ -340,7 +333,6 @@ async def run_multiscene(
                 grid_tail = grid
             # AdaIN every continuation scene back toward scene 0's latent
             # statistics so colour / exposure does not ratchet down the
-            # chain; scene 0 is the reference and is left untouched.
             if i == 0:
                 scene0_full = grid
                 scene0_stage1 = grid_tail

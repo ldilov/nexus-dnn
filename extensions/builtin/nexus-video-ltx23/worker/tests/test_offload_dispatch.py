@@ -57,7 +57,6 @@ def _pipe_with_components() -> Any:
 
 # ---------------------------------------------------------------------------
 # payload extraction
-# ---------------------------------------------------------------------------
 
 
 def test_offload_mode_from_params_returns_explicit_value() -> None:
@@ -102,7 +101,6 @@ def test_component_placement_from_params_returns_resolved_triple() -> None:
 def test_component_placement_from_params_falls_back_for_stale_payload() -> None:
     # A payload predating the contract (no advanced / no triple /
     # malformed) collapses to the historical all-CPU placement so an
-    # old queued render behaves exactly as it did before this feature.
     assert pd._component_placement_from_params({}) == _ALL_CPU
     assert pd._component_placement_from_params({"advanced": {}}) == _ALL_CPU
     assert (
@@ -133,8 +131,6 @@ def test_scheduler_from_params_defaults_to_flow_match_euler() -> None:
 def test_quantization_from_params_defaults_to_none() -> None:
     # Host resolves the per-profile default (nvfp4 → nf4) before
     # dispatch; the worker reads the concrete value. Missing/garbage
-    # → "none" (correct for fake/CI; loud-fail for real profiles on a
-    # small card rather than silent mis-quant).
     assert pd._quantization_from_params({}) == "none"
     assert pd._quantization_from_params({"advanced": {}}) == "none"
     assert (
@@ -174,8 +170,6 @@ def _quant_stack_available() -> bool:
 def test_build_pipeline_quant_config_nf4_targets_both_heavy_components() -> None:
     # bitsandbytes lives in the RUNTIME venv, not necessarily the test
     # venv — skip if the stack isn't importable here. The runtime path
-    # + GPU smoke is the real validation; this just guards the config
-    # shape when the deps are present.
     if not _quant_stack_available():
         pytest.skip("bitsandbytes / PipelineQuantizationConfig not in test venv")
     cfg = pd._build_pipeline_quant_config("nf4", None)
@@ -195,7 +189,6 @@ def test_coerce_optional_float_handles_null_and_numbers() -> None:
 
 # ---------------------------------------------------------------------------
 # _place_components
-# ---------------------------------------------------------------------------
 
 
 def test_place_components_moves_each_named_submodule() -> None:
@@ -216,13 +209,11 @@ def test_place_components_skips_transformer_when_excluded() -> None:
 
 # ---------------------------------------------------------------------------
 # _place_pipeline — none mode
-# ---------------------------------------------------------------------------
 
 
 def test_place_pipeline_none_keeps_t5_off_gpu_for_nvfp4_shape() -> None:
     # The regression that mattered: the nvfp4-on-16GB triple keeps the
     # ~11 GB T5 on CPU so the transformer + activations fit. NO
-    # pipe.to() sweep (that was the 2026-05-15 OOM/hang).
     pipe = _pipe_with_components()
     torch_mod = _fake_torch(total_bytes=17_100_000_000, free_bytes=16_000_000_000)
 
@@ -246,7 +237,6 @@ def test_place_pipeline_none_keeps_t5_off_gpu_for_nvfp4_shape() -> None:
 def test_place_pipeline_none_admits_real_16gb_card() -> None:
     # A genuine 16 GB RTX 5070 Ti reports ~15.92 GiB (1.710e10 bytes)
     # — the 15-GiB floor must admit it, not reject by an ~80 MB margin
-    # like the old 16-GiB threshold did.
     pipe = _pipe_with_components()
     torch_mod = _fake_torch(total_bytes=17_100_000_000)
     pd._place_pipeline(
@@ -309,16 +299,11 @@ def test_place_pipeline_none_skips_transformer_when_pre_placed() -> None:
 
 # ---------------------------------------------------------------------------
 # _place_pipeline — model / sequential modes
-# ---------------------------------------------------------------------------
 
 
 def test_place_pipeline_model_installs_hook_and_places_nothing() -> None:
     # enable_model_cpu_offload OWNS every component's placement: it
     # keeps weights on CPU and pages each submodule onto the GPU only
-    # while active, bridging cross-device tensors itself. Manually
-    # .to()-ing vae/text_encoder on top would fight the hook and
-    # reintroduce the 2026-05-15 cross-device mismatch. So under model
-    # we install the hook and place NOTHING by hand.
     pipe = _pipe_with_components()
     pd._place_pipeline(
         pipe=pipe,
@@ -401,7 +386,6 @@ def test_place_pipeline_rejects_unknown_mode() -> None:
 
 # ---------------------------------------------------------------------------
 # scheduler + text-encoder-quant guards
-# ---------------------------------------------------------------------------
 
 
 def test_apply_scheduler_choice_noop_for_default() -> None:
@@ -428,7 +412,6 @@ def test_build_pipeline_quant_config_int8_uses_8bit_backend() -> None:
 
 # ---------------------------------------------------------------------------
 # operator VRAM ceiling — _max_gpu_vram_gib_from_params + _apply_vram_budget
-# ---------------------------------------------------------------------------
 
 _GIB = 1024**3
 
@@ -552,9 +535,6 @@ def test_apply_vram_budget_swallows_set_fraction_error() -> None:
 def test_apply_vram_budget_uses_physical_vram_not_wddm_budget() -> None:
     # WDDM gap: mem_get_info() reports the committed budget (15.5 GiB)
     # but the card is physically 16 GiB. set_per_process_memory_fraction
-    # divides by physical internally, so the fraction MUST use physical
-    # (12/16 = 0.75), not the WDDM total (12/15.5 ≈ 0.774) — otherwise
-    # the cap lands ~0.5 GiB looser than the operator asked.
     torch, recorded = _budget_torch(15.5, physical_gib=16.0)
     fraction = pd._apply_vram_budget(torch, "model", 12, _logger())
     assert fraction is not None

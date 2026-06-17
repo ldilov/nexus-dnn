@@ -94,12 +94,6 @@ class Worker:
 
         # Cross-platform stdin bridge. asyncio.connect_read_pipe(sys.stdin)
         # is unreliable on Windows — the call returns successfully but
-        # readline() never fires for piped stdin under
-        # WindowsProactorEventLoopPolicy. The bug surfaces as a host
-        # `handshake_timeout` even though the worker is alive.
-        # A daemon thread doing blocking sys.stdin.buffer.readline() and
-        # forwarding lines via call_soon_threadsafe works on every
-        # platform Python supports.
         line_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
         def _stdin_pump() -> None:

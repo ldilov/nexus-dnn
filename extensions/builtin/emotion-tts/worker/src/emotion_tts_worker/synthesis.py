@@ -63,9 +63,6 @@ def build_settings(params: dict[str, Any], model_dir_abs: str) -> AdapterSetting
         gpt_batch_size=int(opts.get("gpt_batch_size", 2)),
         # Spec 034 additions — accepted via ``optimizations`` on the params
         # dict so the Rust `synthesize.batch` caller can override them per
-        # batch. ``speaker_cache_hint`` is the T021 contract field — the
-        # hint.budget_mb wins over opts.speaker_cache_mb when both are
-        # present, matching R-34-05 "hint is the per-batch override".
         speaker_cache_mb=int(hint.get("budget_mb", opts.get("speaker_cache_mb", 200))),
         compile_pad_to_multiple_of=int(opts.get("compile_pad_to_multiple_of", 64)),
         oas_layer_range=oas_layer_range,
@@ -87,8 +84,6 @@ class SynthesisService:
         self._token = token or GLOBAL_TOKEN
         # Spec 034 US4 — per-subprocess compile state. Once `torch.compile`
         # fails for a given session we do NOT retry on subsequent batches
-        # (avoids the "compile thrash on every user click" antipattern
-        # called out in R-34-04). Reset only on subprocess restart.
         self._compile_handle: CompiledGpt | None = None
         self._compile_attempted: bool = False
         self._compile_session_failed_reason: str | None = None
@@ -166,7 +161,6 @@ class SynthesisService:
         if self._compile_session_failed_reason is not None:
             # A prior compile failed in this session — R-34-04 says we must
             # NOT retry automatically. User can flip the toggle off/on or
-            # restart the runtime to try again.
             return False
         if self._compile_handle is not None and self._compile_handle.session_available():
             # Already compiled for this session — subsequent batches ride

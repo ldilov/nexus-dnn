@@ -28,7 +28,6 @@ def render_attention_map(attention: "np.ndarray", out_path: Path | str) -> Path:
 
     # Matplotlib is optional at import time — keep the heavy import lazy
     # so the observability package stays cheap when callers only want
-    # threshold/alignment.
     import matplotlib  # type: ignore[import-not-found]
 
     matplotlib.use("Agg", force=True)

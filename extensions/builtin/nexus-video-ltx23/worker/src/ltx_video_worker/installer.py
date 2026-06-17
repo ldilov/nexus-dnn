@@ -47,45 +47,20 @@ from .rpc import ErrorCodes
 
 # Hugging Face repo per runtime profile.
 #
-# `Lightricks/LTX-2.3-fp8` and `Lightricks/LTX-2.3-nvfp4` are official
-# Lightricks repos but they ship the transformer weights as a single
-# safetensors file — NOT diffusers-format multi-folder layout. They have
-# no `model_index.json`, no `vae/`, no `text_encoder/`, etc. diffusers'
-# `from_pretrained` cannot load them directly, and the override-via-
-# `from_single_file` path fails on a transformer-config mismatch against
-# the only other LTX-family base repo (`Lightricks/LTX-2`, which has 6
-# conditioning channels vs LTX-2.3's 9).
-#
-# `dg845/LTX-2.3-Distilled-Diffusers` is a community-maintained port of
-# the distilled LTX-2.3 weights into diffusers-format with the correct
-# transformer config. It's the only repo we've validated end-to-end on
-# a real GPU (P0-T001 verification, 2026-05-13). All three real-runtime
-# profiles point at it; FP8 / NVFP4 hardware-specific optimization is a
-# future rung once diffusers ships native LTX-2.3 quant support.
 PROFILE_REPO: dict[str, str] = {
     "rtx40-fp8": "dg845/LTX-2.3-Distilled-Diffusers",
     "rtx50-fp8": "dg845/LTX-2.3-Distilled-Diffusers",
     "rtx50-nvfp4": "dg845/LTX-2.3-Distilled-Diffusers",
     # rtx50-gguf installs the dg845 tree for the transformer config +
     # companion VAE / text-encoder / scheduler; its transformer weights
-    # come from the Abiray GGUF override at load time (gguf_loader,
-    # schema-clean via the LTX2 rename).
     "rtx50-gguf": "dg845/LTX-2.3-Distilled-Diffusers",
     # LTX-Video 0.9.7 is a SEPARATE model line. The generic install
     # flow fetches the GGUF repo (transformer Q4 ladder + companion
-    # `ltxv-13b-0.9.7-vae-BF16.safetensors`). The base diffusers repo
-    # `Lightricks/LTX-Video` (T5 text_encoder + tokenizer + scheduler +
-    # transformer/vae config) is resolved by `pipeline_ltxv097`'s
-    # loader — via the standard <models>/Lightricks/LTX-Video tree if
-    # staged, the NEXUS_VIDEO_LTX23_MODEL_DIR override, or the bare HF
-    # id (first-run network fetch). Staging the base in this same
-    # install flow is a documented follow-up (dual-fetch surgery).
     "rtx50-ltxv097-gguf": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
 }
 
 # Multi-repo profiles: profile → list of (repo_id, allow_patterns).
 # Each repo is downloaded independently into its own _dest_dir tree.
-# Installed iff the sentinel file exists in ALL per-repo dest dirs.
 PROFILE_MULTI_REPO: dict[str, list[tuple[str, list[str]]]] = {
     "rtx50-ltx2-gguf": [
         (
@@ -122,14 +97,11 @@ SENTINEL_NAME = ".nexus-install-complete"
 
 # Bounded buffer so a chatty resolver can't OOM the worker — the most
 # recent N lines win; older ones drop silently. The Rust side mirrors
-# this cap in its own buffer.
 PROGRESS_LINE_LIMIT_BYTES = 1024
 
 
 # Pluggable for tests: signature is
 #   async (cwd: Path, on_line: Callable[[str, str], Awaitable[None]]) -> int
-# Returns the subprocess exit code. on_line is called with ("stdout"|"stderr", text)
-# for each line read. Default implementation shells out to `uv sync --extra diffusers`.
 UvSyncRunner = Callable[[Path, Callable[[str, str], Awaitable[None]]], Awaitable[int]]
 
 
@@ -373,8 +345,6 @@ async def _default_uv_sync_runner(
     """
     # Project the host env down to an allowlist before handing it to
     # `uv sync` — otherwise HF_TOKEN / AWS_* / GITHUB_TOKEN leak via
-    # subprocess argv echoing or uv's resolver-debug output (which we
-    # stream back to the host as notifications).
     from .io_safety import safe_subprocess_env
 
     env = safe_subprocess_env(os.environ.copy())
@@ -411,8 +381,6 @@ async def _default_uv_sync_runner(
             if text:
                 # Scrub before forwarding — uv may echo Authorization
                 # headers or env-style token assignments in its
-                # resolver-debug output. The scrubber is conservative
-                # but cheap, and false-positives only blur log lines.
                 await on_line(channel, scrub_sensitive(text))
 
     await asyncio.gather(

@@ -46,16 +46,10 @@ _DEF_METHOD = "overlap_blend"
 _DEF_OVERLAP_FRAMES = 8
 # Default 0: a linear alpha bridge cross-dissolves two spatially
 # misaligned clips and ghosts (double-exposure) whenever the
-# subject/camera moved across the boundary — GPU frame-verified
-# 2026-05-18, exactly the predicted failure mode. Trim + colour match
-# alone gives a clean cut-to-continuation. A bridge is only motion-safe
-# via FILM (method="film"); a linear bridge is opt-in for near-static
-# boundaries.
 _DEF_BLEND_FRAMES = 0
 _DEF_COLOR_MATCH = True
 # Multiple selectable interpolation methods. Motion-aware model
 # bridges (film, rife) bridge by default; overlap_blend uses no model;
-# none = legacy hard concat.
 _MODEL_METHODS = ("film", "rife")
 _VALID_METHODS = ("overlap_blend", "film", "rife", "none")
 
@@ -96,7 +90,6 @@ def seam_params(advanced: dict[str, Any], env_method: str | None) -> dict[str, A
     method = resolve_method(raw_method)
     # Model bridges (film/rife) are motion-aware so they bridge by
     # default; the linear bridge ghosts on motion (frame-verified) so
-    # it stays opt-in for overlap_blend.
     default_blend = 6 if method in _MODEL_METHODS else _DEF_BLEND_FRAMES
     return {
         "method": method,
@@ -111,9 +104,6 @@ def seam_params(advanced: dict[str, Any], env_method: str | None) -> dict[str, A
         ),
         # AdaIN-style pixel blend factor (research P1-10). 1.0 = full
         # Reinhard transfer (legacy). 0.25 = soft style nudge matching
-        # the Lightricks ComfyUI LTXVAdainLatent recommendation. Lower
-        # values reduce risk of over-corrected exposure on natural
-        # mid-scene lighting changes.
         "color_match_factor": _coerce_float(
             g("seam_color_match_factor"), 1.0
         ),
@@ -173,7 +163,6 @@ def apply_seam(
 
 # --------------------------------------------------------------------------
 # Frame ops (numpy-backed; PIL in / PIL out)
-# --------------------------------------------------------------------------
 
 
 _COLOR_STAT_FRAMES = 8
@@ -246,14 +235,6 @@ def _linear_bridge(a: Any, b: Any, n: int) -> list[Any]:
 
 # Selectable motion-aware bridge models. Each is an operator-supplied
 # TorchScript checkpoint (`model(img0, img1, timestep) -> mid`):
-#   film — Google FILM (Apache-2.0 incl. weights; GPL-clean)
-#   rife — Practical-RIFE (code MIT; Vimeo90K-trained weights, an
-#          accepted operator-supplied asset — not redistributed here —
-#          so the project's GPL provenance stays clean)
-# Resolution mirrors the GGUF/base convention: an explicit env path,
-# else the on-disk models convention. Absent/incompatible → the caller
-# falls back to the linear bridge; a render never aborts on the
-# optional interpolation path.
 _MODEL_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
     "film": (
         "NEXUS_VIDEO_LTX23_FILM_MODEL",
@@ -267,15 +248,11 @@ _MODEL_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
 
 # Process-singleton per-kind cache: one warm worker serves many
 # renders; each TorchScript model is loaded once and shared. The lock
-# makes the first-load check-then-set atomic across concurrent render
-# threads (asyncio.to_thread offloads), so a load race can't
-# double-load or clobber a cached handle.
 _MODEL_CACHE: dict[str, dict[str, Any]] = {}
 _MODEL_LOCK = threading.Lock()
 
 # The original jkawamoto GitHub release was removed (404); the same
 # author now hosts the identical TorchScript checkpoint on Hugging Face.
-# Same forward contract: model(img0, img1, timestep) -> mid.
 _FILM_DEFAULT_URL = (
     "https://huggingface.co/jkawamoto/frame-interpolation-pytorch/"
     "resolve/main/film_net_fp32.pt"

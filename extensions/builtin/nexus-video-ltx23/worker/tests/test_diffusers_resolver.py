@@ -21,7 +21,6 @@ DG845_REPO = "dg845/LTX-2.3-Distilled-Diffusers"
 def test_expected_family_id_per_profile() -> None:
     # All real-runtime profiles point at the community diffusers-format
     # port — Lightricks' single-file repos won't load via from_pretrained.
-    # See verification/p0-t001-results.md.
     assert pd._expected_family_id("rtx40-fp8") == DG845_REPO
     assert pd._expected_family_id("rtx50-fp8") == DG845_REPO
     assert pd._expected_family_id("rtx50-nvfp4") == DG845_REPO

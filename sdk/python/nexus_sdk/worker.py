@@ -165,9 +165,6 @@ class BaseWorker:
         self._session_id = str(uuid.uuid4())
         # Field shape must satisfy
         # `nexus_backend_runtimes::generic::leases::handshake::HandshakeInfo`:
-        # `protocol_version` + `worker_version` are REQUIRED; missing
-        # either makes serde reject the response and the host releases
-        # the lease before it ever sees the worker's RPC surface.
         accepts_methods = [
             "handshake",
             "list_operators",
