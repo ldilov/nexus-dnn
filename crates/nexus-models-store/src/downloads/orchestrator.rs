@@ -552,9 +552,11 @@ impl DownloadOrchestrator {
 }
 
 /// Normalize and compare two sha256 strings, ignoring case and a `sha256:` prefix.
+/// An empty expected (after normalization) never matches.
 fn sha_matches(expected: &str, actual: &str) -> bool {
     let normalize = |s: &str| s.trim().trim_start_matches("sha256:").to_ascii_lowercase();
-    normalize(expected) == normalize(actual)
+    let e = normalize(expected);
+    !e.is_empty() && e == normalize(actual)
 }
 
 /// Total size parsed from a `Content-Range: bytes START-END/TOTAL` header.
@@ -924,5 +926,11 @@ mod tests {
             hex
         ));
         assert!(!sha_matches("aabbcc", hex));
+    }
+
+    #[test]
+    fn sha_matches_rejects_empty_expected() {
+        assert!(!sha_matches("", ""));
+        assert!(!sha_matches("sha256:", "abc"));
     }
 }

@@ -85,6 +85,7 @@ pub(crate) fn lfs_sha(bare: Option<String>, oid: Option<String>) -> Option<Strin
     oid.and_then(|o| {
         o.trim()
             .strip_prefix("sha256:")
+            .filter(|h| !h.is_empty())
             .map(|h| h.to_ascii_lowercase())
     })
 }
@@ -244,6 +245,14 @@ mod tests {
     fn repo_file_sha256_none_when_no_lfs() {
         let raw = r#"{"rfilename": "readme.md", "size": 500}"#;
         let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(f.sha256, None);
+    }
+
+    #[test]
+    fn repo_file_empty_oid_produces_none() {
+        let f: RepoFile =
+            serde_json::from_str(r#"{"rfilename":"x.gguf","lfs":{"size":1,"oid":"sha256:"}}"#)
+                .unwrap();
         assert_eq!(f.sha256, None);
     }
 
