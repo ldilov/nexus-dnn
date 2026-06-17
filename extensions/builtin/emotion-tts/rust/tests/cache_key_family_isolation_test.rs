@@ -96,8 +96,6 @@ fn case_sensitive_family_names_collide_independently() {
 fn sc_208_mock_second_family_produces_100_percent_miss_rate() {
     // Spec 034 SC-208 test plan: register a second family (even a mock
     // duplicate), run concurrent batches, assert ZERO cross-family
-    // cache hits. In Rust-cache-key terms that's: every key pair across
-    // families must diverge. Sweep 20 text samples to prove it.
     let texts = [
         "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
         "lambda", "mu", "nu", "xi", "omicron", "pi", "rho", "sigma", "tau", "upsilon",

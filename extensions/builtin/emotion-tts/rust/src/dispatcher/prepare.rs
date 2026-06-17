@@ -80,12 +80,6 @@ pub(crate) async fn prepare(
 
     // Parse the persisted generation blob (set by `create_run` from
     // `CreateRunBody.generation`). Tolerates malformed JSON / non-object
-    // payloads — those degrade to an empty map and the worker falls back
-    // to its built-in defaults. The map is used twice: forwarded into
-    // each `SynthesisSegment.generation` (so temperature/top_p/etc.
-    // actually reach the worker) and folded into the cache key as
-    // `generation_params` (so two runs with different sampling settings
-    // don't collide).
     let generation_value: serde_json::Value = serde_json::from_str(&run.generation_settings_json)
         .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
     let generation_obj: serde_json::Map<String, serde_json::Value> = match &generation_value {
@@ -96,18 +90,12 @@ pub(crate) async fn prepare(
         .iter()
         // The per-utterance `seed` is computed below from
         // (base_seed, seed_strategy) and folded into the cache key
-        // independently. Keep the user-supplied `seed` (if any) out of
-        // `generation_params` so cache keys don't double-count.
         .filter(|(k, _)| k.as_str() != "seed")
         .map(|(k, v)| (k.clone(), stringify_generation_value(v)))
         .collect();
 
     // Parse the global emotion snapshot once into the typed `GlobalEmotion`
     // struct expected by `domain::emotion::resolve`. Falls back to a
-    // mode=None default on missing field / malformed JSON / unknown mode.
-    // Audio-ref payloads get their ref_id resolved through the voice path
-    // resolver below so the worker receives an absolute filesystem path,
-    // not a host artifact reference.
     let global_emotion = parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
 
     if let Some(raw_segments) = run.prebuilt_segments_json.clone() {
@@ -127,9 +115,6 @@ pub(crate) async fn prepare(
 
     // Pre-fetch all vector presets for this deployment once. Per-character
     // mappings reference presets by id when their default emotion mode is
-    // `vector_preset`; resolving each one on-the-fly would require an
-    // async DB hit per utterance, so we eagerly index them by id and parse
-    // the stored JSON `[f64; 8]` array up front.
     let presets = repos.presets.list_by_deployment(&dep).await?;
     let preset_vectors: HashMap<String, [f64; 8]> = presets
         .iter()
@@ -242,19 +227,10 @@ pub(crate) async fn prepare(
 
         // Build per-character mapping defaults so the precedence chain in
         // `domain::emotion::resolve` can consult them. Audio-ref ids are
-        // resolved through the voice path resolver — if resolution misses,
-        // `MappingDefaults.audio_ref_id` is left None and `resolve()` will
-        // skip the mapping branch and fall through to the global setting.
         let mapping_defaults = mapping_opt.map(|m| build_mapping_defaults(m, cfg, &preset_vectors));
 
         // Per-utterance inline overrides parsed from the script (Task 3).
         // The parser populates `ParsedUtterance.inline_overrides` from tag
-        // syntax like `[Bob|emotion_vector:happy=0.7|emotion_alpha:0.9]`.
-        // `emotion_audio_ref` values are voice asset ids that need to be
-        // resolved to absolute filesystem paths the same way the global
-        // audio_ref is resolved by `parse_global_emotion`. The original
-        // map is left untouched; only the value passed to
-        // `InlineOverrides::from_map` is normalised.
         let inline = build_inline_overrides(
             &r.utterance.inline_overrides,
             cfg,
@@ -265,11 +241,6 @@ pub(crate) async fn prepare(
 
         // Per-utterance effective seed. `increment_per_line` advances the
         // base by the (zero-based) utterance index so each segment gets a
-        // distinct sampling seed; `random_per_line` is owned by the worker
-        // (it ignores the supplied seed and rolls its own); everything else
-        // ("fixed" or unrecognised) reuses the base verbatim. The computed
-        // value is what gets folded into the cache key AND forwarded to
-        // the worker as `generation.seed`.
         let utterance_seed: i64 = match run.seed_strategy.as_str() {
             "increment_per_line" => run.base_seed.saturating_add(idx as i64),
             _ => run.base_seed,
@@ -343,10 +314,6 @@ pub(crate) async fn prepare(
 
         // Forward the user-supplied generation map AND the per-utterance
         // computed seed to the worker. The worker's `_build_infer_kwargs`
-        // pops `seed` (and a handful of other named keys) from this dict
-        // and forwards everything else verbatim into `infer()` — so two
-        // runs with different temperatures produce different audio AND
-        // different cache rows (see `generation_params_btree` above).
         let mut segment_generation = generation_obj.clone();
         segment_generation.insert("seed".to_string(), serde_json::json!(utterance_seed));
 
@@ -656,8 +623,6 @@ fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> GlobalEm
         "audio_ref" => {
             // Frontend canonical key (per `web/src/services/types.ts:15`)
             // is `audioRefVoiceAssetId`. Older payloads may still use
-            // `audioRefId` / `audio_ref_id` — accept all three so a
-            // re-run of an existing run row keeps working.
             let ref_id = v
                 .get("audioRefVoiceAssetId")
                 .and_then(|r| r.as_str())
@@ -878,9 +843,6 @@ fn stringify_generation_value(v: &serde_json::Value) -> String {
         serde_json::Value::Null => "null".to_string(),
         // Objects + arrays: lean on serde_json's canonical ordering
         // (BTreeMap-backed by default in this crate's serde_json
-        // version). This is best-effort — nested non-trivial generation
-        // values are rare and the cache key still differs across distinct
-        // shapes, just maybe not optimally so.
         other => other.to_string(),
     }
 }
@@ -1146,7 +1108,6 @@ mod tests {
     fn parse_global_emotion_audio_ref_accepts_camelcase_voice_asset_key() {
         // The frontend `GlobalEmotion` type (services/types.ts) uses
         // `audioRefVoiceAssetId`. parse_global_emotion must accept this
-        // canonical key (HIGH-1).
         let json = r#"{"mode":"audio_ref","audioRefVoiceAssetId":"voice_xyz","emotionAlpha":0.6}"#;
         let cfg = cfg_with_resolver_returning_path("/abs/path/voice.wav");
         let parsed = parse_global_emotion(Some(json), &cfg);
@@ -1160,7 +1121,6 @@ mod tests {
     fn parse_global_emotion_audio_ref_still_accepts_legacy_keys() {
         // Existing run rows persisted with the older `audioRefId` /
         // `audio_ref_id` shape must keep deserialising — re-runs of an
-        // older run should not break.
         let cfg = cfg_with_resolver_returning_path("/abs/legacy.wav");
         for legacy in [
             r#"{"mode":"audio_ref","audioRefId":"voice_old"}"#,
@@ -1215,7 +1175,6 @@ mod tests {
     fn seed_strategy_unknown_falls_back_to_base_seed() {
         // Unknown strategies (forward-compat) must NOT silently increment.
         // The worker is the source of truth for `random_per_line`; it
-        // ignores the supplied seed and rolls its own.
         let seeds: Vec<i64> = (0..3)
             .map(|i| compute_utterance_seed("random_per_line", 7, i))
             .collect();
@@ -1274,7 +1233,6 @@ mod tests {
 
         // And: if generation_params is left empty (the pre-fix BTreeMap::new()
         // behaviour), both temperatures collapse onto the same key — this
-        // is the regression we're guarding against.
         let mut empty_input = build_input(0.8);
         empty_input.generation_params = BTreeMap::new();
         let h_empty_a = build_cache_key(&empty_input).expect("hash empty a");

@@ -449,7 +449,6 @@ async fn preview_edit_chain_cross_deployment_returns_404() {
 
 // T093 — no-op apply (chain unchanged) MUST skip the worker round-trip and
 // MUST NOT record an audit entry. Closes the gap flagged by /speckit-analyze
-// (U3) for spec.md § Edge Cases L101.
 
 async fn apply_chain_request(
     router: &axum::Router,

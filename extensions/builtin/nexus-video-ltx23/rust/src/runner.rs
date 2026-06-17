@@ -252,7 +252,6 @@ impl Runner {
             if let Err(err) = result {
                 // RenderCancelled is the expected terminal Err on the cancel
                 // path — the inner loop has already flipped the row to
-                // "cancelled", so don't overwrite with "failed".
                 if matches!(err, crate::errors::ExtensionError::RenderCancelled) {
                     tracing::info!(
                         extension_id = "nexus.video.ltx23",
@@ -462,13 +461,10 @@ async fn run_via_lease(
             } => {
                 // Translate the "what was the last good segment" into
                 // the "where do we resume" index. last_completed_segment
-                // is the original chain index (0-based); we resume at +1.
                 let next_offset =
                     u32::try_from(last_completed_segment.saturating_add(1)).unwrap_or(u32::MAX);
                 // No forward progress check — should be impossible
                 // because the latch is consumed by segment.completed,
-                // but defensive: if next_offset isn't strictly greater
-                // than the offset we just ran with, collapse to halt.
                 if next_offset <= segment_offset || (next_offset as usize) >= plan.segments.len() {
                     tracing::warn!(
                         extension_id = "nexus.video.ltx23",
@@ -557,10 +553,6 @@ async fn run_via_lease(
         NotificationOutcome::Done { final_path } => {
             // Defence-in-depth: the worker controls the `final_path`
             // field in its `ltx.video.done` notification. A compromised
-            // or crafted notification could point at any host-readable
-            // file (`.env`, ssh keys, etc.) and we'd happily publish it
-            // as `final.mp4`. Constrain the source path to the
-            // workdir's canonical descendant set before copying.
             assert_path_under(&final_path, &workdir).await?;
             let artifact_id = format!("ltx23-run-{run_id}-final");
             let dest = cfg.runs_dir.join(run_id).join("final.mp4");
@@ -580,7 +572,6 @@ async fn run_via_lease(
         NotificationOutcome::Error { code, message } => {
             // The worker's RENDER_CANCELLED error code (-32107) lands here when
             // cancel arrived before the grace timeout — collapse it back to the
-            // cancelled status path so the HTTP DTO and DB row agree.
             if code == -32107 {
                 cfg.repos
                     .update_run_status(run_id, "cancelled", None, None, None)
@@ -1093,13 +1084,9 @@ async fn handle_notification(
     breach_latch: &BreachLatch,
     // SHORT or fully-qualified profile slug for the running chain —
     // selects the per-profile `max_frag_ratio` ceiling so an offloaded
-    // fp8/nvfp4 pipeline's benign post-render fragmentation does not
-    // latch a false breach.
     profile: &str,
     // Total planned segments for the chain. When the FINAL segment
     // completes there is nothing left to render, so a latched breach
-    // is moot — suppress the restart rather than collapsing a
-    // finished render into a `vram_supervisor` error.
     total_segments: u32,
 ) -> Result<Option<NotificationOutcome>> {
     match note.method.as_str() {
@@ -1185,12 +1172,6 @@ async fn handle_notification(
         "runtime.memory_stats" => {
             // Supervisor reads each VRAM snapshot. Instead of halting
             // immediately, set a latch — the next `segment.completed`
-            // arm consumes it and returns RestartRequired so the outer
-            // driver can release the lease + acquire a fresh one to
-            // continue the chain transparently. After
-            // `max_restarts_from_env()` exhausted attempts the outer
-            // driver collapses to the legacy halt path with the
-            // `vram_supervisor` error_code.
             match evaluate_memory_stats(&cfg.vram_supervisor, profile, &note.params) {
                 VramVerdict::Healthy => Ok(None),
                 VramVerdict::Breach { reason } => {
@@ -1277,7 +1258,6 @@ fn build_render_params_offset(
     inputs_dir: &std::path::Path,
     // Resume payload deliberately ignores the operator's original
     // upload — see comment + T13 below. Kept as a named param so
-    // callers and reviewers see the boundary intent in the signature.
     _input_image_artifact_id: Option<&str>,
     segment_offset: u32,
     cond_image_path: Option<&std::path::Path>,
@@ -1294,18 +1274,11 @@ fn build_render_params_offset(
         inputs_dir,
         // Resume payload — the prior segment's last_frame.png supplied
         // via `cond_image_path` is the authoritative conditioning
-        // anchor. Suppress the operator's original upload here so the
-        // mid-chain continuity is never overwritten by a stale upload
-        // reference. T13 guards this invariant.
         None,
     );
 
     // Trim segments + inject cond_image. The worker's render_loop reads
     // `input_image.path` once for segment 0, then derives subsequent
-    // `cond_image` from the prior segment's last_frame.png internally.
-    // So injecting the prior chain's last_frame.png as `input_image.path`
-    // for the FIRST segment of the resume payload re-establishes
-    // continuity without any further worker-side change.
     let offset_usize = segment_offset as usize;
     if let Some(obj) = params.as_object_mut() {
         if let Some(video) = obj.get_mut("video").and_then(Value::as_object_mut) {
@@ -1316,7 +1289,6 @@ fn build_render_params_offset(
             }
             // The worker reads `frames_per_segment` / `segment_seconds`
             // from the first remaining segment, but recompute defensively
-            // so even an empty-array edge case stays consistent.
             if let Some(first) = plan.segments.get(offset_usize) {
                 video.insert("frames_per_segment".into(), Value::from(first.frame_count));
                 video.insert(
@@ -1355,18 +1327,10 @@ fn build_render_params(
 ) -> Value {
     // Substitute the pipeline's documented defaults when the user
     // leaves these unset, rather than sending JSON `null`. The worker
-    // previously crashed with `float(None)` in `_render_loop` because
-    // `dict.get("guidance_scale", 4.0)` returns None — not 4.0 — when
-    // the key exists with a None value. Defaults are kept in sync with
-    // pipeline_diffusers._render_loop's fallback values so the
-    // behaviour is identical whether the host or worker fills them in.
     let advanced_block = build_advanced_block(advanced, &plan.runtime_profile);
 
     // Per-segment `action_prompt` overrides the global `prompt` when
     // the planner zipped a scenes[] script. The worker composes the
-    // effective prompt as `character + action + style` per segment;
-    // we pass all three slots through so the worker has full control
-    // over the final string sent to LTX-2.3.
     let segments_json: Vec<Value> = plan
         .segments
         .iter()
@@ -1468,8 +1432,6 @@ pub(crate) fn resolve_input_image_path(
         let canon = std::fs::canonicalize(&candidate).ok()?;
         // Defence in depth: even with a clean id shape, refuse a
         // symlink that points outside inputs_dir. canonicalize +
-        // starts_with is the standard Rust pattern (mirrors
-        // assert_path_under above for worker-supplied paths).
         if !canon.starts_with(&inputs_canon) {
             return None;
         }
@@ -1549,7 +1511,6 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         ModelQuant::Gguf => "gguf",
         // "fp8" → official Lightricks diffusers-native fp8 transformer
         // (worker loads via from_pretrained behind a schema-parity
-        // gate). Plan-time-guarded until S2b/S2c verify it on hardware.
         ModelQuant::Fp8Official => "fp8",
     };
 
@@ -1669,7 +1630,6 @@ mod tests {
         let waiter = tokio::spawn(async move { notify.notified().await });
         // Yield once so the waiter is parked on `notified()` before we
         // call `notify_waiters` — `Notify` only wakes already-parked
-        // tasks, not future ones.
         tokio::task::yield_now().await;
 
         let outcome = runner.cancel("run-abc").await;
@@ -1827,8 +1787,6 @@ mod tests {
 
     // env-var mutation: serialised against every other test that
     // touches `MAX_RESTARTS_ENV` (including the orchestration
-    // exhaustion test). `serial_test::serial` makes cargo run these
-    // sequentially even under --test-threads > 1.
     #[test]
     #[serial_test::serial(max_restarts_env)]
     fn max_restarts_from_env_uses_default_when_unset() {
@@ -1998,7 +1956,6 @@ mod tests {
     fn build_render_params_default_advanced_resolves_auto_for_fake_profile() {
         // `AdvancedSettings::default()` carries `OffloadMode::Auto`.
         // The `fake` profile maps to the catch-all default
-        // (`Sequential`) so the worker observes a concrete string.
         let plan = sample_plan(2);
         let workdir = PathBuf::from("/runs/run-x/work");
         let inputs_dir = test_inputs_dir();
@@ -2088,9 +2045,6 @@ mod tests {
     fn build_render_params_offset_propagates_offload_mode() {
         // The resume + retry call paths reach the worker through
         // `build_render_params_offset` (resume) and
-        // `retry_segment_via_lease -> build_render_params` (retry).
-        // Both must carry the operator's offload choice into the
-        // restarted worker.
         let plan = sample_plan(3);
         let workdir = PathBuf::from("/runs/run-r/work");
         let inputs_dir = test_inputs_dir();
@@ -2140,9 +2094,6 @@ mod tests {
     fn build_advanced_block_resolves_placement_from_offload_mode() {
         // Auto on rtx50-nvfp4 → Model (bnb-quantised; sequential is
         // bnb-incompatible). placement_for_offload_mode(Model) =
-        // transformer paged from CPU, vae + text_encoder cuda-resident.
-        // The model-offload hook owns actual device movement; the
-        // triple is informational under a hooked mode.
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["offload_mode"].as_str(), Some("model"));
@@ -2162,7 +2113,6 @@ mod tests {
     fn build_advanced_block_respects_explicit_per_component_override() {
         // Operator pins vae to CPU on top of the Auto-resolved nvfp4
         // Model placement (vae would otherwise be cuda). The explicit
-        // field wins; the others fall through to implied.
         let advanced = AdvancedSettings {
             component_placement: crate::schemas::ComponentPlacement {
                 transformer: crate::schemas::DevicePreference::Auto,
@@ -2198,7 +2148,6 @@ mod tests {
     fn build_advanced_block_omits_interpolation_when_unset() {
         // Unset → JSON null: the worker resolves env/default (the
         // LTX-Video 0.9.7 path's `overlap_blend` seam fix) rather than
-        // the host forcing the shared `rife2x` default onto it.
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-ltxv097-gguf");
         assert!(block["interpolation"].is_null());
@@ -2318,10 +2267,6 @@ mod tests {
     fn build_advanced_block_nvfp4_default_quant_is_nf4_bnb() {
         // Real NVFP4 is host-blocked / under construction, so with
         // quant left at the default None the `rtx50-nvfp4` profile
-        // resolves to the verified bitsandbytes path — wire value
-        // "nf4" (Nf4Bnb), the combo that actually renders on 16 GB —
-        // NOT raw `none` (which would try 83 GB on a 16 GB card) and
-        // NOT "nvfp4" (no worker branch; rejected at plan time).
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["quantization"].as_str(), Some("nf4"));
@@ -2447,7 +2392,6 @@ mod tests {
         let canon_expected = std::fs::canonicalize(&written).expect("canonicalize written");
         // The payload path is the resolver's canonical absolute form.
         // Compare canonical-to-canonical to avoid UNC/symlink mismatches
-        // on Windows where the temp dir may sit behind `\\?\` aliases.
         let canon_actual = std::fs::canonicalize(std::path::Path::new(path_in_payload))
             .expect("canonicalize actual");
         assert_eq!(canon_actual, canon_expected);
@@ -2478,7 +2422,6 @@ mod tests {
     fn build_render_params_omits_input_image_when_artifact_id_misses() {
         // T6 — id has the right shape but no file matches → soft-fail,
         // payload omits the field. The render proceeds text-only with
-        // the worker's solid-grey fallback (logged warn).
         let tmp = tempfile::tempdir().expect("tempdir");
         let plan = sample_plan(2);
         let workdir = PathBuf::from("/runs/run-x/work");
@@ -2513,7 +2456,6 @@ mod tests {
     fn resolve_input_image_path_returns_under_inputs_dir() {
         // T7b — happy-path resolver result must be a canonical
         // descendant of inputs_dir. The build_render_params caller
-        // relies on this for the path-under-inputs_dir guarantee.
         let tmp = tempfile::tempdir().expect("tempdir");
         let id = "ltx23-input-01J9HAPPYCASE";
         let _ = write_test_image(tmp.path(), id, "jpg");
@@ -2528,10 +2470,6 @@ mod tests {
     fn build_render_params_offset_resume_path_overrides_uploaded_image() {
         // T13 — resume invariant. When `build_render_params_offset`
         // runs with both an uploaded artifact id AND a cond_image_path
-        // (from the prior segment's last_frame.png), the resume path
-        // wins. The operator's original upload must NOT leak into a
-        // mid-chain resume — that would erase the visual continuity the
-        // VRAM-supervisor restart loop is trying to preserve.
         let tmp = tempfile::tempdir().expect("tempdir");
         let id = "ltx23-input-01J9UPLOAD";
         let _ = write_test_image(tmp.path(), id, "webp");
@@ -2792,19 +2730,6 @@ mod tests {
 
     // ── Rung 7L: end-to-end restart-loop orchestration ────────────────
     //
-    // These tests exercise the multi-attempt outer loop in `run_via_lease`
-    // without a GPU. They substitute `LtxLeaseFactory` with a hand-rolled
-    // `FakeLeaseAcquirer` that hands out `FakeLease` instances backed by
-    // a `broadcast::Sender` per lease. The test drives the runner by
-    // pushing JSON-RPC notifications into the sender in the same order
-    // the worker would emit them, then asserts (a) the lease lifecycle
-    // (acquire/release counts) and (b) the persisted `restart_count`.
-    //
-    // Hand-rolled rather than mockall: the lease trait has a
-    // `subscribe_notifications -> broadcast::Receiver` shape that maps
-    // poorly to mockall's stateless `.returning()` model. A concrete
-    // struct owning a real broadcast sender is the cheapest path to
-    // deterministic notification ordering.
     mod orchestration {
         use super::super::*;
         use crate::lease::LeaseAcquirer;
@@ -2862,7 +2787,6 @@ mod tests {
             ) -> std::result::Result<serde_json::Value, LeaseError> {
                 // Worker would parse render.start and start emitting
                 // segment notifications. Tests drive the notifications
-                // directly, so the RPC just acks.
                 Ok(serde_json::Value::Null)
             }
 
@@ -2988,7 +2912,6 @@ mod tests {
         fn linear_plan(seg_count: u32) -> RenderPlan {
             // Test inputs stay within u16 range; mirror the
             // `sample_plan` idiom used elsewhere in this module so
-            // clippy's cast-precision-loss lint stays quiet.
             let total_secs = f32::from(u16::try_from(seg_count * 4).unwrap_or(0));
             RenderPlan {
                 mode: RenderMode::ExternalSegments,
@@ -3032,8 +2955,6 @@ mod tests {
             let repos = Repos::from_pool(pool);
             // Item B: each test spins up its own flusher. Use the
             // production cadence — fast enough that segment status
-            // settles within the test's overall 10s timeout, slow
-            // enough that the tick doesn't dominate test wall-clock.
             let (notification_buffer, _flusher_handle) =
                 crate::notification_buffer::NotificationBuffer::new(
                     repos.clone(),
@@ -3041,9 +2962,6 @@ mod tests {
                 );
             // Mirror production layout — inputs_dir is a sibling of
             // runs_dir under the per-extension data root. Tests rarely
-            // exercise the resolver, but creating the directory keeps
-            // any code path that canonicalizes inputs_dir from erroring
-            // on a missing directory.
             let inputs_dir = runs_dir
                 .parent()
                 .map_or_else(|| runs_dir.join("inputs"), |p| p.join("inputs"));
@@ -3139,9 +3057,6 @@ mod tests {
 
         // Rung 7L happy path: supervisor trips after segment 0 completes,
         // latch consumed by segment 1, runner releases first lease and
-        // acquires a fresh one, second lease drives segments 2–3 plus the
-        // terminal `done`. Asserts: render returns Ok(()), restart_count=1,
-        // both leases released, exactly 2 acquires.
         #[tokio::test(flavor = "current_thread", start_paused = false)]
         async fn rung7l_outer_loop_resumes_after_one_breach() {
             let tmp = tempfile::tempdir().expect("tmp");
@@ -3267,13 +3182,6 @@ mod tests {
 
         // Rung 7L safety net: budget=1 means the runner accepts one
         // restart, then collapses the next breach into a `vram_supervisor`
-        // terminal error. Six-segment plan is wide enough that the
-        // bounds-check exit (`next_offset >= plan.segments.len()`) doesn't
-        // pre-empt the budget-exhausted exit.
-        //
-        // Serialised against the three `max_restarts_from_env_*` tests
-        // (same group: `max_restarts_env`) because all four mutate the
-        // shared `MAX_RESTARTS_ENV` process env var.
         #[tokio::test(flavor = "current_thread", start_paused = false)]
         #[serial_test::serial(max_restarts_env)]
         async fn rung7l_outer_loop_halts_when_restart_budget_exhausted() {
@@ -3292,12 +3200,10 @@ mod tests {
 
             // Constrain restart budget for this test only; reset before
             // returning so concurrent tests don't see a leaked override.
-            // Same pattern used by `max_restarts_from_env_parses_valid_override`.
             std::env::set_var(MAX_RESTARTS_ENV, "1");
 
             // Workdir must exist before run_via_lease's create_dir_all so
             // the test doesn't race on directory creation. The Error arm
-            // skips the final.mp4 copy, so no file pre-staging needed.
             let workdir = runs_dir.join(run_id).join("work");
             tokio::fs::create_dir_all(&workdir)
                 .await
@@ -3325,7 +3231,6 @@ mod tests {
 
             // Iteration 0: breach after seg 0; latch consumed by seg 1
             // → RestartRequired. restart_attempts becomes 1, not over
-            // budget; runner persists restart_count=1, acquires lease 2.
             let lease1 = acquirer.wait_for_lease(1).await;
             wait_subscribed(&lease1).await;
             drive_segment(&lease1, run_id, 0);
@@ -3337,8 +3242,6 @@ mod tests {
 
             // Iteration 1: breach after seg 2; latch consumed by seg 3
             // → RestartRequired. restart_attempts becomes 2, > budget(1)
-            // → runner breaks with Error{vram_supervisor}. DOES NOT
-            // increment restart_count again.
             let lease2 = acquirer.wait_for_lease(2).await;
             wait_subscribed(&lease2).await;
             drive_segment(&lease2, run_id, 2);
@@ -3377,7 +3280,6 @@ mod tests {
             assert_eq!(run.error_code.as_deref(), Some("vram_supervisor"));
             // Item D: even on the halt path the most recent breach
             // reason is persisted, so the UI tooltip survives into
-            // the failed-state row.
             assert!(
                 run.last_breach_reason
                     .as_deref()

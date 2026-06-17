@@ -157,9 +157,6 @@ pub fn spawn_render(task: RenderTask) {
             while let Some(note) = stream.next().await {
                 // The worker emits its own terminal `done`/`error`
                 // notification before `render.start` returns. We suppress
-                // those here and let the dispatcher emit the authoritative
-                // terminal frame *after* persisting the job — so an SSE
-                // client never observes `done` ahead of the committed row.
                 if note.method == "svi2.video.done" || note.method == "svi2.video.error" {
                     continue;
                 }
@@ -189,7 +186,6 @@ pub fn spawn_render(task: RenderTask) {
         match outcome {
             // A cooperative cancel resolves the long-running call with a
             // `cancelled` reply instead of an error. Honour it as terminal —
-            // never overwrite the cancelled row with a completed one.
             Ok(result)
                 if result.get("status").and_then(JsonValue::as_str) == Some("cancelled") =>
             {

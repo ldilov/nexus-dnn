@@ -107,7 +107,6 @@ fn round_trip_preserves_all_fields() {
 fn unknown_diagnostic_shape_falls_back_to_raw_value() {
     // If the worker emits a different diagnostic variant (e.g. a future
     // "diagnostic" with a new `kind` field), the notification-fanout path
-    // still classifies it as Diagnostic; only typed decode would fail.
     let env = envelope(json!({
         "kind": "future_variant",
         "payload": { "foo": "bar" }

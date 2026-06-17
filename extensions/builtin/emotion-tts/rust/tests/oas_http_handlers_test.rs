@@ -112,7 +112,6 @@ async fn build_test_router() -> (axum::Router, Repos) {
 
 // ---------------------------------------------------------------------------
 // T062 — engine-settings
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn get_engine_settings_returns_documented_defaults() {
@@ -239,7 +238,6 @@ async fn patch_oas_threshold_rejects_out_of_range() {
 
 // ---------------------------------------------------------------------------
 // T063 — diagnostics
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn get_diagnostics_returns_empty_shape_for_completed_run() {

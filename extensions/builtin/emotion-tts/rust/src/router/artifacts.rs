@@ -451,7 +451,6 @@ async fn delete_all_artifacts(
 
     // An explicit-but-empty selection would otherwise translate to "delete
     // everything"; treat it as a no-op so the UI bug "user clicked Delete
-    // selected with nothing valid checked" never wipes the whole deployment.
     if has_filter && selected_ids.is_empty() {
         return (StatusCode::OK, Json(json!({ "deleted": 0 }))).into_response();
     }
@@ -503,9 +502,6 @@ async fn download_zip(
     let has_filter = selection.utterance_ids.is_some();
     // Mirror `delete_all_artifacts` semantics: an explicit-but-empty
     // selection short-circuits rather than 404. Use 204 No Content (rather
-    // than the JSON `{deleted: 0}` shape used by the DELETE endpoint),
-    // because this is a binary-download endpoint — emitting JSON here
-    // would surprise clients reading `Content-Disposition` / piping bytes.
     if has_filter && selected_ids.is_empty() {
         return StatusCode::NO_CONTENT.into_response();
     }

@@ -253,12 +253,6 @@ async fn health_reports_warm_and_warming_counts() {
 
 // ---------------------------------------------------------------------------
 // WS-I review IMPORTANT — warm-on-Start vs Stop race. A gated factory lets the
-// test pause the background warm mid-flight, fire Stop (which bumps the start
-// generation), then release the gate. The generation fence must make the warm
-// task BAIL on its next iteration instead of re-acquiring workers Stop just
-// released. Net leases (acquired - released) must settle to ZERO and no worker
-// may survive Stop.
-// ---------------------------------------------------------------------------
 
 struct GatedLease {
     id: RuntimeLeaseId,

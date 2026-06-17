@@ -565,8 +565,6 @@ async fn sse_replays_completed_utterances_on_subscribe() {
 
     // Pre-register a channel so the SSE handler's subscribe loop succeeds
     // immediately and reaches the replay block. Without this the handler
-    // would spin 3000 × 100 ms (5 minutes) before falling back to a
-    // synthetic run_terminal/failed frame.
     let registry = Arc::new(RunChannelRegistry::new());
     let (_tx, _guard) = registry.register(run_id.as_str()).await;
 
@@ -600,7 +598,6 @@ async fn sse_replays_completed_utterances_on_subscribe() {
 
     // Read body frames with a short deadline. The SSE stream stays open
     // after replay (waiting for live events), so we collect whatever
-    // arrives within 500 ms and then inspect the accumulated bytes.
     let mut body = response.into_body();
     let mut collected: Vec<u8> = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_millis(500);

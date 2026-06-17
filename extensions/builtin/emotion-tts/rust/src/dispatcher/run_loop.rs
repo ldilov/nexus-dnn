@@ -76,7 +76,6 @@ pub(crate) async fn process_one(
 
     // Lifecycle: terminal. Emit at INFO with elapsed_ms so wall-clock
     // run latency is queryable from the log without a separate metric.
-    // Failed/cancelled runs upgrade the level so they stand out.
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match terminal_status.as_str() {
         "failed" => tracing::error!(
@@ -127,16 +126,12 @@ async fn dispatch_inner(
 
     // Output dir: <base>/<deployment_id>/<run_id>/. The base is supplied
     // by the caller — typically `<host_data_dir>/extensions/<id>/runs`
-    // when the host has wired in a data dir, or `temp_dir()/...` for
-    // tests and minimal-config hosts (StubLeaseFactory path).
     let output_root = output_root_base
         .join(qrun.deployment_id.as_str())
         .join(run_id.as_str());
 
     // Pre-fetch all voice assets for this deployment so the prepare()
     // step's voice_path_resolver can be a synchronous HashMap lookup —
-    // avoids tokio::task::block_in_place (which panics under
-    // single-thread runtimes used by #[tokio::test]).
     let dep_id = crate::domain::DeploymentId::try_from(qrun.deployment_id.as_str())
         .map_err(|e| EmotionTtsError::internal(format!("invalid deployment id: {e}")))?;
     let dep_row = repos
@@ -189,9 +184,6 @@ async fn dispatch_inner(
 
     // Snapshot the latest cached handshake (populated as a side-effect of
     // earlier `spawn_if_needed` calls or explicit `/runtime/handshake`
-    // invocations). When None, prepare() falls back to deterministic
-    // `unknown-*` sentinels so the resulting cache row cannot collide
-    // with a row written after the worker reports its real version.
     let runtime_meta = lease_provider.cached_handshake().await;
 
     let cfg = PrepareConfig {
@@ -308,7 +300,6 @@ async fn dispatch_inner(
 
     // Fire SegmentCompleted SSE events up-front for cache hits so the
     // frontend's progress table fills immediately without waiting for the
-    // worker to boot.
     for plan in &prepared.utterances {
         let is_hit = plan
             .content_hash
@@ -327,10 +318,6 @@ async fn dispatch_inner(
 
     // Race-safe queued → running transition. If a cancel arrived between
     // `insert_many` (above) and this call, the row is already in
-    // `cancelled` status and the guarded UPDATE matches zero rows; we bail
-    // out before the long lease-acquisition step. `process_one` (the
-    // caller) will write the terminal `cancelled` status and emit
-    // `RunTerminal` based on the returned status string.
     let started = repos
         .runs
         .set_started_guarded(run_id, Utc::now().timestamp())
@@ -338,9 +325,6 @@ async fn dispatch_inner(
     if !started {
         // Mirror the cancel cleanup that runs after the dispatch loop:
         // mark any queued utterances cancelled so reads of the run row's
-        // utterance set don't observe permanently-stale `queued` rows.
-        // `process_one` writes the terminal `cancelled` status on the run
-        // itself based on the returned string.
         let utts = repos
             .utterances
             .list_by_run(run_id)
@@ -367,9 +351,6 @@ async fn dispatch_inner(
 
     // Lifecycle: queued → running succeeded. Distinct INFO event so a
     // grep can separate "dispatched-but-blocked-on-lease" from
-    // "dispatched-and-running" — useful when investigating cold-start
-    // latency, since the next line spawns the worker which can take
-    // minutes on a fresh venv.
     tracing::info!(
         target: "emotion_tts::dispatch",
         run_id = %run_id.as_str(),
@@ -422,7 +403,6 @@ async fn dispatch_inner(
 
     // Dispatch the batch RPC and the notification draining concurrently.
     // The worker emits per-segment notifications while the RPC is in
-    // flight; the RPC resolves once the entire batch is done.
     let segment_total = batch_input.segments.len();
     let segment_lookup: std::collections::HashMap<String, i64> = prepared
         .utterances
@@ -487,9 +467,6 @@ async fn dispatch_inner(
 
     // Wait briefly for trailing notifications, then forcibly abort the
     // drain task. Without the abort, the drain would keep writing
-    // `segment_completed` to the DB after `process_one` has already
-    // emitted `RunTerminal`, producing out-of-order SSE events and
-    // stale row state.
     let mut drain = drain;
     if tokio::time::timeout(Duration::from_secs(2), &mut drain)
         .await
@@ -501,8 +478,6 @@ async fn dispatch_inner(
     if qrun.cancel.is_cancelled() {
         // Mark in-flight utterances as cancelled so the recomputed
         // terminal status (above) and any future read of the run reflect
-        // the user's intent. Errors are logged but do not block the
-        // cancel response — the run row itself is updated by process_one.
         let utts = repos
             .utterances
             .list_by_run(run_id)
@@ -531,17 +506,10 @@ async fn dispatch_inner(
 
     // Test-line runs are single-segment fast-lane previews — they MUST
     // NOT pollute the cache (the user is iterating on a line, each run
-    // is throwaway) and MUST NOT produce an export ZIP (no batch to
-    // bundle). Both side-effects are gated below.
     let is_test_line = prepared.run.kind == "test_line";
 
     // `read_only_cache` is the policy a user picks when they want to
     // benefit from existing cache rows but not pollute the table with
-    // new ones (e.g., scratch experimentation against a fresh seed).
-    // Mirror the read-side gating at line ~206 — only `use_cache` and
-    // `force_regenerate` write back. The read site explicitly does not
-    // include `read_only_cache` in the matched arms there either; a
-    // miss is a miss but we don't seal it as a cache row.
     let policy_writes_cache = matches!(
         prepared.run.cache_policy.as_str(),
         "use_cache" | "force_regenerate"
@@ -549,8 +517,6 @@ async fn dispatch_inner(
 
     // Insert new cache rows for completed miss segments so future runs
     // with the same hash can be served from cache. Duplicate inserts
-    // (e.g., two concurrent runs synthesising the same segment) are
-    // expected; log at debug and move on.
     let now = Utc::now().timestamp();
     let utts_after = repos.utterances.list_by_run(run_id).await?;
     if !is_test_line && policy_writes_cache {
@@ -667,9 +633,6 @@ async fn forward_notification(
 ) {
     // Worker payload conventions: notifications are camelCase per the
     // worker's `synthesis.py::_emit_*` builders. We translate to our
-    // snake_case `RunEvent` shape here. The segment_id key in our
-    // `lookup` map is the utterance_id string we generated in prepare()
-    // and echoed to the worker as `segment_id` in the batch params.
     let segment_id = env
         .params
         .get("segmentId")

@@ -493,25 +493,18 @@ pub fn select_runtime(
         RuntimeProfilePreference::Rtx50Gguf => Ok(SelectedRuntime {
             // GGUF Q4 is GGUFLinear dequant-per-matmul — no fp8/nvfp4
             // tensor-core requirement, runs on any CUDA card. Schema
-            // proven clean against the dg845 base config (4186/4186);
-            // not experimental.
             runtime_id: "nexus.video.ltx23.rtx50-gguf".into(),
             experimental: false,
         }),
         RuntimeProfilePreference::Rtx50Ltxv097Gguf => Ok(SelectedRuntime {
             // LTX-Video 0.9.7 13B GGUF — separate model line, Q4 fits
             // 16 GB resident. Explicit-select only (not auto-picked);
-            // the plan-time Guard 0d still gates it until the worker
-            // 0.9.7 branch is proven.
             runtime_id: "nexus.video.ltx23.rtx50-ltxv097-gguf".into(),
             experimental: false,
         }),
         RuntimeProfilePreference::Rtx50Ltx2Gguf => Ok(SelectedRuntime {
             // LTX-2 19B Kijai-distilled GGUF — a third model line,
             // routed to the worker's `pipeline_ltx2.py` branch. The Q4
-            // stack pages under sequential offload on a 16 GB card.
-            // Explicit-select only (not auto-picked); GGUF dequant runs
-            // on any CUDA card, no fp8/nvfp4 tensor-core requirement.
             runtime_id: "nexus.video.ltx23.rtx50-ltx2-gguf".into(),
             experimental: false,
         }),
@@ -521,20 +514,6 @@ pub fn select_runtime(
 
 // Hardware support map for the LTX 2.3 quant variants:
 //
-//   FP8  tensor cores: Ada (sm_89), Hopper (sm_90), Blackwell (sm_120)
-//   NVFP4 tensor cores: Blackwell (sm_120) ONLY
-//
-// NVFP4 weights CAN be consumed on Ada via runtime dequant (NVFP4 → FP8
-// or → BF16) but that requires an inference engine with NVFP4-aware
-// kernels for non-Blackwell hardware. diffusers 0.37.x (our current
-// engine) does NOT implement that path; TensorRT-LLM does. Until we
-// validate the dequant path on real Ada hardware, `auto` selection
-// stays conservative: Ada always lands on rtx40-fp8 regardless of opt-in.
-//
-// Users who want to experiment with NVFP4-on-Ada via an alternative
-// engine can override explicitly via `Rtx50Nvfp4 + opt_in=true` — the
-// explicit branch above returns the nvfp4 runtime without an Ada gate,
-// trusting the user's hardware claim.
 fn auto_select(
     facts: &HostGpuFacts,
     experimental_nvfp4_opt_in: bool,
@@ -638,9 +617,6 @@ mod tests {
     fn auto_ada_picks_rtx40_fp8() {
         // Even with `experimental_nvfp4_opt_in=true`, auto on Ada stays
         // on the fp8 path — NVFP4 dequant on sm_89 needs an engine
-        // (TensorRT-LLM etc.) that we haven't validated yet. Users can
-        // still override via explicit Rtx50Nvfp4 if they bring their
-        // own runtime.
         let r = select_runtime(
             RuntimeProfilePreference::Auto,
             &nvidia("ada", 8.9, 16384),
@@ -654,10 +630,6 @@ mod tests {
     fn resolve_explicit_nvfp4_keeps_nvfp4() {
         // The previous experimental opt-in gate that downgraded explicit
         // NVFP4 requests to FP8 was removed once nvfp4 was validated
-        // end-to-end on real hardware. An operator asking for NVFP4
-        // through the request path now lands on the NVFP4 runtime
-        // verbatim; profile-install gaps surface as a 503 from the
-        // existing install-check, not a silent substitution.
         assert_eq!(
             resolve_runtime_id(RuntimeProfilePreference::Rtx50Nvfp4),
             "nexus.video.ltx23.rtx50-nvfp4"
@@ -779,9 +751,6 @@ mod tests {
     fn resolve_component_placement_defers_to_offload_mode_for_all_profiles() {
         // Post-2026-05-15: no profile special-cases placement. nvfp4's
         // 16 GB problem is solved by the Model offload default (set in
-        // default_offload_mode_for_profile), not a manual T5-on-cpu
-        // split — that split broke the LTX2 pipeline's co-location
-        // assumption on real hardware.
         for profile in ["rtx50-nvfp4", "rtx50-fp8", "fake", "unknown-xyz"] {
             for mode in [
                 OffloadMode::None,
@@ -801,7 +770,6 @@ mod tests {
     fn resolve_component_placement_lets_explicit_overrides_win() {
         // Operator pins text_encoder to CPU on top of a None-mode
         // pipeline — the explicit field overrides the implied
-        // placement; the others fall through.
         let resolved = resolve_component_placement(
             "rtx50-nvfp4",
             OffloadMode::None,
@@ -853,17 +821,12 @@ mod tests {
     fn default_offload_mode_per_profile() {
         // nvfp4 is NF4-quantised → Model (bnb is incompatible with
         // sequential offload — meta-tensor copy error; model offload
-        // is the diffusers-supported bnb combo and at ~22 GB its
-        // ~10 GB peak fits 16 GB). Every other profile keeps raw bf16
-        // and uses Sequential (per-layer, ~2 GB peak, no shared VRAM).
         assert_eq!(
             default_offload_mode_for_profile("rtx50-nvfp4"),
             OffloadMode::Model
         );
         // gguf: the Q4 22B transformer's whole-component working set
         // > 15 GiB (model-offload OOMs on 16 GB, proven 2026-05-17);
-        // sequential barred by the bnb Gemma-3 text encoder. Block-
-        // level group offload is the only mode that fits.
         assert_eq!(
             default_offload_mode_for_profile("rtx50-gguf"),
             OffloadMode::Group
@@ -887,8 +850,6 @@ mod tests {
     fn default_quant_per_profile() {
         // nvfp4 profile → Nf4Bnb: the verified-working bnb path.
         // Real NVFP4 is host-blocked / under construction (see
-        // default_quant_for_profile doc); the profile must keep
-        // resolving to the path that actually renders on 16 GB.
         assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nf4Bnb);
         // gguf profile → Gguf (Abiray Q4 via gguf_loader, schema-clean).
         assert_eq!(default_quant_for_profile("rtx50-gguf"), ModelQuant::Gguf);
@@ -922,7 +883,6 @@ mod tests {
         }
         // fp8 profiles → Fp8Official (official Lightricks single-file
         // transformer override; gated by fp8_official_proven() at plan
-        // time until the worker loader + GPU proof land).
         assert_eq!(
             default_quant_for_profile("rtx50-fp8"),
             ModelQuant::Fp8Official
@@ -944,9 +904,6 @@ mod tests {
     fn default_max_frag_ratio_per_profile() {
         // fp8/nvfp4 run offloaded and end every healthy render with a
         // ~0.99-fragmented pool by design — the frag check is
-        // effectively disabled (ratio <= 1.0, strict `>` test never
-        // trips). fake/CI + unknown keep the tight spec-046 0.30
-        // (matches VramSupervisorConfig::default().max_frag_ratio).
         for p in ["rtx50-nvfp4", "rtx50-fp8", "rtx40-fp8", "rtx50-gguf"] {
             assert!(
                 (default_max_frag_ratio_for_profile(p) - 1.0).abs() < f64::EPSILON,

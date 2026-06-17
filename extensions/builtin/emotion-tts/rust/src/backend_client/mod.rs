@@ -278,10 +278,6 @@ impl LeaseProvider {
 
         // Fire a best-effort handshake in the background to populate the
         // cache-key metadata. Failure here MUST NOT block lease creation
-        // — the dispatcher will fall back to `unknown-*` sentinel strings,
-        // which deliberately don't collide with real handshake-derived
-        // keys, so the next successful handshake repopulates the cache
-        // and subsequent cache writes use real values.
         let handshake_client = client.clone();
         let cached = self.cached_handshake.clone();
         tokio::spawn(async move {
@@ -418,9 +414,6 @@ mod tests {
     fn fallback_sentinels_cannot_collide_with_real_values() {
         // Real handshake values are produced by the worker's __version__
         // (PEP 440 form) and model_family_id (slug). Neither shape can
-        // legally produce the literal "unknown-runtime"/"unknown-model"
-        // strings, so this is mainly a guard against future drift in the
-        // fallback constants.
         assert!(FALLBACK_RUNTIME_VERSION.starts_with("unknown-"));
         assert!(FALLBACK_MODEL_VERSION.starts_with("unknown-"));
         assert!(FALLBACK_MODEL_FAMILY.starts_with("unknown-"));

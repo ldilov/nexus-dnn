@@ -394,7 +394,6 @@ mod tests {
     fn fp8_default_guidance_allowed() {
         // cfg None → 4.0 default, well under the 5.5 ceiling. Explicit
         // Int8+Model isolates Guard 2 from the rtx50-fp8 Fp8Official
-        // default-quant gate (Guard 0b).
         let adv = advanced(OffloadMode::Model, ModelQuant::Int8, None);
         assert!(check_known_incompatibilities(FP8, &adv, 97).is_ok());
     }
@@ -425,7 +424,6 @@ mod tests {
     fn fp8_long_segment_allowed_only_nvfp4_frame_capped() {
         // The 121-frame ceiling is NVFP4-specific; plain FP8 is exempt.
         // Explicit Int8+Model isolates the frame-cap check from the
-        // rtx50-fp8 Fp8Official default-quant gate (Guard 0b).
         let adv = advanced(OffloadMode::Model, ModelQuant::Int8, None);
         assert!(check_known_incompatibilities(FP8, &adv, 200).is_ok());
     }

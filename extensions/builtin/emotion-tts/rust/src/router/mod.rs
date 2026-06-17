@@ -129,10 +129,6 @@ fn voice_assets_stub() -> Router {
     Router::new().fallback(|| async {
         // Match the host's `ErrorEnvelope` shape so the frontend's
         // `apiFetch` error handler can surface a useful message instead
-        // of a bare 501 with no body. The voice-assets surface is
-        // unavailable when the host did not pass a `HostArtifactStore`
-        // into `build_router_with_families` — that's a host
-        // configuration issue, not a route-not-found.
         let body = json!({
             "status": "error",
             "category": "not_configured",

@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // voice.preprocess  (T018, US1)
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -61,7 +60,6 @@ pub struct PreprocessingStage {
 
 // ---------------------------------------------------------------------------
 // capability.probe  (T019)
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -82,7 +80,6 @@ pub struct CapabilityProbeEntry {
 
 // ---------------------------------------------------------------------------
 // family.list / family.switch  (T020, US5)
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -116,7 +113,6 @@ pub struct FamilySwitchResult {
 
 // ---------------------------------------------------------------------------
 // synthesize.batch additions  (T021)
-// ---------------------------------------------------------------------------
 
 /// Optional fields added to `synthesize.batch` params. Existing callers that
 /// omit these get current behaviour (deployment-row defaults).
@@ -185,9 +181,6 @@ impl SpeakerCacheHint {
 
 // ---------------------------------------------------------------------------
 // Notification payload typing (spec 034 subset — the dispatcher still carries
-// the raw serde_json::Value; these types document the shape for consumers
-// who want to parse it into something typed).
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -236,12 +229,6 @@ pub struct PreprocessWarningPayload {
 
 // ---------------------------------------------------------------------------
 // audio.edit + audio.edit.preview  (spec 036, US1)
-//
-// `chain` is carried as a raw `serde_json::Value` so the wire format stays
-// stable across schema evolution — the worker re-validates it server-side
-// against `EditChain`. Keeping it untyped here avoids a host-side recompile
-// every time the chain JSON gains an optional field.
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]

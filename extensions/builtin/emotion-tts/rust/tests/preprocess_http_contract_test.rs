@@ -35,9 +35,6 @@ use fixtures::mock_backend::MockBackendRuntimeLease;
 
 // ---------------------------------------------------------------------------
 // Mock HostArtifactStore — bytes in a map keyed by ref, resolvable to an
-// on-disk temp file so the handler's "read preprocessed bytes from an abs
-// path" call succeeds.
-// ---------------------------------------------------------------------------
 
 #[derive(Default)]
 struct InMemoryArtifactStore {
@@ -94,7 +91,6 @@ impl HostArtifactStore for InMemoryArtifactStore {
 
 // ---------------------------------------------------------------------------
 // Mock LeaseFactory wrapping the MockBackendRuntimeLease fixture.
-// ---------------------------------------------------------------------------
 
 struct MockLeaseFactory {
     lease: Arc<MockBackendRuntimeLease>,
@@ -109,7 +105,6 @@ impl LeaseFactory for MockLeaseFactory {
 
 // ---------------------------------------------------------------------------
 // Fixture builders
-// ---------------------------------------------------------------------------
 
 async fn fresh_pool() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
@@ -245,7 +240,6 @@ async fn build_test_router(
 
 // ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn post_preprocess_returns_202_with_report_on_first_run() {
@@ -329,8 +323,6 @@ async fn post_preprocess_returns_200_unchanged_on_second_call() {
 
     // Second call — should return 200 + status=unchanged without hitting the
     // worker again. A handler that returns an error would prove the worker is
-    // not reached; but the simplest way is a new router whose lease handler is
-    // guaranteed to panic if called.
     let mut panic_lease = MockBackendRuntimeLease::new();
     panic_lease.set_handler("voice.preprocess", |_| {
         panic!("second call must NOT invoke worker — idempotence broken")
@@ -367,8 +359,6 @@ async fn post_preprocess_missing_asset_returns_404() {
     let fake_id = VoiceAssetId::new();
     // The "missing asset" test seeds a deployment internally so the
     // required deploymentId query param has a valid value. Even with a
-    // valid deployment, the asset id is bogus → 404 (the same shape
-    // cross-deployment access produces, by design).
     let dep = seed_deployment(&Repos::from_pool(fresh_pool().await)).await;
     let response = router
         .oneshot(
@@ -420,6 +410,5 @@ async fn post_preprocess_maps_rpc_input_rejected_to_400() {
         .unwrap();
     // -32010 maps to Validation in rpc::lease_error_to_domain, which surfaces
     // as 400 from EmotionTtsError::into_response (status_code matrix in
-    // domain/errors.rs).
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

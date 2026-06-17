@@ -102,7 +102,6 @@ async fn run_progress(
     };
     // Validate the run exists before opening the stream — otherwise the
     // browser would treat a bare 404 as a transient SSE failure and
-    // retry every 3s forever.
     match state.repos.runs.get(&run_id).await {
         Ok(Some(row)) if row.deployment_id == deployment_id => {}
         Ok(Some(_)) => {
@@ -130,17 +129,6 @@ fn run_progress_stream(
     async_stream::stream! {
         // Try to find the per-run channel. If the dispatcher has not yet
         // popped this run, we briefly retry — there's a small window
-        // between `enqueue` (in create_run) and `register` (in the
-        // dispatcher loop) where the channel does not exist yet.
-        // Retry budget: 3000 iterations × 100 ms = 5 minutes. The cold-boot
-        // lease (Python venv + first VRAM model load) can legitimately take
-        // several minutes; bailing out earlier would leave the user with a
-        // phantom "failed" message while the run continued in the background.
-        // The async_stream future is cancelled when the SSE connection drops,
-        // so a long loop does not waste resources for disconnected clients.
-        // DB-poll fast-path runs every 5th iteration (~1 Hz) — enough to
-        // catch a dispatcher that finished before we subscribed without
-        // saturating SQLite while concurrent installs are running.
         let mut maybe_rx = None;
         for i in 0..3000_u32 {
             if let Some(rx) = state.run_channels.subscribe(run_id.as_str()).await {
@@ -174,11 +162,6 @@ fn run_progress_stream(
         };
         // Late-subscribe replay: emit segment_started + segment_completed/
         // segment_failed events for every utterance row that already has a
-        // non-`queued` status. Lets a refreshed page rebuild the progress
-        // table without waiting for the next live event. Live frames that
-        // arrive between this replay and the rx.recv() loop below MAY
-        // duplicate replayed frames — the frontend keys segments by
-        // global_index so duplicates are idempotent.
         if let Ok(rows) = state.repos.utterances.list_by_run(&run_id).await {
             for row in rows {
                 match row.status.as_str() {

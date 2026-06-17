@@ -101,14 +101,9 @@ impl EmotionTtsRouterProvider {
     fn http_routes() -> Vec<String> {
         // Every path the extension's frontend can hit. Used by the host
         // dispatcher's path-validation layer to reject typos before they
-        // reach the inner router. Path-parameter syntax follows axum's
-        // `{name}` convention.
         vec![
             // Runtime lifecycle (recipe header polls these to decide whether to
             // show "Stopped"/"Ready"/etc. — must be declared even though the
-            // current factory is a stub; otherwise the dispatcher rejects them
-            // as `unknown_extension` 404 and the recipe header surfaces a red
-            // "Not Found" pill instead of an honest "Stopped" badge.)
             "/runtime/health".into(),
             "/runtime/handshake".into(),
             "/runtime/start".into(),
@@ -158,10 +153,6 @@ impl EmotionTtsRouterProvider {
     async fn build_router_inner_async(&self) -> Result<Router, BuildRouterError> {
         // Apply emotion-tts's own migrations idempotently. The host's
         // generic `StorageManager::apply_plan` requires pre-built
-        // `MigrationInput` records with checksums + namespace ids; for
-        // this provider's lifecycle we side-step that and run the SQL
-        // directly. Each migration is `IF NOT EXISTS`-guarded so it's
-        // safe across restarts.
         let pool = &self.resources.pool;
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS ext_emotion_tts__schema_versions (\
@@ -210,9 +201,6 @@ impl EmotionTtsRouterProvider {
         let queue = Arc::new(RuntimeQueue::new());
         // Construct the real StdioLease-backed factory if the host wired in
         // both filesystem dirs; otherwise fall back to the stub that surfaces
-        // a clear "not yet configured" error. The fallback keeps the
-        // runtime/* routes mounted (200 instead of 404) so the recipe header
-        // shows "Stopped" rather than a red "Not Found" pill.
         let lease_factory: Arc<dyn LeaseFactory> = match (
             self.resources.extension_dir.clone(),
             self.resources.host_data_dir.clone(),
@@ -234,10 +222,6 @@ impl EmotionTtsRouterProvider {
         let artifact_store_for_dispatcher = self.resources.artifact_store.clone();
         // Persist run outputs under the host data dir when one is wired
         // (`<host_data_dir>/extensions/<id>/runs`) so they survive reboots
-        // and aren't pruned by the OS's `%TEMP%` cleanup. Fall back to
-        // `temp_dir()/nexus-emotion-tts-runs` when the host hasn't supplied
-        // a data dir — preserves prior behavior for the StubLeaseFactory
-        // path and tests that don't set `host_data_dir`.
         let output_root_base = self.resources.host_data_dir.clone().map_or_else(
             || std::env::temp_dir().join(crate::FALLBACK_RUNS_DIR),
             |host_data_dir| {

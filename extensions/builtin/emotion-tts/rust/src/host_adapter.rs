@@ -67,9 +67,6 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
     async fn acquire(&self) -> ExtResult<SharedLease> {
         // Resolve the IndexTTS-2 model directory BEFORE spawning so the
         // worker's Python entrypoint sees `EMOTIONTTS_MODEL_DIR_ABS` and
-        // constructs the IndexTtsAdapter at startup. Without this the
-        // adapter is None, and `model.load` later fails with the long-
-        // standing `adapter is not configured` symptom.
         let model_dir = match self.model_locator.as_ref() {
             Some(locator) => locator.locate_family(INDEXTTS_FAMILY_ID).await,
             None => None,
@@ -95,13 +92,6 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
 
         // Custom handshake with a longer budget than the host's default 60s.
         // The EmotionTTS worker pre-imports torch + scipy + sklearn +
-        // transformers + indextts.infer_v2 SYNCHRONOUSLY on the main thread
-        // before starting its asyncio loop (eliminates a thread-contention
-        // bug where scipy.special would intermittently hang for 5+ minutes
-        // when imported from a daemon thread on Windows). Those imports take
-        // ~50s on a warm machine, longer on cold disk, so the asyncio loop
-        // can't answer the handshake until they complete. 180s gives us
-        // 3-4× the typical pre-import budget.
         let handshake_timeout = std::time::Duration::from_secs(180);
         tracing::info!(
             target: "emotion_tts_lease",
@@ -132,12 +122,6 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
 
         // Eager model.load: keep state=Starting until weights are in VRAM.
         // The user explicitly asked "when I start backend I want to load
-        // necessary models". With the worker's `_warm_heavy_imports`
-        // daemon thread pre-importing scipy/sklearn/transformers in
-        // parallel (~50s on cold cache, ~5s warm), the eager load path's
-        // critical work is just IndexTTS2 weight load (~60-180s). Total
-        // Starting → Ready time on first run: ~2-3 min. Subsequent
-        // restarts (warm OS file cache, warm imports): ~30-60s.
         tracing::info!(
             target: "emotion_tts_lease",
             timeout_secs = MODEL_LOAD_TIMEOUT.as_secs(),
@@ -146,8 +130,6 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
 
         // Subscribe to notifications BEFORE issuing the RPC so we capture
         // every `model.load.progress` frame the worker emits. Without this
-        // subscription the user sees zero feedback during the multi-minute
-        // load and assumes the system is hung.
         let mut notifications = inner.subscribe_notifications();
         let progress_kill = tokio_util::sync::CancellationToken::new();
         let progress_kill_child = progress_kill.clone();
@@ -270,9 +252,6 @@ struct EmotionTtsLeaseAdapter {
     inner: Arc<StdioLease>,
     // Extension-side lease id minted at adapter construction. The host's
     // RuntimeLeaseId is a UUID; the extension's is a ULID-shaped newtype
-    // with a strict ASCII validator, so we don't try to round-trip the
-    // host id through the extension's format. The extension only needs a
-    // stable id for tracing — it doesn't reconcile against host repos.
     ext_id: RuntimeLeaseId,
 }
 
@@ -384,7 +363,6 @@ fn build_launch_spec(
 
     // Same module name the dep installer's validation step uses. Hard-coded
     // here rather than re-reading pyproject.toml because the worker's
-    // package name is a stable contract of the extension.
     let module_name = "emotion_tts_worker";
 
     let mut spec = LaunchSpec::new(venv_python)
@@ -395,7 +373,6 @@ fn build_launch_spec(
         .with_env("VIRTUAL_ENV", venv_dir.to_string_lossy().to_string())
         // Tell the worker entrypoint where IndexTTS-2 weights live. Without
         // this the worker's `__main__.py` skips IndexTtsAdapter construction
-        // and `model.load` fails with `adapter is not configured`.
         .with_env(
             "EMOTIONTTS_MODEL_DIR_ABS",
             model_dir.to_string_lossy().to_string(),
@@ -413,12 +390,6 @@ fn build_launch_spec(
 
     // Neutralize ambient PYTHON* so the user's global Python state can't
     // leak into the worker import path. `LaunchSpec` doesn't expose
-    // `env_remove` (its env map is set-only); setting these to empty
-    // strings is the closest practical equivalent and matches what the
-    // dep installer's validation spawn does via `Command::env_remove`.
-    // `PYTHONPATH=""` keeps the venv's site-packages canonical;
-    // `PYTHONHOME=""` is treated as "use the interpreter's compiled-in
-    // prefix", which is what we want.
     spec = spec
         .with_env("PYTHONPATH", "")
         .with_env("PYTHONHOME", "")
@@ -426,39 +397,21 @@ fn build_launch_spec(
 
     // Short-circuit phone-homes that some upstream IndexTTS-2 transitive
     // deps make at module-import time (notably `modelscope`, which
-    // performs a cache-dir bootstrap and a hub-list query on first
-    // import even when no model is requested — this is a known cause of
-    // multi-minute import hangs on Windows when the network is slow or
-    // ModelScope's hub is unreachable). HuggingFace stays online so the
-    // wav2vec2-BERT + SeamlessM4T feature extractors can still cold-
-    // download on first run.
     spec = spec
         .with_env("MODELSCOPE_DOMAIN", "modelscope.cn")
         .with_env("MODELSCOPE_API_TOKEN", "")
         // Tell modelscope to use the local cache only — bypasses the
         // initial hub-list call. The lib still resolves locally-cached
-        // refs but never blocks on network reachability.
         .with_env("MODELSCOPE_OFFLINE", "1")
         // Fall-back hint that several HF-style libs honor.
         .with_env("HF_HUB_DISABLE_TELEMETRY", "1")
         // Suppress tqdm + HF progress bars — they write to stdout (or
         // stderr on a tty, but Windows pipe stdio fools the tty check),
-        // and ANY stdout output that isn't JSON-RPC corrupts our framer
-        // (host warns "worker emitted malformed frame"). Stdout is the
-        // wire protocol, NOT a log channel.
         .with_env("TQDM_DISABLE", "1")
         .with_env("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         .with_env("TRANSFORMERS_VERBOSITY", "error")
         // OpenMP duplicate-runtime workaround. PyTorch's MKL + scipy's
         // OpenBLAS each ship their own copy of `libiomp5md.dll` on
-        // Windows. When both load into the same process, the OMP
-        // deadlock-detection path can lock up indefinitely waiting on a
-        // process-wide loader event — verified diagnostic: scipy.special
-        // imports in <1s standalone, hangs >5min after torch is pre-
-        // loaded. Setting `KMP_DUPLICATE_LIB_OK=TRUE` tells Intel's OMP
-        // runtime to accept the duplicate without the deadlock check.
-        // Mathematically benign for our workload (we don't mix the two
-        // OMP runtimes inside a single parallel region).
         .with_env("KMP_DUPLICATE_LIB_OK", "TRUE");
 
     Ok(spec)
@@ -474,7 +427,6 @@ fn map_state_host_to_ext(s: HostLeaseState) -> ExtLeaseState {
         HostLeaseState::Released => ExtLeaseState::Released,
         // `LeaseState` is `#[non_exhaustive]` on the host side. Any future
         // variant maps to Failed so the recipe header surfaces a clear
-        // unhealthy state instead of crashing on an unknown enum value.
         _ => ExtLeaseState::Failed,
     }
 }
@@ -488,8 +440,6 @@ fn map_error_host_to_ext(e: HostLeaseError) -> ExtLeaseError {
         } => {
             // The worker encodes the actual failure cause in `data.detail`
             // (see `ModelLoadFailedError.rpc_error()` in model_loader.py).
-            // Without merging it into the message here, the recipe header
-            // surfaces a useless "model_load_failed" with no diagnostic.
             let detail = data
                 .as_ref()
                 .and_then(|d| d.get("detail"))
@@ -521,12 +471,6 @@ fn map_error_host_to_ext(e: HostLeaseError) -> ExtLeaseError {
 
 // ---------------------------------------------------------------------------
 // HostArtifactStore adapter: bridges the host's `nexus_artifact::ArtifactStore`
-// trait to the extension's `host_contract::HostArtifactStore` trait so the
-// voice-asset upload + resolve path is functional. Without this the voice-
-// assets router falls back to a 503 stub and the recipe page can't open
-// (loader fetches /voice-assets, gets `not_configured`, and react-router's
-// errorElement renders the unexpected-error overlay).
-// ---------------------------------------------------------------------------
 
 use nexus_artifact::{ArtifactStore as HostArtifactStoreTrait, FilesystemArtifactStore};
 use sha2::{Digest, Sha256};
@@ -563,8 +507,6 @@ impl ExtArtifactStore for HostArtifactStoreAdapter {
 
         // Allocate a temp file under (run_id, node_id, port_name) — the host
         // store treats those as path components; for an out-of-pipeline
-        // upload we just stuff the display name across them so we get a
-        // unique-enough temp dir per upload.
         let safe = display_name
             .chars()
             .map(|c| {
@@ -588,7 +530,6 @@ impl ExtArtifactStore for HostArtifactStoreAdapter {
 
         // Finalize: rename temp → blob. If blob already exists (same hash
         // uploaded earlier), the host returns AlreadyExists; treat that as
-        // success since the dedupe target is already on disk.
         let artifact_ref = match self.inner.finalize(&temp_path, &artifact_id).await {
             Ok(r) => r,
             Err(e) => {
@@ -613,7 +554,6 @@ impl ExtArtifactStore for HostArtifactStoreAdapter {
     async fn resolve_path(&self, artifact_ref: &str) -> Result<String, HostContractError> {
         // `artifact_ref` from `store()` is `blobs/<prefix>/<artifact_id>`.
         // Extract the artifact_id (last segment) and ask the host for the
-        // absolute blob path.
         let id = artifact_ref
             .rsplit('/')
             .next()

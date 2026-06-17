@@ -83,8 +83,6 @@ async fn preprocess_impl(
 
     // Cross-deployment isolation: the voice asset must belong to the
     // caller's claimed deployment. Returns 404 on mismatch — same shape
-    // as a real not-found so cross-deployment scans cannot probe
-    // existence (audit FR-isolation-2).
     let row = state
         .repos
         .voice_assets
@@ -377,8 +375,6 @@ async fn upload(State(state): State<Arc<VoiceAssetsState>>, multipart: Multipart
         Ok(row) => {
             // Spec 034 FR-200: preprocessing defaults to ON for new uploads.
             // Fire-and-forget — the upload response returns immediately and the
-            // row's preprocessed_artifact_ref is populated when the worker
-            // finishes. A failure here must NOT fail the upload.
             spawn_background_preprocess(
                 state.clone(),
                 row.voice_asset_id.clone(),
@@ -479,10 +475,6 @@ async fn upload_impl(state: &VoiceAssetsState, mut multipart: Multipart) -> Resu
 
     // Auto-trim: IndexTTS works best with 10-30s clips; longer references drift
     // off-distribution and produce muddier output. Rather than shipping a
-    // destructive cut, seed the voice asset with a single trim op {0, 30000}
-    // — the user can extend or remove it via the edit panel without losing
-    // the original audio. Threshold is the same 30_000 ms ceiling the worker
-    // recommends.
     const AUTO_TRIM_MS: i64 = 30_000;
     let duration_ms = probe.as_ref().map(|p| p.duration_ms);
     let edit_chain_json = match duration_ms {

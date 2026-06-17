@@ -81,10 +81,6 @@ async fn health_impl(state: &RuntimeState) -> Result<Value> {
     };
     // The badge is derived from the lease state, which lives in the host and
     // survives a browser reload. The worker HEALTH rpc is best-effort: while
-    // the model is still loading the worker can't answer it yet, and letting
-    // that error propagate would wipe the "Starting" badge on reload (the
-    // action bar reverts to "Start runtime"). Fall back to a lease-only
-    // snapshot when the call fails.
     let badge = lease_state_to_badge(client.lease().state());
     let resp: Value = client
         .call(methods::HEALTH, &json!({}))
@@ -185,15 +181,10 @@ async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest
     if req.warmup {
         // Warm exactly the active worker count in the background — never the
         // ceiling — so the first parallel run finds resident models. The model
-        // is eager-loaded at lease acquire, so `spawn_if_needed` per provider
-        // is the whole "warm" step. Keep `start` non-blocking: 202 returns now.
         let pool = state.pool.clone();
         let warm = requested.min(pool.size());
         // Capture the generation BEFORE spawning. A concurrent Stop/Restart (or
         // a newer Start) bumps it, and the warm loop bails before re-acquiring a
-        // worker that `stop_all` just released — closing the warm-vs-stop VRAM
-        // re-leak race. Sequential (not join_all) so the guard is re-checked
-        // between each multi-minute model load.
         let gen = pool.next_generation();
         tokio::spawn(async move {
             for provider in &pool.providers()[..warm] {
@@ -271,8 +262,6 @@ async fn stop_impl(state: &RuntimeState) -> Result<Value> {
 
     // Bump the start generation BEFORE releasing so any in-flight background
     // warm task sees a newer generation and bails instead of re-acquiring a
-    // worker we're about to free — otherwise it would re-leak the VRAM Stop
-    // exists to reclaim.
     state.pool.next_generation();
     state.pool.stop_all().await?;
     Ok(json!({

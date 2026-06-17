@@ -110,8 +110,6 @@ async fn create_impl(
 
     // Spec 034 US5 T103 — validate model_family against the registry.
     // Empty registry (early boot) accepts whatever the caller asked for,
-    // with `DEFAULT_MODEL_FAMILY` as the default; a loaded registry rejects
-    // unknown ids with 400.
     let model_family = body
         .model_family
         .unwrap_or_else(|| crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_string());
@@ -204,14 +202,6 @@ async fn get_impl(state: &DeploymentsState, id: &str) -> Result<DeploymentRow> {
     );
     // Auto-seed: the host creates a deployment row in its own DB and
     // navigates the user to the extension UI without ever calling the
-    // extension's create_deployment endpoint. The extension's local DB
-    // therefore has no row when the recipe view's loader fires its first
-    // GET — the user sees `ExtensionApiError: Not Found` and the recipe
-    // page renders an error boundary. Mirror the pattern from
-    // `workflows.rs::load_or_seed`: when a GET arrives for a deployment
-    // we don't know yet, persist a minimal default row keyed by the
-    // host-supplied id and return it. The extension treats the host's
-    // deployment id as authoritative; subsequent edits go through PATCH.
     let now = Utc::now().timestamp();
     let default_family_id = crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_owned();
     let seeded = DeploymentRow {

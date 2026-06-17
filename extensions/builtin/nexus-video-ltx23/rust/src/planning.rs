@@ -130,7 +130,6 @@ fn pick_scene_seed(
     }
     // Reuse the same scene-walk as for prompts so a single SceneSpec's
     // seed override applies to every segment it covers (preserves the
-    // RNG-driven elements of that scene's look across boundaries).
     let midpoint = seg_duration.mul_add(0.5, seg_start);
     let total: f32 = scenes
         .iter()
@@ -251,12 +250,6 @@ pub fn plan_render(req: &CreateRenderRequest, runtime_profile: &str) -> Result<R
 
     // Plan-time compatibility gate: reject the three known-bad
     // quant/offload/sampler combinations here, with an actionable
-    // message, instead of letting them crash opaquely deep in the
-    // worker (accelerate meta-tensor copy / FP8 NaN / NVFP4 NaN
-    // burst). `runtime_profile` is the fully-qualified id; the guard
-    // resolves the effective offload/quant the same way the worker
-    // payload builder does. The last segment can exceed the nominal
-    // frame count, so check the chain's maximum.
     let max_segment_frames = segments
         .iter()
         .map(|s| s.frame_count)

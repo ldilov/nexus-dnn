@@ -699,9 +699,6 @@ mod tests {
     fn advanced_settings_defaults_offload_mode_to_auto_when_absent() {
         // The wire contract for the worker payload + the retry replay
         // path: a request with no `advanced` field at all collapses to
-        // every default, including `OffloadMode::Auto`. The host
-        // resolver turns that into a concrete per-profile mode before
-        // the worker sees it.
         let parsed: AdvancedSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(parsed.offload_mode, OffloadMode::Auto);
     }
@@ -838,7 +835,6 @@ mod tests {
     fn model_quant_legacy_nf4_alias_back_compat() {
         // Pre-rename wire value `"nf4"` must still deserialise to the
         // renamed bitsandbytes variant so old persisted payloads and
-        // external callers keep working after the N3 rename.
         let back: ModelQuant = serde_json::from_str("\"nf4\"").unwrap();
         assert_eq!(back, ModelQuant::Nf4Bnb);
     }
@@ -1044,7 +1040,6 @@ mod tests {
         assert_eq!(parsed.offload_mode, OffloadMode::None);
         // Re-serialise + reparse to confirm the field survives a
         // round-trip through the retry-replay path (which serialises
-        // the parsed struct back into request_json).
         let again = serde_json::to_string(&parsed).unwrap();
         let twice: AdvancedSettings = serde_json::from_str(&again).unwrap();
         assert_eq!(twice.offload_mode, OffloadMode::None);

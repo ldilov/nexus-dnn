@@ -91,7 +91,6 @@ impl BackendRuntimeLease for ChannelLease {
 
 // ---------------------------------------------------------------------------
 // StaticLeaseFactory — always hands out the same pre-built Arc<dyn Lease>.
-// ---------------------------------------------------------------------------
 
 struct StaticLeaseFactory(SharedLease);
 
@@ -239,9 +238,6 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
 
     // Build ChannelLease. The RPC handler for `synthesize.batch` reads the
     // first segment_id from the params, then spawns a task that pushes
-    // camelCase notifications through the mpsc channel. The camelCase keys
-    // match what `forward_notification` in run_loop.rs reads (segmentId,
-    // runId, durationMs, outputPathAbs — fixed in Task 9).
     let (lease, notif_tx) = ChannelLease::new(move |method, _params| {
         if method != "synthesize.batch" {
             return Err(LeaseError::Rpc {
@@ -256,12 +252,10 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
 
     // Spawn the notification-pusher task.  We do this *before* handing the
     // lease to the provider so the channel is open, but the notifications
-    // themselves are delayed slightly to arrive after the drain loop starts.
     let notif_tx_clone = notif_tx.clone();
     let run_id_notif = run_id.as_str().to_string();
     // We need the segment_id, but we don't know it until dispatch happens.
     // Instead, we watch the DB: once an utterance row appears for the run,
-    // we read its utterance_id and push the notifications using that id.
     let repos_for_notifier = repos.clone();
     let run_id_for_notifier = run_id.clone();
     tokio::spawn(async move {
@@ -733,7 +727,6 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
 
     // Seed run with cache_policy="use_cache". Without this the dispatcher
     // skips the cache lookup entirely and the test would falsely pass for
-    // the wrong reason.
     let run_id = RunId::new();
     repos
         .runs
@@ -1011,8 +1004,6 @@ async fn resume_run_reuses_cache_from_original() {
 
     // Pre-seed the cache row with the same hash prepare() will compute for the
     // single segment in "Narrator: Hello world." with the voice above.
-    // Without a populated handshake the runtime/model version fields take
-    // the FALLBACK_* sentinels — see comment in the cache_hit test above.
     let cache_input = CacheKeyInput {
         extension_version: "0.0.0-test".into(),
         runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
@@ -1197,10 +1188,6 @@ async fn raw_text_run_uses_deployment_default_voice() {
 
     // Insert order matters under FK enforcement (migration 014):
     //   1. Deployment FIRST (voice_assets.deployment_id FK -> deployments).
-    //   2. Voice asset SECOND.
-    //   3. Set the deployment's default_voice_asset_id LAST — that column's
-    //      FK -> voice_assets is ON DELETE SET NULL (migration 013), and the
-    //      target row must exist before the reference can be installed.
     repos
         .deployments
         .insert(&DeploymentRow {
@@ -1261,8 +1248,6 @@ async fn raw_text_run_uses_deployment_default_voice() {
 
     // Run with parser_mode="raw_text" and a two-line script. The raw_text
     // parser attributes both lines to "Narrator"; without a mapping and
-    // without a default_voice_asset_id this would error. With the default
-    // set, prepare() should succeed and produce two UtterancePlan entries.
     let run_id = RunId::new();
     repos
         .runs

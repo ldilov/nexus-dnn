@@ -58,7 +58,6 @@ async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
 
     // Register the per-job event sink before returning `jobId` so a client
     // that opens the SSE stream immediately after `/render/start` always
-    // finds a live sink — closing the start→subscribe race.
     state.channels.register(job_id.as_str()).await;
 
     // When the host wired its event bus, publish per-node status for this run
@@ -206,7 +205,6 @@ async fn events(
         } else if let Some(row) = fallback {
             // No live sink — the job finished and its buffer was reaped.
             // Replay the terminal frame from storage so a late subscriber
-            // still observes done/error and closes cleanly.
             let frame = terminal_frame(&row);
             if let Ok(payload) = serde_json::to_string(&frame) {
                 yield Ok(Event::default().data(payload));

@@ -224,7 +224,6 @@ impl VramSupervisor {
 
         // `free_mb` is the only field where lower-is-worse; treat a
         // missing field as "we don't know, don't trip". This matters
-        // because fake-runtime stats emit free_mb=0 by design.
         if let Some(free_mb) = stats.get("free_mb").and_then(Value::as_u64) {
             if free_mb > 0 && free_mb < self.cfg.min_free_mb {
                 return VramVerdict::Breach {
@@ -270,7 +269,6 @@ mod tests {
     fn missing_fields_default_to_healthy() {
         // Older worker builds may not emit every field. Absence
         // should not trip the supervisor — we'd rather miss a real
-        // breach than mass-cancel healthy runs.
         let stats = json!({});
         assert_eq!(
             supervisor_with_defaults().evaluate(&stats),
@@ -326,7 +324,6 @@ mod tests {
     fn zero_free_mb_does_not_breach_fake_runtime() {
         // The fake runtime emits free_mb=0. Without this carve-out,
         // every CI test that uses the fake pipeline would trip the
-        // supervisor immediately.
         let stats = json!({"free_mb": 0, "num_alloc_retries": 0, "frag_ratio": 0.0});
         assert_eq!(
             supervisor_with_defaults().evaluate(&stats),
@@ -338,7 +335,6 @@ mod tests {
     fn breach_reports_first_threshold_only() {
         // When multiple thresholds are breached, the reason should
         // report only the first checked (num_ooms) — keeps the
-        // message short + signals "this is the dominant issue".
         let stats = json!({
             "num_ooms": 5,
             "num_alloc_retries": 100,
@@ -405,7 +401,6 @@ mod tests {
     fn high_frag_ceiling_admits_benign_offload_fragmentation() {
         // fp8/nvfp4 end a HEALTHY render with frag_ratio ≈ 0.995 by
         // design. With the per-profile ceiling of 1.0 the strict
-        // `frag_ratio > max` test never trips → no false breach.
         let stats = json!({
             "num_ooms": 0,
             "num_alloc_retries": 1,
@@ -436,7 +431,6 @@ mod tests {
     fn high_frag_ceiling_still_catches_real_oom_signals() {
         // Disabling the frag check for offloaded profiles must NOT
         // disable the real OOM predictors (num_ooms / retries /
-        // free_mb) — those still guard the run.
         let stats = json!({"frag_ratio": 0.999, "num_ooms": 10});
         match supervisor_with_defaults().evaluate_with_max_frag(&stats, 1.0) {
             VramVerdict::Breach { reason } => assert!(reason.contains("num_ooms=10")),

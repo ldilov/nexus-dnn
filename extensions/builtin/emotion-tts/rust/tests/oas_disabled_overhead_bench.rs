@@ -76,7 +76,6 @@ fn non_diagnostic_envelopes_have_same_classification_cost() {
     }
     // The `progress` / `segment_completed` / etc. variants existed before
     // spec 034 — they must still classify in O(1) so that oas=false runs
-    // don't regress against pre-034 baseline.
     let envelopes = [
         ("progress", json!({"pct": 50})),
         ("segment_completed", json!({"index": 1})),

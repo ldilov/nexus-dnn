@@ -185,7 +185,6 @@ async fn post_upload(app: Router, boundary: &str, body: Vec<u8>) -> (StatusCode,
         serde_json::from_slice(&bytes).unwrap_or_else(|_| {
             // Some error paths return text/plain (e.g. axum's
             // body-limit rejection). Wrap in a Value::String so the
-            // assertions can still inspect the payload uniformly.
             Value::String(String::from_utf8_lossy(&bytes).to_string())
         })
     };
@@ -196,7 +195,6 @@ async fn post_upload(app: Router, boundary: &str, body: Vec<u8>) -> (StatusCode,
 async fn upload_png_returns_201_with_artifact_id() {
     // T8 — happy path. A minimal valid PNG payload produces a 201 with
     // a `ltx23-input-*` artifact id and lands on disk under
-    // `inputs_dir`.
     let (app, tmp) = build_app().await;
     let boundary = "----TestBoundary8a";
     let png = make_png_bytes(&[0u8; 512]);
@@ -230,7 +228,6 @@ async fn upload_png_returns_201_with_artifact_id() {
 async fn upload_empty_body_returns_400() {
     // T9 — empty body. The route differentiates "missing field" from
     // "empty payload"; an empty file in the multipart field should
-    // produce 400 with a clear message.
     let (app, _tmp) = build_app().await;
     let boundary = "----TestBoundary9b";
     let body = multipart_body(boundary, "image", "empty.png", Some("image/png"), &[]);
@@ -244,7 +241,6 @@ async fn upload_empty_body_returns_400() {
 async fn upload_unsupported_mime_returns_400() {
     // T10 — Content-Type not in the allowlist. The route refuses
     // before reading magic bytes so the operator gets the most
-    // actionable error.
     let (app, _tmp) = build_app().await;
     let boundary = "----TestBoundaryAc";
     let body = multipart_body(
@@ -287,12 +283,6 @@ async fn upload_oversized_body_returns_413() {
     let (status, _json) = post_upload(app, boundary, body).await;
     // axum 0.8's body-limit + multer combination can surface the
     // overflow as either 413 (the body-limit layer cuts the request
-    // before the handler runs) or 400 (multer reports a truncated
-    // multipart stream to the handler, which maps to InvalidRequest).
-    // Either status proves the limit fired; we accept both so the test
-    // doesn't go red on a future axum/multer behavioural tweak. The
-    // operationally important invariant — no on-disk artifact for an
-    // oversized request — is checked below.
     assert!(
         status == StatusCode::PAYLOAD_TOO_LARGE || status == StatusCode::BAD_REQUEST,
         "expected 413 or 400 for oversized upload; got {status}"
@@ -379,8 +369,6 @@ async fn post_json(app: Router, uri: &str, body: Value) -> (StatusCode, Value) {
 async fn create_render_rejects_unresolvable_input_image_artifact_id() {
     // M1 — submission-time pre-flight. A well-shaped artifact id that
     // doesn't point at an on-disk file must be rejected with 400 at
-    // POST /renders, NOT silently accepted and degraded to text-only
-    // by the runner after the render starts.
     let (app, _tmp) = build_app().await;
     let body = serde_json::json!({
         "prompt": "a cinematic dolly shot over a city at dusk",
@@ -408,7 +396,6 @@ async fn create_render_rejects_unresolvable_input_image_artifact_id() {
 async fn create_render_accepts_resolvable_input_image_artifact_id() {
     // Counterpart to the rejection test: when the file IS present the
     // pre-flight passes and the render is accepted (202). Proves the
-    // gate doesn't false-positive on a legitimate upload→render flow.
     let (app, tmp) = build_app().await;
 
     // Stage a real file the resolver will find.

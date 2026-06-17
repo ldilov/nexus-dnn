@@ -135,7 +135,6 @@ pub fn spawn_dispatcher_pooled(
             let Some(qrun) = queue.pop_next().await else {
                 // `pop_next` returns `None` when nothing is runnable right now
                 // (queue empty, or every slot busy). The 50ms sleep is the
-                // latency floor between enqueue/free-slot and dispatch.
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 continue;
             };
@@ -152,7 +151,6 @@ pub fn spawn_dispatcher_pooled(
             let queue_c = queue.clone();
             // Run concurrently: do NOT await here, so the loop pops the next
             // run (up to the cap) immediately. The pool guard `pooled` rides
-            // with the task and returns the worker on completion.
             tokio::spawn(async move {
                 let _guard = pooled;
                 // Inner spawn panic-isolates `process_one` so a panic neither

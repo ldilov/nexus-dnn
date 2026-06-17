@@ -347,20 +347,12 @@ async fn collect_relative_files(root: &std::path::Path) -> std::io::Result<Vec<S
 fn profile_repo(profile: &str) -> Option<&'static str> {
     // Mirror of the Python worker's `installer.py::PROFILE_REPO`. All
     // real-runtime profiles point at the community diffusers-format port
-    // until upstream diffusers ships native LTX-2.3 quant support (see
-    // `specs/046-ltx23-video-generation/verification/p0-t001-results.md`
-    // for the architecture finding).
     match profile {
         "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4" | "rtx50-gguf" => {
             Some("dg845/LTX-2.3-Distilled-Diffusers")
         }
         // LTX-Video 0.9.7 is a SEPARATE model line — its GGUF repo
         // ships the transformer quant ladder AND its companion VAE
-        // (`ltxv-13b-0.9.7-vae-BF16.safetensors`); the diffusers-native
-        // 0.9.x base config + T5 come from the worker's 0.9.7 branch,
-        // not dg845. So this profile points at the GGUF repo directly,
-        // unlike the LTX-2.3 profiles. Mirror in worker
-        // `installer.py::PROFILE_REPO` when the 0.9.7 branch lands.
         "rtx50-ltxv097-gguf" => Some("wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF"),
         _ => None,
     }
@@ -415,7 +407,6 @@ mod tests {
         );
         // LTX-Video 0.9.7 is a separate model line — points at the
         // GGUF repo directly (ships transformer ladder + companion
-        // VAE), NOT the dg845 LTX-2.3 port.
         assert_eq!(
             svc.status("rtx50-ltxv097-gguf")
                 .await

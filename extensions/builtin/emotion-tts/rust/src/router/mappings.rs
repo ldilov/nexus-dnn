@@ -333,7 +333,6 @@ async fn duplicate_impl(
     let mid = MappingId::try_from(id)?;
     // Source mapping must belong to the caller's claimed deployment.
     // Returns 404 on mismatch — same shape as a real not-found so
-    // cross-deployment scans cannot probe existence (audit FR-isolation-2).
     let src = assert_belongs_to_deployment(state, &mid, source_deployment_id).await?;
 
     let target_dep = DeploymentId::try_from(body.target_deployment_id.as_str())?;

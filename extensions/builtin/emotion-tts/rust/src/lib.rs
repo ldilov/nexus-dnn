@@ -198,19 +198,10 @@ pub async fn register(
     let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
     // The dispatcher only runs when a LeaseProvider is wired in. Without
     // a lease there is no worker to talk to, so any enqueued run would
-    // sit in the queue forever. Callers passing `lease_factory: None`
-    // must accept that runs cannot complete — the SSE handler will
-    // observe the 5-minute "no channel registered" timeout and emit a
-    // synthetic run_terminal/failed.
     let mut runtime_pool: Option<Arc<crate::dispatcher::LeaseProviderPool>> = None;
     if let (Some(p), Some(f)) = (provider.clone(), lease_factory.clone()) {
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
-        // This entry point predates `host_data_dir` plumbing — fall back to
-        // `temp_dir()` so existing callers (tests, embedders without a data
-        // dir wired in) keep working. Real host-managed runs go through
-        // `EmotionTtsRouterProvider::build_router_inner_async`, which uses
-        // the host data dir when available.
         let output_root_base = std::env::temp_dir().join(crate::FALLBACK_RUNS_DIR);
         // Pool sized to the worker ceiling (EMOTIONTTS_MAX_WORKERS, default 1);
         // extras stay cold until parallel runs hit them.

@@ -182,7 +182,6 @@ async fn get_install_hint_returns_encoded_host_path() {
 async fn partial_status_propagates_missing_detail() {
     // Force every descriptor through the `partial` branch via a custom
     // reconciler (the shipped YAMLs both hit other branches in
-    // `mixed_reconciler`).
     let pool = fresh_pool().await;
     let repos = Repos::from_pool(pool);
     let queue = Arc::new(RuntimeQueue::new());

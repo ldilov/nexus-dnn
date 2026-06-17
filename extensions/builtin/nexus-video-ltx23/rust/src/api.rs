@@ -251,7 +251,6 @@ async fn list_profiles(State(state): State<Arc<ApiState>>) -> Json<Vec<RuntimePr
                 installed,
                 // Healthy only when fully installed and not currently
                 // reinstalling. The UI uses this to gate the "Generate
-                // video" button.
                 healthy: installed && !in_flight,
                 experimental: p.experimental,
                 status_message,
@@ -319,7 +318,6 @@ async fn create_render(
             if cached.request_hash != request_hash {
                 // Same Idempotency-Key + different body → 422. Stripe-
                 // compatible / RFC-draft semantics. Returning a stale
-                // success here would silently mask a client typo.
                 return Err(ApiError(ExtensionError::InvalidRequest(format!(
                     "Idempotency-Key '{key}' was previously used with a \
                      different request body; supply a fresh key or replay \
@@ -381,7 +379,6 @@ async fn create_render(
         restart_count: 0,
         // Snapshot the supervisor's restart cap at insert time so the
         // UI badge ("restart 1/3") reflects what THIS run is allowed
-        // even if the operator later retunes the env var.
         max_restart_count: i64::from(crate::runner::max_restarts_from_env_public()),
         last_breach_reason: None,
     };
@@ -600,14 +597,10 @@ async fn cancel_render(
     }
     // Signal the live render task first so the worker gets the cancel RPC
     // while it's still in-flight. The task itself flips the DB row to
-    // "cancelled" once the worker acks (or the grace window expires), so
-    // we only update the DB here as a fallback when no live task exists —
-    // queued-but-never-spawned runs can still be marked cancelled.
     let outcome = state.runner.cancel(&run_id).await;
     if matches!(outcome, CancelOutcome::NotInFlight) {
         // Race guard: between `get_run` and this write the task may have
         // terminated naturally (completed/failed). The conditional-update
-        // variant refuses to overwrite a terminal row.
         state
             .repos
             .update_run_status_if_not_terminal(&run_id, "cancelled")
@@ -645,7 +638,6 @@ async fn retry_segment(
     let run = state.repos.get_run(&run_id).await?;
     // Only failed segments are legitimate retry targets. Retrying a
     // segment of a completed/cancelled run would race the published
-    // final.mp4 + corrupt the published artifact set.
     if matches!(run.status.as_str(), "completed" | "cancelled") {
         return Err(ApiError(ExtensionError::InvalidRequest(format!(
             "cannot retry segment on run '{run_id}' in terminal state '{}'",
@@ -953,15 +945,11 @@ async fn serve_artifact(
         .ok_or_else(|| ExtensionError::NotFound(format!("artifact {artifact_id}")))?;
     // Defense-in-depth: validate the extracted run_id before joining it
     // onto runs_dir. axum URL-decodes path segments, so without this a
-    // request like `/artifacts/ltx23-run-..%2F..%2Fetc%2Fpasswd-final`
-    // would otherwise read outside the sandbox.
     validate_run_id(run_id)?;
 
     let path = state.runs_dir.join(run_id).join("final.mp4");
     // Belt + braces: after the join, canonicalise and verify the result
     // is still a descendant of runs_dir. Catches any traversal that
-    // slipped past validate_run_id (none should — but the cost is one
-    // syscall on a path that exists).
     let canonical = tokio::fs::canonicalize(&path)
         .await
         .map_err(|e| ExtensionError::NotFound(format!("artifact file: {e}")))?;
@@ -976,8 +964,6 @@ async fn serve_artifact(
 
     // Stream the response body instead of reading the whole file into
     // memory. A multi-minute LTX render lands at ~50-200 MB; the
-    // previous `tokio::fs::read` would heap-spike per request, which
-    // is especially painful when the UI auto-replays the preview.
     let file = tokio::fs::File::open(&canonical)
         .await
         .map_err(|e| ExtensionError::NotFound(format!("artifact file: {e}")))?;

@@ -164,8 +164,6 @@ async fn apply_batch(repos: &Repos, batch: &[SegmentStatusWrite]) {
     }
     // Use the existing per-row method but inside a single sqlx
     // transaction so the N round-trips collapse to one commit. The
-    // method handles started_at/completed_at derivation per status,
-    // which we want to preserve.
     if let Err(e) = repos.update_segment_status_batch(batch).await {
         tracing::warn!(
             extension_id = "nexus.video.ltx23",
@@ -363,8 +361,6 @@ mod tests {
     async fn ordered_started_then_completed_preserves_started_at() {
         // The whole reason we DON'T do latest-wins coalescing: with
         // sub-tick transitions, the started_at column would be NULL
-        // if the flusher collapsed `started` + `completed` into one
-        // update. Verify the column survives the batch.
         let repos = setup_repos().await;
         seed_run_and_segments(&repos, "run-order", 1).await;
         let (buf, handle) = NotificationBuffer::new(repos.clone(), Duration::from_secs(60));
