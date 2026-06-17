@@ -187,11 +187,8 @@ async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest
         // a newer Start) bumps it, and the warm loop bails before re-acquiring a
         let gen = pool.next_generation();
         tokio::spawn(async move {
-            // A worker is truly warm only once its model is resident — not when
-            // its PROCESS exists. `spawn_if_needed` returns as soon as the lease
-            // is serviceable (including `Starting`), so we explicitly send +
-            // await an idempotent `model.load` (a fast no-op if already loaded)
-            // before counting that worker warm.
+            // A worker is truly warm only when its model is resident, not when its
+            // process exists — so send + await an idempotent `model.load` first.
             let mut loaded = 0usize;
             for (idx, provider) in pool.providers()[..warm].iter().enumerate() {
                 if pool.generation() != gen {
