@@ -23,11 +23,16 @@ class TextEncoderWrapper:
         import torch
         from .wan22.text_encoder_model import WanTextEncoder, HuggingfaceTokenizer
 
-        encoder = WanTextEncoder()
         if self.weights_path.exists():
             from safetensors.torch import load_file
+            # Build on meta so the ~5.6B params skip CPU random-init (~40s, pure
+            # waste) that the checkpoint overwrites; assign adopts loaded tensors.
+            with torch.device("meta"):
+                encoder = WanTextEncoder()
             state = load_file(str(self.weights_path))
-            encoder.load_state_dict(state, strict=False)
+            encoder.load_state_dict(state, strict=False, assign=True)
+        else:
+            encoder = WanTextEncoder()
         encoder.requires_grad_(False)
         encoder = encoder.to(device=torch.device(self.device), dtype=torch.bfloat16)
         encoder.eval()
