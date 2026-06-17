@@ -33,6 +33,8 @@ pub struct RepoFile {
 
 impl<'de> serde::Deserialize<'de> for RepoFile {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::Deserialize;
+
         #[derive(Deserialize)]
         struct LfsBlock {
             size: Option<u64>,
@@ -48,7 +50,6 @@ impl<'de> serde::Deserialize<'de> for RepoFile {
             lfs: Option<LfsBlock>,
         }
 
-        use serde::Deserialize;
         let raw = Raw::deserialize(deserializer)?;
         let size_bytes = raw.size_bytes.or_else(|| raw.lfs.and_then(|l| l.size));
         Ok(RepoFile {
