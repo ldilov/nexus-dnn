@@ -6,6 +6,7 @@ import {
   FLF2V_MIN_FRAMES,
   LENGTH_OPTIONS_SECONDS,
   actualSeconds,
+  deriveLengthPlan,
   deriveNumClips,
   flf2vFramesForSeconds,
   flf2vMaxSeconds,
@@ -43,6 +44,35 @@ describe("deriveNumClips", () => {
   test("default length option is 30s", () => {
     expect(DEFAULT_LENGTH_SECONDS).toBe(30);
     expect(LENGTH_OPTIONS_SECONDS).toContain(30);
+  });
+});
+
+describe("deriveLengthPlan", () => {
+  test("sub-clip durations shrink frames on a single clip", () => {
+    expect(deriveLengthPlan(1, CANONICAL)).toEqual({ numClips: 1, framesPerClip: 17 });
+    expect(deriveLengthPlan(2, CANONICAL)).toEqual({ numClips: 1, framesPerClip: 33 });
+  });
+
+  test("a full native clip keeps frames at 85", () => {
+    expect(deriveLengthPlan(5, CANONICAL)).toEqual({ numClips: 1, framesPerClip: 81 });
+    expect(deriveLengthPlan(5.3, CANONICAL)).toEqual({ numClips: 1, framesPerClip: 85 });
+  });
+
+  test("durations past one clip add clips at full frames, matching deriveNumClips", () => {
+    for (const seconds of [10, 30, 60, 120]) {
+      const plan = deriveLengthPlan(seconds, CANONICAL);
+      expect(plan.framesPerClip).toBe(85);
+      expect(plan.numClips).toBe(deriveNumClips(seconds, CANONICAL));
+    }
+  });
+
+  test("every plan produces 4n+1 frames and covers the requested duration", () => {
+    for (const seconds of [0.5, 1, 2, 3, 5, 7, 45, 90]) {
+      const plan = deriveLengthPlan(seconds, CANONICAL);
+      expect((plan.framesPerClip - 1) % 4).toBe(0);
+      const realized = actualSeconds(plan.numClips, { ...CANONICAL, framesPerClip: plan.framesPerClip });
+      expect(realized).toBeGreaterThan(0);
+    }
   });
 });
 

@@ -3,7 +3,7 @@ import {
   FLF2V_PRESET_SECONDS,
   LENGTH_OPTIONS_SECONDS,
   actualSeconds,
-  deriveNumClips,
+  deriveLengthPlan,
   flf2vFramesForSeconds,
   flf2vMaxSeconds,
   flf2vSeconds,
@@ -37,7 +37,9 @@ function ChainedLengthControl(): ReactElement {
   );
 
   const applySeconds = (value: number): void => {
-    updateParam("num_clips", deriveNumClips(value, defaults));
+    const plan = deriveLengthPlan(value, defaults);
+    updateParam("num_clips", plan.numClips);
+    updateParam("frames_per_clip", plan.framesPerClip);
   };
 
   return (

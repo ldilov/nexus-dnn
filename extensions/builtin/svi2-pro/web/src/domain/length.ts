@@ -3,6 +3,7 @@ import type { RenderParams } from "../services/types";
 export const LENGTH_OPTIONS_SECONDS = [10, 20, 30, 60, 120] as const;
 export const DEFAULT_LENGTH_SECONDS = 30;
 export const CUSTOM_LENGTH = "custom" as const;
+export const NATIVE_FRAMES_PER_CLIP = 85;
 
 export type LengthSelection = number | typeof CUSTOM_LENGTH;
 
@@ -12,7 +13,12 @@ export interface SegmentDefaults {
   overlap: number;
 }
 
-const FALLBACK: SegmentDefaults = { framesPerClip: 85, fps: 16, overlap: 5 };
+const FALLBACK: SegmentDefaults = { framesPerClip: NATIVE_FRAMES_PER_CLIP, fps: 16, overlap: 5 };
+
+export interface LengthPlan {
+  numClips: number;
+  framesPerClip: number;
+}
 
 export function segmentDefaults(params: Partial<RenderParams>): SegmentDefaults {
   return {
@@ -38,6 +44,21 @@ export function deriveNumClips(durationSeconds: number, defaults: SegmentDefault
   if (stride <= 0 || fps <= 0) return 1;
   const targetFrames = durationSeconds * fps;
   return Math.max(1, Math.ceil((targetFrames - framesPerClip) / stride) + 1);
+}
+
+export function deriveLengthPlan(durationSeconds: number, defaults: SegmentDefaults): LengthPlan {
+  const { fps, overlap } = defaults;
+  if (fps <= 0) return { numClips: 1, framesPerClip: NATIVE_FRAMES_PER_CLIP };
+  const targetFrames = Math.round(durationSeconds * fps);
+  // A chained render floors at one native clip, so sub-clip lengths can't come
+  // from clip count — shrink frames for a single short clip instead.
+  if (targetFrames <= NATIVE_FRAMES_PER_CLIP) {
+    return { numClips: 1, framesPerClip: snapToValidFrames(targetFrames) };
+  }
+  const stride = NATIVE_FRAMES_PER_CLIP - overlap;
+  if (stride <= 0) return { numClips: 1, framesPerClip: NATIVE_FRAMES_PER_CLIP };
+  const numClips = Math.max(1, Math.ceil((targetFrames - NATIVE_FRAMES_PER_CLIP) / stride) + 1);
+  return { numClips, framesPerClip: NATIVE_FRAMES_PER_CLIP };
 }
 
 export const FLF2V_MIN_FRAMES = 5;
