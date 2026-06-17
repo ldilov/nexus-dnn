@@ -28,6 +28,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
 use reqwest::header::{CONTENT_RANGE, HeaderMap, HeaderValue, RANGE};
+use sha2::{Digest, Sha256};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, watch};
 use tokio_util::sync::CancellationToken;
@@ -316,7 +317,14 @@ impl DownloadOrchestrator {
                 .await;
 
             match result {
-                Ok(()) => {
+                Ok(computed_sha) => {
+                    if let Some(ref sha) = computed_sha {
+                        let _ = self
+                            .inner
+                            .store
+                            .update_target_sha256(&job.job_id, &target.artifact_id, sha)
+                            .await;
+                    }
                     let _ = self
                         .inner
                         .store
@@ -326,7 +334,7 @@ impl DownloadOrchestrator {
                             TargetState::Downloaded,
                         )
                         .await;
-                    self.record_install(job, target).await;
+                    self.record_install(job, target, computed_sha).await;
                 }
                 Err(TargetFailure::Paused) => {
                     let _ = self
@@ -349,13 +357,16 @@ impl DownloadOrchestrator {
         Ok(())
     }
 
+    /// Returns the computed sha256 hex on a full download (`resume_from == 0`),
+    /// or `None` when resuming a partial download (the on-disk prefix is not
+    /// re-read, so a full-file hash cannot be computed correctly on resume).
     async fn stream_one(
         &self,
         job: &PersistedJob,
         target: &PersistedTarget,
         sink_dir: &Path,
         mut pause_rx: watch::Receiver<bool>,
-    ) -> Result<(), TargetFailure> {
+    ) -> Result<Option<String>, TargetFailure> {
         let path = sink_dir.join(&target.filename);
         if let Some(parent) = path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
@@ -443,6 +454,11 @@ impl DownloadOrchestrator {
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = resume_from;
         let mut last_flush = tokio::time::Instant::now();
+        let mut hasher: Option<Sha256> = if resume_from == 0 {
+            Some(Sha256::new())
+        } else {
+            None
+        };
 
         loop {
             tokio::select! {
@@ -468,6 +484,9 @@ impl DownloadOrchestrator {
                     let Some(chunk_res) = chunk else { break };
                     let chunk = chunk_res
                         .map_err(|e| TargetFailure::Upstream(format!("stream chunk: {e}")))?;
+                    if let Some(h) = hasher.as_mut() {
+                        h.update(&chunk);
+                    }
                     file.write_all(&chunk)
                         .await
                         .map_err(|e| TargetFailure::Io(format!("write: {e}")))?;
@@ -514,8 +533,28 @@ impl DownloadOrchestrator {
                 )));
             }
         }
-        Ok(())
+
+        let computed_sha = hasher.map(|h| format!("{:x}", h.finalize()));
+
+        if let (Some(computed), Some(expected)) =
+            (computed_sha.as_deref(), target.sha256.as_deref())
+        {
+            if !sha_matches(expected, computed) {
+                return Err(TargetFailure::Upstream(format!(
+                    "checksum mismatch for {}: expected {expected}, got {computed}",
+                    target.filename
+                )));
+            }
+        }
+
+        Ok(computed_sha)
     }
+}
+
+/// Normalize and compare two sha256 strings, ignoring case and a `sha256:` prefix.
+fn sha_matches(expected: &str, actual: &str) -> bool {
+    let normalize = |s: &str| s.trim().trim_start_matches("sha256:").to_ascii_lowercase();
+    normalize(expected) == normalize(actual)
 }
 
 /// Total size parsed from a `Content-Range: bytes START-END/TOTAL` header.
@@ -589,7 +628,12 @@ impl DownloadOrchestrator {
     /// Write the FR-086 reverse-mapping row after a target commits
     /// cleanly. Non-fatal if it fails — the download already succeeded
     /// and the mapping can be rebuilt by a future backfill if needed.
-    async fn record_install(&self, job: &PersistedJob, target: &PersistedTarget) {
+    async fn record_install(
+        &self,
+        job: &PersistedJob,
+        target: &PersistedTarget,
+        computed_sha: Option<String>,
+    ) {
         let variant_id = match job.requested_kind {
             RequestedKind::Variant => job
                 .targets
@@ -598,6 +642,7 @@ impl DownloadOrchestrator {
                 .and_then(|_| variant_id_from_job(job)),
             RequestedKind::Primary | RequestedKind::Bundle => None,
         };
+        let recorded_sha = computed_sha.or_else(|| target.sha256.clone());
         let record = InstalledArtifactRecord {
             artifact_id: target.artifact_id.clone(),
             family_id: job.family_id.clone(),
@@ -608,7 +653,7 @@ impl DownloadOrchestrator {
             source_revision: None,
             filename: target.filename.clone(),
             job_id: job.job_id,
-            sha256: target.sha256.clone(),
+            sha256: recorded_sha,
             size_bytes: target.expected_bytes.or(Some(target.downloaded_bytes)),
         };
         if let Err(e) = self.inner.install_map.record(record).await {
@@ -866,5 +911,18 @@ mod tests {
             verify_transfer_size(1001, Some(0), Some(0)),
             SizeVerdict::Unverifiable
         );
+    }
+
+    #[test]
+    fn sha_matches_normalizes_case_and_prefix() {
+        let hex = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+        assert!(sha_matches(hex, hex));
+        assert!(sha_matches(&hex.to_ascii_uppercase(), hex));
+        assert!(sha_matches(&format!("sha256:{hex}"), hex));
+        assert!(sha_matches(
+            &format!("sha256:{}", hex.to_ascii_uppercase()),
+            hex
+        ));
+        assert!(!sha_matches("aabbcc", hex));
     }
 }

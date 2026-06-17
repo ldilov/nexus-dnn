@@ -386,6 +386,7 @@ pub fn gguf_result(repo_id: &str, quants: &[(&str, u64)]) -> SearchResult {
             .map(|(q, sz)| nexus_huggingface::RepoFile {
                 path: format!("model.{q}.gguf"),
                 size_bytes: Some(*sz),
+                sha256: None,
             })
             .collect(),
         formats: vec!["gguf".into()],
@@ -497,6 +498,7 @@ pub fn safetensors_result(repo_id: &str) -> SearchResult {
         files: vec![nexus_huggingface::RepoFile {
             path: "model-fp16.safetensors".into(),
             size_bytes: Some(14_000_000_000),
+            sha256: None,
         }],
         formats: vec!["safetensors".into()],
         quantizations: vec![],

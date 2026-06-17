@@ -47,6 +47,7 @@ fn mk(raw: &Fixture) -> SearchResult {
             .map(|(path, size)| RepoFile {
                 path: (*path).to_owned(),
                 size_bytes: Some(*size),
+                sha256: None,
             })
             .collect(),
         formats: vec![],

@@ -366,13 +366,21 @@ fn map_raw_to_search_result(value: serde_json::Value) -> SearchResult {
                 .filter_map(|s| {
                     s.get("rfilename").and_then(|p| p.as_str()).map(|p| {
                         let direct = s.get("size").and_then(|b| b.as_u64());
-                        let lfs_size = s
-                            .get("lfs")
-                            .and_then(|l| l.get("size"))
-                            .and_then(|b| b.as_u64());
+                        let lfs = s.get("lfs");
+                        let lfs_size = lfs.and_then(|l| l.get("size")).and_then(|b| b.as_u64());
+                        let lfs_sha_bare = lfs
+                            .and_then(|l| l.get("sha256"))
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned);
+                        let lfs_sha_oid = lfs
+                            .and_then(|l| l.get("oid"))
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned);
+                        let sha256 = crate::search::lfs_sha(lfs_sha_bare, lfs_sha_oid);
                         RepoFile {
                             path: p.to_owned(),
                             size_bytes: direct.or(lfs_size),
+                            sha256,
                         }
                     })
                 })

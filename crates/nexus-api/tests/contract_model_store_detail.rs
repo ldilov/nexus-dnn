@@ -55,18 +55,22 @@ fn sdxl_result() -> SearchResult {
             RepoFile {
                 path: "sd_xl_base_1.0.safetensors".into(),
                 size_bytes: Some(6_900_000_000),
+                sha256: None,
             },
             RepoFile {
                 path: "vae/diffusion_pytorch_model.safetensors".into(),
                 size_bytes: Some(335_000_000),
+                sha256: None,
             },
             RepoFile {
                 path: "text_encoder/model.safetensors".into(),
                 size_bytes: Some(246_000_000),
+                sha256: None,
             },
             RepoFile {
                 path: "tokenizer/vocab.json".into(),
                 size_bytes: Some(500_000),
+                sha256: None,
             },
         ],
         formats: vec!["safetensors".into()],

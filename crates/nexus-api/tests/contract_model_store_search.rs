@@ -74,6 +74,7 @@ async fn t_s3_show_unsupported_false_filters_out_unsupported() {
         files: vec![RepoFile {
             path: "README.md".into(),
             size_bytes: Some(1_000),
+            sha256: None,
         }],
         formats: vec![],
         quantizations: vec![],
@@ -104,6 +105,7 @@ async fn t_s4_show_unsupported_true_returns_superset() {
         files: vec![RepoFile {
             path: "notes.txt".into(),
             size_bytes: Some(100),
+            sha256: None,
         }],
         formats: vec![],
         quantizations: vec![],
@@ -189,6 +191,7 @@ async fn t_s7_malformed_upstream_row_does_not_crash_handler() {
         files: vec![RepoFile {
             path: String::new(),
             size_bytes: None,
+            sha256: None,
         }],
         formats: vec![],
         quantizations: vec![],

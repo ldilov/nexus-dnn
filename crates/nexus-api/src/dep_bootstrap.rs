@@ -557,7 +557,7 @@ impl RealModelStoreClient {
                 role: DependencyRole::Primary,
                 download_url: format!("https://huggingface.co/{repo_id}/resolve/main/{}", f.path),
                 expected_bytes: f.size_bytes,
-                sha256: None,
+                sha256: f.sha256.clone(),
             })
             .collect();
 
@@ -1798,6 +1798,7 @@ mod tests {
                 .map(|(path, bytes)| RepoFile {
                     path: path.clone(),
                     size_bytes: self.sizes_in_search.then_some(*bytes),
+                    sha256: None,
                 })
                 .collect();
             Ok(SearchPage {
@@ -1833,6 +1834,7 @@ mod tests {
                     .map(|(path, bytes)| RepoFile {
                         path: path.clone(),
                         size_bytes: Some(*bytes),
+                        sha256: None,
                     })
                     .collect(),
                 config: None,
@@ -1875,6 +1877,7 @@ mod tests {
                         .map(|(path, bytes)| RepoFile {
                             path: path.clone(),
                             size_bytes: Some(*bytes),
+                            sha256: None,
                         })
                         .collect(),
                     formats: vec![],
@@ -1914,6 +1917,7 @@ mod tests {
                     .map(|(path, bytes)| RepoFile {
                         path: path.clone(),
                         size_bytes: Some(*bytes),
+                        sha256: None,
                     })
                     .collect(),
                 config: None,

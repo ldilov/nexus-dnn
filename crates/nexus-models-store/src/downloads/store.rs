@@ -607,6 +607,25 @@ impl JobStore {
         Ok(())
     }
 
+    pub async fn update_target_sha256(
+        &self,
+        id: &JobId,
+        artifact_id: &ArtifactId,
+        sha256: &str,
+    ) -> JobStoreResult<()> {
+        sqlx::query(
+            "UPDATE download_job_artifacts
+                SET sha256 = ?3
+                WHERE job_id = ?1 AND artifact_id = ?2",
+        )
+        .bind(id.to_string())
+        .bind(artifact_id.as_str())
+        .bind(sha256)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_target_progress(
         &self,
         id: &JobId,
@@ -819,5 +838,22 @@ mod tests {
         let j = store.get(&job.job_id).await.unwrap().unwrap();
         assert_eq!(j.progress_bytes, 512_000);
         assert_eq!(j.targets[0].downloaded_bytes, 512_000);
+    }
+
+    #[tokio::test]
+    async fn update_target_sha256_persists() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let job = store.create(sample_params()).await.unwrap();
+        let artifact_id = ArtifactId::from("hf:test/model#m.gguf");
+        let sha = "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678";
+
+        store
+            .update_target_sha256(&job.job_id, &artifact_id, sha)
+            .await
+            .unwrap();
+
+        let j = store.get(&job.job_id).await.unwrap().unwrap();
+        assert_eq!(j.targets[0].sha256.as_deref(), Some(sha));
     }
 }

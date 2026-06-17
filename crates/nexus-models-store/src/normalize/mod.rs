@@ -171,14 +171,17 @@ mod tests {
                 nexus_huggingface::RepoFile {
                     path: "Llama-3-8B-Instruct.Q4_K_M.gguf".into(),
                     size_bytes: Some(4_900_000_000),
+                    sha256: None,
                 },
                 nexus_huggingface::RepoFile {
                     path: "Llama-3-8B-Instruct.Q5_K_M.gguf".into(),
                     size_bytes: Some(5_700_000_000),
+                    sha256: None,
                 },
                 nexus_huggingface::RepoFile {
                     path: "README.md".into(),
                     size_bytes: Some(8000),
+                    sha256: None,
                 },
             ],
             formats: vec!["gguf".into()],
@@ -213,10 +216,12 @@ mod tests {
                 nexus_huggingface::RepoFile {
                     path: "sd_xl_base_1.0.safetensors".into(),
                     size_bytes: Some(6_900_000_000),
+                    sha256: None,
                 },
                 nexus_huggingface::RepoFile {
                     path: "vae/diffusion_pytorch_model.safetensors".into(),
                     size_bytes: Some(335_000_000),
+                    sha256: None,
                 },
             ],
             formats: vec!["safetensors".into()],

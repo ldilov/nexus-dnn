@@ -29,6 +29,7 @@ fn default_page() -> u32 {
 pub struct RepoFile {
     pub path: String,
     pub size_bytes: Option<u64>,
+    pub sha256: Option<String>,
 }
 
 impl<'de> serde::Deserialize<'de> for RepoFile {
@@ -38,6 +39,10 @@ impl<'de> serde::Deserialize<'de> for RepoFile {
         #[derive(Deserialize)]
         struct LfsBlock {
             size: Option<u64>,
+            /// Bare hex sha present on some HF responses.
+            sha256: Option<String>,
+            /// `"sha256:<hex>"` form, present on most HF LFS responses.
+            oid: Option<String>,
         }
 
         #[derive(Deserialize)]
@@ -48,15 +53,40 @@ impl<'de> serde::Deserialize<'de> for RepoFile {
             size_bytes: Option<u64>,
             #[serde(default)]
             lfs: Option<LfsBlock>,
+            /// Canonical serialized form (round-trip): flat top-level sha256.
+            #[serde(default)]
+            sha256: Option<String>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
-        let size_bytes = raw.size_bytes.or_else(|| raw.lfs.and_then(|l| l.size));
+        let size_bytes = raw
+            .size_bytes
+            .or_else(|| raw.lfs.as_ref().and_then(|l| l.size));
+        let sha256 = raw
+            .sha256
+            .or_else(|| raw.lfs.and_then(|l| lfs_sha(l.sha256, l.oid)));
         Ok(RepoFile {
             path: raw.path,
             size_bytes,
+            sha256,
         })
     }
+}
+
+/// Extract a bare lowercase hex sha256 from LFS block fields.
+/// Prefers the bare `sha256` field; falls back to stripping the `sha256:` prefix from `oid`.
+pub(crate) fn lfs_sha(bare: Option<String>, oid: Option<String>) -> Option<String> {
+    if let Some(h) = bare {
+        let h = h.trim().to_ascii_lowercase();
+        if !h.is_empty() {
+            return Some(h);
+        }
+    }
+    oid.and_then(|o| {
+        o.trim()
+            .strip_prefix("sha256:")
+            .map(|h| h.to_ascii_lowercase())
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,14 +221,43 @@ mod tests {
     }
 
     #[test]
+    fn repo_file_parses_lfs_sha256_bare_field() {
+        let raw = r#"{"rfilename": "model.gguf", "lfs": {"size": 100, "sha256": "ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890"}}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            f.sha256.as_deref(),
+            Some("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        );
+    }
+
+    #[test]
+    fn repo_file_parses_oid_sha256() {
+        let raw = r#"{"rfilename": "model.gguf", "lfs": {"size": 100, "oid": "sha256:deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678"}}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            f.sha256.as_deref(),
+            Some("deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678")
+        );
+    }
+
+    #[test]
+    fn repo_file_sha256_none_when_no_lfs() {
+        let raw = r#"{"rfilename": "readme.md", "size": 500}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(f.sha256, None);
+    }
+
+    #[test]
     fn repo_file_roundtrips_through_canonical_serialization() {
         let original = RepoFile {
             path: "model.safetensors".into(),
             size_bytes: Some(12345),
+            sha256: Some("aabbcc".into()),
         };
         let json = serde_json::to_string(&original).unwrap();
         let roundtripped: RepoFile = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtripped.path, original.path);
         assert_eq!(roundtripped.size_bytes, original.size_bytes);
+        assert_eq!(roundtripped.sha256, original.sha256);
     }
 }
