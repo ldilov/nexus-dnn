@@ -317,7 +317,8 @@ class IndexTtsAdapter:
         _ckpt("ensure_model done — building infer kwargs")
 
         kwargs = self._build_infer_kwargs(segment)
-        _ckpt(f"infer kwargs built — keys={sorted(kwargs.keys())}")
+        _params = ", ".join(f"{k}={kwargs[k]!r}" for k in sorted(kwargs) if k != "on_step")
+        _ckpt(f"infer params — fp16={self._settings.use_fp16} {_params}")
 
         started = time.time()
         try:
