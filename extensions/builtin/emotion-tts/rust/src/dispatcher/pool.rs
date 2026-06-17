@@ -16,6 +16,7 @@ use std::sync::Mutex as StdMutex;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::backend_client::{LeaseFactory, LeaseProvider};
+use crate::domain::{EmotionTtsError, Result};
 
 pub struct LeaseProviderPool {
     primary: Arc<LeaseProvider>,
@@ -80,6 +81,27 @@ impl LeaseProviderPool {
         self.all.len()
     }
 
+    /// Stop every provider in the pool, freeing each worker's VRAM via its
+    /// lease release. Best-effort: a failure on one provider never skips the
+    /// rest — all are attempted and the first error is returned afterward.
+    pub async fn stop_all(&self) -> Result<()> {
+        let mut first_err: Option<EmotionTtsError> = None;
+        for provider in &self.all {
+            if let Err(err) = provider.stop().await {
+                tracing::warn!(
+                    target: "emotion_tts::dispatch",
+                    error = %err,
+                    "pool stop_all: provider stop failed (continuing)"
+                );
+                first_err.get_or_insert(err);
+            }
+        }
+        match first_err {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+
     /// Borrow a distinct provider for the duration of one run. Blocks only if
     /// every provider is already lent out — which never happens while the
     /// queue's `max_in_flight` cap stays ≤ the pool size. The provider returns
@@ -129,5 +151,92 @@ impl Drop for PooledProvider {
                 avail.push(p);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
+
+    use super::*;
+    use crate::domain::{Result, RuntimeLeaseId};
+    use crate::host_contract::{
+        BackendRuntimeLease, LeaseError, LeaseState, NotificationEnvelope, NotificationStream,
+    };
+
+    /// Lease that records each `release()` against a shared counter and
+    /// always reports `Ready`, so the provider's reuse path treats it as live.
+    struct CountingLease {
+        id: RuntimeLeaseId,
+        released: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl BackendRuntimeLease for CountingLease {
+        fn id(&self) -> RuntimeLeaseId {
+            self.id.clone()
+        }
+        fn state(&self) -> LeaseState {
+            LeaseState::Ready
+        }
+        async fn send_rpc(
+            &self,
+            _method: &str,
+            _params: serde_json::Value,
+        ) -> std::result::Result<serde_json::Value, LeaseError> {
+            Ok(serde_json::Value::Null)
+        }
+        async fn subscribe_notifications(&self) -> NotificationStream {
+            use futures::stream::StreamExt;
+            futures::stream::iter(Vec::<NotificationEnvelope>::new()).boxed()
+        }
+        async fn release(&self) -> std::result::Result<(), LeaseError> {
+            self.released.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    /// Factory minting a distinct `CountingLease` per acquire, all sharing one
+    /// `released` counter so the test can assert how many were stopped.
+    struct CountingLeaseFactory {
+        released: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl LeaseFactory for CountingLeaseFactory {
+        async fn acquire(&self) -> Result<crate::host_contract::SharedLease> {
+            Ok(Arc::new(CountingLease {
+                id: RuntimeLeaseId::new(),
+                released: self.released.clone(),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_all_releases_every_live_provider_not_just_primary() {
+        let released = Arc::new(AtomicUsize::new(0));
+        let factory = Arc::new(CountingLeaseFactory {
+            released: released.clone(),
+        });
+        let primary = Arc::new(LeaseProvider::new(factory.clone()));
+        let pool = LeaseProviderPool::with_ceiling(factory, primary, 3);
+        assert_eq!(pool.size(), 3);
+
+        for provider in pool.providers() {
+            provider
+                .spawn_if_needed()
+                .await
+                .expect("force provider live");
+        }
+
+        pool.stop_all().await.expect("stop_all");
+
+        assert_eq!(
+            released.load(Ordering::SeqCst),
+            3,
+            "stop_all must drain ALL providers, not just the primary"
+        );
     }
 }

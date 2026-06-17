@@ -199,7 +199,7 @@ async fn stop_impl(state: &RuntimeState) -> Result<Value> {
         }
     }
 
-    state.provider.stop().await?;
+    state.pool.stop_all().await?;
     Ok(json!({
         "status": "stopped",
         "cancelledRunIds": cancelled,
@@ -207,10 +207,16 @@ async fn stop_impl(state: &RuntimeState) -> Result<Value> {
 }
 
 async fn restart(State(state): State<RuntimeState>) -> Response {
-    match state.provider.restart().await {
+    match restart_impl(&state).await {
         Ok(_) => (StatusCode::ACCEPTED, Json(json!({ "status": "restarted" }))).into_response(),
         Err(err) => err.into_response(),
     }
+}
+
+async fn restart_impl(state: &RuntimeState) -> Result<()> {
+    state.pool.stop_all().await?;
+    state.provider.spawn_if_needed().await?;
+    Ok(())
 }
 
 fn lease_state_to_badge(state: crate::host_contract::LeaseState) -> &'static str {
