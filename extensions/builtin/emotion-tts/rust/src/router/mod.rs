@@ -26,6 +26,7 @@ use std::sync::Arc;
 use axum::Router;
 
 use crate::backend_client::LeaseProvider;
+use crate::dispatcher::LeaseProviderPool;
 use crate::families::FamilyRegistry;
 use crate::host_contract::HostArtifactStore;
 use crate::queue::SharedQueue;
@@ -43,6 +44,7 @@ pub fn build_router(
         queue,
         extension_version,
         provider,
+        None,
         artifact_store,
         Arc::new(crate::dispatcher::RunChannelRegistry::new()),
         Arc::new(FamilyRegistry::new(Vec::new())),
@@ -54,11 +56,13 @@ pub fn build_router(
 /// the loaded `FamilyRegistry` + reconciler (spec 034 US5). The simpler
 /// `build_router` defaults to an empty registry — useful in early boot
 /// before YAML is loaded.
+#[allow(clippy::too_many_arguments)]
 pub fn build_router_with_families(
     repos: Repos,
     queue: SharedQueue,
     extension_version: impl Into<String>,
     provider: Option<Arc<LeaseProvider>>,
+    pool: Option<Arc<LeaseProviderPool>>,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
     run_channels: Arc<crate::dispatcher::RunChannelRegistry>,
     family_registry: Arc<FamilyRegistry>,
@@ -107,7 +111,12 @@ pub fn build_router_with_families(
     }
 
     if let Some(provider) = provider {
-        router = router.merge(runtime::router(runtime::RuntimeState { provider, queue }));
+        let pool = pool.unwrap_or_else(|| Arc::new(LeaseProviderPool::single(provider.clone())));
+        router = router.merge(runtime::router(runtime::RuntimeState {
+            provider,
+            pool,
+            queue,
+        }));
     }
 
     router

@@ -202,6 +202,7 @@ pub async fn register(
     // must accept that runs cannot complete — the SSE handler will
     // observe the 5-minute "no channel registered" timeout and emit a
     // synthetic run_terminal/failed.
+    let mut runtime_pool: Option<Arc<crate::dispatcher::LeaseProviderPool>> = None;
     if let (Some(p), Some(f)) = (provider.clone(), lease_factory.clone()) {
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
@@ -227,13 +228,15 @@ pub async fn register(
             EXTENSION_VERSION,
             output_root_base,
         ));
-        drop(crate::dispatcher::spawn_idle_watcher_pooled(pool));
+        drop(crate::dispatcher::spawn_idle_watcher_pooled(pool.clone()));
+        runtime_pool = Some(pool);
     }
     let router = router::build_router_with_families(
         repos,
         queue,
         EXTENSION_VERSION,
         provider,
+        runtime_pool,
         artifact_store,
         run_channels,
         Arc::new(crate::families::FamilyRegistry::new(Vec::new())),

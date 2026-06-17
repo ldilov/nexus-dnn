@@ -22,12 +22,14 @@ use serde_json::{json, Value};
 
 use crate::backend_client::rpc::methods;
 use crate::backend_client::LeaseProvider;
+use crate::dispatcher::LeaseProviderPool;
 use crate::domain::{EmotionTtsError, Result};
 use crate::queue::SharedQueue;
 
 #[derive(Clone)]
 pub struct RuntimeState {
     pub provider: Arc<LeaseProvider>,
+    pub pool: Arc<LeaseProviderPool>,
     pub queue: SharedQueue,
 }
 
