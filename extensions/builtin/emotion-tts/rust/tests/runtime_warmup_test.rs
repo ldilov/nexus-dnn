@@ -139,14 +139,24 @@ async fn post_start(router: &axum::Router, body: Value) -> StatusCode {
         .status()
 }
 
-async fn poll_until<F: Fn() -> bool>(cond: F) -> bool {
-    for _ in 0..200 {
-        if cond() {
+/// Poll an async predicate until it returns `true` or the deadline passes.
+/// Awaits the predicate directly on the current runtime — no nested executor —
+/// so it stays sound even if `warm_counts` ever performs tokio I/O.
+async fn poll_until<F, Fut>(predicate: F) -> bool
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        if predicate().await {
             return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return predicate().await;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    cond()
 }
 
 #[tokio::test]
@@ -157,7 +167,11 @@ async fn start_with_warmup_true_warms_all_active_workers() {
     assert_eq!(status, StatusCode::ACCEPTED, "start stays non-blocking 202");
 
     let acquired = h.acquired.clone();
-    let warmed = poll_until(|| acquired.load(Ordering::SeqCst) >= 3).await;
+    let warmed = poll_until(|| {
+        let acquired = acquired.clone();
+        async move { acquired.load(Ordering::SeqCst) >= 3 }
+    })
+    .await;
     assert!(
         warmed,
         "warmup must acquire all 3 active workers, saw {}",
@@ -171,10 +185,8 @@ async fn start_with_warmup_true_warms_all_active_workers() {
 
     let pool = h.pool.clone();
     let all_warm = poll_until(|| {
-        let p = pool.clone();
-        // warm_counts is async; block on a fresh runtime handle is awkward —
-        // instead drive it via futures executor on the current runtime.
-        futures::executor::block_on(async { p.warm_counts().await.1 == 3 })
+        let pool = pool.clone();
+        async move { pool.warm_counts().await.1 == 3 }
     })
     .await;
     assert!(all_warm, "all warmed workers should report Ready");
@@ -202,7 +214,11 @@ async fn health_reports_warm_and_warming_counts() {
 
     let _ = post_start(&h.router, json!({ "numWorkers": 3, "warmup": true })).await;
     let pool = h.pool.clone();
-    poll_until(|| futures::executor::block_on(async { pool.warm_counts().await.1 == 3 })).await;
+    poll_until(|| {
+        let pool = pool.clone();
+        async move { pool.warm_counts().await.1 == 3 }
+    })
+    .await;
 
     let response = h
         .router
@@ -233,4 +249,145 @@ async fn health_reports_warm_and_warming_counts() {
         Some(3),
         "3 Ready workers ⇒ workersWarm=3: {body}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// WS-I review IMPORTANT — warm-on-Start vs Stop race. A gated factory lets the
+// test pause the background warm mid-flight, fire Stop (which bumps the start
+// generation), then release the gate. The generation fence must make the warm
+// task BAIL on its next iteration instead of re-acquiring workers Stop just
+// released. Net leases (acquired - released) must settle to ZERO and no worker
+// may survive Stop.
+// ---------------------------------------------------------------------------
+
+struct GatedLease {
+    id: RuntimeLeaseId,
+    released: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl BackendRuntimeLease for GatedLease {
+    fn id(&self) -> RuntimeLeaseId {
+        self.id.clone()
+    }
+    fn state(&self) -> LeaseState {
+        LeaseState::Ready
+    }
+    async fn send_rpc(
+        &self,
+        _method: &str,
+        _params: serde_json::Value,
+    ) -> Result<serde_json::Value, LeaseError> {
+        Ok(serde_json::Value::Null)
+    }
+    async fn subscribe_notifications(&self) -> NotificationStream {
+        futures::stream::iter(Vec::<NotificationEnvelope>::new()).boxed()
+    }
+    async fn release(&self) -> Result<(), LeaseError> {
+        self.released.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+/// `acquire()` sleeps so a warm step stays briefly in-flight, then mints a
+/// lease that counts its own release. Tracks acquired + released so the test can
+/// assert net leases settle to zero.
+struct SlowCountingFactory {
+    acquired: Arc<AtomicUsize>,
+    released: Arc<AtomicUsize>,
+    acquire_delay: Duration,
+}
+
+#[async_trait]
+impl LeaseFactory for SlowCountingFactory {
+    async fn acquire(&self) -> DomainResult<SharedLease> {
+        tokio::time::sleep(self.acquire_delay).await;
+        self.acquired.fetch_add(1, Ordering::SeqCst);
+        Ok(Arc::new(GatedLease {
+            id: RuntimeLeaseId::new(),
+            released: self.released.clone(),
+        }))
+    }
+}
+
+/// IMPORTANT regression — warm-on-Start vs Stop race, exercised through the real
+/// HTTP `start` (background warm) + `stop` paths across many rapid cycles. The
+/// per-acquire delay keeps the warm task in-flight when Stop lands, so an
+/// UNFENCED warm re-acquires workers Stop already released and net leases drift
+/// (acquired > released). The generation fence makes every superseded warm bail,
+/// so acquired == released after every cycle. Many cycles make the unfenced
+/// failure overwhelmingly likely (and in practice deterministic).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stop_during_warmup_leaves_no_surviving_worker() {
+    let acquired = Arc::new(AtomicUsize::new(0));
+    let released = Arc::new(AtomicUsize::new(0));
+    let factory = Arc::new(SlowCountingFactory {
+        acquired: acquired.clone(),
+        released: released.clone(),
+        acquire_delay: Duration::from_millis(15),
+    });
+    let provider = Arc::new(LeaseProvider::new(factory.clone()));
+    let pool = Arc::new(LeaseProviderPool::with_ceiling(
+        factory,
+        provider.clone(),
+        4,
+    ));
+    let repos = Repos::from_pool(fresh_pool().await);
+    let queue = Arc::new(RuntimeQueue::new());
+    let router = build_router_with_families(
+        repos,
+        queue,
+        "0.0.0-test",
+        Some(provider),
+        Some(pool.clone()),
+        None,
+        Arc::new(RunChannelRegistry::new()),
+        Arc::new(FamilyRegistry::new(Vec::new())),
+        default_reconciler(),
+    );
+
+    for cycle in 0..40 {
+        let start = post_start(&router, json!({ "numWorkers": 4, "warmup": true })).await;
+        assert_eq!(start, StatusCode::ACCEPTED, "cycle {cycle}: start 202");
+
+        // Stop mid-warm: 4 × 15ms acquires ≈ 60ms; a few ms in, warm is in-flight.
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let stop = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/runtime/stop")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status();
+        assert_eq!(stop, StatusCode::ACCEPTED, "cycle {cycle}: stop 202");
+
+        // After Stop settles, the superseded warm must have bailed: every lease
+        // it acquired is released, and nothing remains warm/warming.
+        let balanced = poll_until(|| {
+            let acquired = acquired.clone();
+            let released = released.clone();
+            async move { acquired.load(Ordering::SeqCst) == released.load(Ordering::SeqCst) }
+        })
+        .await;
+        // Extra grace so any unfenced late re-acquire would have happened.
+        tokio::time::sleep(Duration::from_millis(40)).await;
+
+        let acquired_n = acquired.load(Ordering::SeqCst);
+        let released_n = released.load(Ordering::SeqCst);
+        assert!(
+            balanced && acquired_n == released_n,
+            "cycle {cycle}: Stop during warmup must leave no surviving worker \
+             (acquired={acquired_n}, released={released_n})"
+        );
+        assert_eq!(
+            pool.warm_counts().await,
+            (0, 0),
+            "cycle {cycle}: no provider may remain warm/warming after Stop"
+        );
+    }
 }

@@ -189,11 +189,22 @@ async fn start(State(state): State<RuntimeState>, body: Option<Json<StartRequest
         // is the whole "warm" step. Keep `start` non-blocking: 202 returns now.
         let pool = state.pool.clone();
         let warm = requested.min(pool.size());
+        // Capture the generation BEFORE spawning. A concurrent Stop/Restart (or
+        // a newer Start) bumps it, and the warm loop bails before re-acquiring a
+        // worker that `stop_all` just released — closing the warm-vs-stop VRAM
+        // re-leak race. Sequential (not join_all) so the guard is re-checked
+        // between each multi-minute model load.
+        let gen = pool.next_generation();
         tokio::spawn(async move {
-            let providers = pool.providers();
-            let futures = providers[..warm].iter().map(|p| p.spawn_if_needed());
-            for result in futures::future::join_all(futures).await {
-                if let Err(err) = result {
+            for provider in &pool.providers()[..warm] {
+                if pool.generation() != gen {
+                    tracing::info!(
+                        target: "emotion_tts::dispatch",
+                        "runtime warmup superseded by a newer start/stop; bailing"
+                    );
+                    return;
+                }
+                if let Err(err) = provider.spawn_if_needed().await {
                     tracing::warn!(
                         target: "emotion_tts::dispatch",
                         error = %err,
@@ -258,6 +269,11 @@ async fn stop_impl(state: &RuntimeState) -> Result<Value> {
         }
     }
 
+    // Bump the start generation BEFORE releasing so any in-flight background
+    // warm task sees a newer generation and bails instead of re-acquiring a
+    // worker we're about to free — otherwise it would re-leak the VRAM Stop
+    // exists to reclaim.
+    state.pool.next_generation();
     state.pool.stop_all().await?;
     Ok(json!({
         "status": "stopped",
@@ -272,7 +288,14 @@ async fn restart(State(state): State<RuntimeState>) -> Response {
     }
 }
 
+/// Stop the whole pool, then re-spawn ONLY the primary. The extra pool
+/// providers are intentionally left cold: they re-warm lazily on the next
+/// parallel run (or eagerly on the next `start` with `warmup`). Restart does
+/// not re-run warmup — this is deliberate, not a missing step.
 async fn restart_impl(state: &RuntimeState) -> Result<()> {
+    // Same generation fence as `stop_impl`: invalidate any in-flight warm
+    // before releasing, so it can't repopulate a slot we just cleared.
+    state.pool.next_generation();
     state.pool.stop_all().await?;
     state.provider.spawn_if_needed().await?;
     Ok(())

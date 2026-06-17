@@ -10,6 +10,7 @@
 //! providers (the worker ceiling) is fixed at construction; how many run
 //! concurrently is governed independently by the queue's `max_in_flight` cap.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
@@ -23,6 +24,11 @@ pub struct LeaseProviderPool {
     all: Vec<Arc<LeaseProvider>>,
     available: Arc<StdMutex<Vec<Arc<LeaseProvider>>>>,
     sem: Arc<Semaphore>,
+    /// Monotonic counter that fences background warm tasks against a later
+    /// Stop/Restart (or a newer Start). A warm task captures the generation it
+    /// was spawned under and bails the moment it observes a higher value — so
+    /// it can never re-acquire a worker that a `stop_all` just released.
+    start_generation: AtomicU64,
 }
 
 impl LeaseProviderPool {
@@ -58,7 +64,24 @@ impl LeaseProviderPool {
             available: Arc::new(StdMutex::new(all.clone())),
             sem: Arc::new(Semaphore::new(n)),
             all,
+            start_generation: AtomicU64::new(0),
         }
+    }
+
+    /// Bump the start generation and return the new value. `start()` captures
+    /// this before spawning its warm task; `stop_impl`/`restart_impl` call it
+    /// to invalidate any in-flight warm. SeqCst so the warm loop's `generation`
+    /// load is guaranteed to observe a concurrent bump.
+    pub fn next_generation(&self) -> u64 {
+        self.start_generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// The current start generation. A warm task compares this against the
+    /// value it captured and bails if they differ (a newer Start, Stop, or
+    /// Restart has superseded it).
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.start_generation.load(Ordering::SeqCst)
     }
 
     /// The primary provider — the one shared with the HTTP routes for one-off
