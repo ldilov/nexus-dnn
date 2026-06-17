@@ -108,10 +108,13 @@ export function StepRow({
             ? s.statusTextFailed
             : "";
 
-  // A row renders live progress when it is running OR still DTO-pending but
-  // already streaming its own live bytes. The pending-with-live arm matters
+  // Active: running, or pending with live events / DTO bytes. Exclude paused
+  // so its dedicated bar never double-renders alongside the active bar.
   const rowActive =
-    step.status === "running" || (step.status === "pending" && live !== undefined);
+    !paused &&
+    (step.status === "running" ||
+      (step.status === "pending" &&
+        (live !== undefined || (step.progress?.current_bytes ?? 0) > 0)));
   const liveBytesActive = rowActive && live !== undefined && live.totalBytes > 0;
   const liveReportedPct =
     rowActive && live !== undefined && live.reportedPct !== null ? live.reportedPct : null;

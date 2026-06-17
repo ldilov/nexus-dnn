@@ -157,6 +157,7 @@ export function useInstallProgress(
     let cancelled = false;
     let revalidateTimer: ReturnType<typeof setTimeout> | null = null;
     let lastFailedStep: InstallCompletedDetail["failedStep"] | undefined;
+    const hasConnectedOnce = { current: false };
 
     const scheduleRevalidate = () => {
       if (cancelled || revalidateTimer) return;
@@ -213,59 +214,69 @@ export function useInstallProgress(
       }
     }, TICK_MS);
 
-    const sub = subscribeEvents((evt) => {
-      const event = evt as unknown as InstallEventLike;
-      if (!event?.type || !INSTALL_EVENT_TYPES.has(event.type)) return;
-      if (event.extension_id !== extensionId) return;
-      activeRef.current = event.type !== "extension_install_completed";
+    const sub = subscribeEvents(
+      (evt) => {
+        const event = evt as unknown as InstallEventLike;
+        if (!event?.type || !INSTALL_EVENT_TYPES.has(event.type)) return;
+        if (event.extension_id !== extensionId) return;
+        activeRef.current = event.type !== "extension_install_completed";
 
-      switch (event.type) {
-        case "extension_install_step_progress":
-          recordProgress(event as StepProgressEventLike);
-          refreshLive();
-          scheduleRevalidate();
-          break;
-        case "extension_install_step_completed":
-        case "extension_install_step_failed":
-          if (event.type === "extension_install_step_failed") {
-            const failed = event as StepFailedEventLike;
-            if (failed.step_id && failed.category && failed.message) {
-              lastFailedStep = {
-                stepId: failed.step_id,
-                category: failed.category,
-                message: failed.message,
-              };
+        switch (event.type) {
+          case "extension_install_step_progress":
+            recordProgress(event as StepProgressEventLike);
+            refreshLive();
+            scheduleRevalidate();
+            break;
+          case "extension_install_step_completed":
+          case "extension_install_step_failed":
+            if (event.type === "extension_install_step_failed") {
+              const failed = event as StepFailedEventLike;
+              if (failed.step_id && failed.category && failed.message) {
+                lastFailedStep = {
+                  stepId: failed.step_id,
+                  category: failed.category,
+                  message: failed.message,
+                };
+              }
             }
+            clearStep(event as StepEventLike);
+            refreshLive();
+            scheduleRevalidate();
+            break;
+          case "extension_install_completed": {
+            if (revalidateTimer) {
+              clearTimeout(revalidateTimer);
+              revalidateTimer = null;
+            }
+            trackersRef.current.clear();
+            liveRef.current = {};
+            forceTick();
+            void mutate(swrKey);
+            const cb = onCompletedRef.current;
+            if (cb) {
+              const outcome = (event.outcome ?? "failed") as InstallOutcome;
+              cb({
+                outcome,
+                install_run_id: event.install_run_id,
+                failedStep: outcome !== "success" ? lastFailedStep : undefined,
+              });
+            }
+            lastFailedStep = undefined;
+            break;
           }
-          clearStep(event as StepEventLike);
-          refreshLive();
-          scheduleRevalidate();
-          break;
-        case "extension_install_completed": {
-          if (revalidateTimer) {
-            clearTimeout(revalidateTimer);
-            revalidateTimer = null;
-          }
-          trackersRef.current.clear();
-          liveRef.current = {};
-          forceTick();
-          void mutate(swrKey);
-          const cb = onCompletedRef.current;
-          if (cb) {
-            const outcome = (event.outcome ?? "failed") as InstallOutcome;
-            cb({
-              outcome,
-              install_run_id: event.install_run_id,
-              failedStep: outcome !== "success" ? lastFailedStep : undefined,
-            });
-          }
-          lastFailedStep = undefined;
-          break;
+          default:
+            scheduleRevalidate();
         }
-        default:
-          scheduleRevalidate();
-      }
-    });
+      },
+      {
+        onOpen: () => {
+          if (hasConnectedOnce.current && !cancelled) {
+            void mutate(swrKey);
+          }
+          hasConnectedOnce.current = true;
+        },
+      },
+    );
 
     return () => {
       cancelled = true;

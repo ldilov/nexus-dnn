@@ -2,15 +2,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 
 type EventHandler = (event: unknown) => void;
+type OpenHandler = () => void;
 
-const captured: { handler: EventHandler | null; closed: boolean } = {
+const captured: {
+  handler: EventHandler | null;
+  onOpen: OpenHandler | null;
+  closed: boolean;
+} = {
   handler: null,
+  onOpen: null,
   closed: false,
 };
 
 vi.mock("../../services/event_streams", () => ({
-  subscribeEvents: (onEvent: EventHandler) => {
+  subscribeEvents: (onEvent: EventHandler, opts?: { onOpen?: OpenHandler }) => {
     captured.handler = onEvent;
+    captured.onOpen = opts?.onOpen ?? null;
     return {
       close: () => {
         captured.closed = true;
@@ -19,8 +26,9 @@ vi.mock("../../services/event_streams", () => ({
   },
 }));
 
+const mutateMock = vi.fn();
 vi.mock("swr", () => ({
-  useSWRConfig: () => ({ mutate: vi.fn() }),
+  useSWRConfig: () => ({ mutate: mutateMock }),
 }));
 
 import { useInstallProgress } from "./use_install_progress";
@@ -34,7 +42,9 @@ function emit(event: Record<string, unknown>) {
 describe("useInstallProgress mapping (AC-3.5)", () => {
   beforeEach(() => {
     captured.handler = null;
+    captured.onOpen = null;
     captured.closed = false;
+    mutateMock.mockReset();
   });
 
   it("maps byte counts, speed, and derived pct without dropping fields", () => {
@@ -119,5 +129,18 @@ describe("useInstallProgress mapping (AC-3.5)", () => {
     });
 
     expect(result.current.liveByStep["x"]).toBeUndefined();
+  });
+
+  it("Gap-B: onOpen on first connect does NOT call mutate", () => {
+    renderHook(() => useInstallProgress("ext.demo", "/key"));
+    act(() => { captured.onOpen?.(); });
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it("Gap-B: onOpen on second connect (reconnect) calls mutate with the swrKey", () => {
+    renderHook(() => useInstallProgress("ext.demo", "/key"));
+    act(() => { captured.onOpen?.(); });
+    act(() => { captured.onOpen?.(); });
+    expect(mutateMock).toHaveBeenCalledWith("/key");
   });
 });

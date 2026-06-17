@@ -225,7 +225,7 @@ describe("StepRow progress region", () => {
     expect(screen.getByRole("button", { name: "Install only this" })).toBeEnabled();
   });
 
-  it("paused partial: no PAUSED treatment while an install run is active or nothing is resumable", () => {
+  it("paused partial: no PAUSED treatment while nothing is resumable — shows active DTO bar instead", () => {
     const step = makeStep({
       id: "model_wan_base",
       type: "model_artifact",
@@ -248,7 +248,59 @@ describe("StepRow progress region", () => {
     );
     expect(screen.getByText("Pending")).toBeInTheDocument();
     expect(screen.queryByText("Paused", { selector: "span" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("Gap-A: pending + DTO bytes + no live + not resumable renders active progress bar from DTO", () => {
+    const step = makeStep({
+      id: "model",
+      type: "model_artifact",
+      status: "pending",
+      progress: { phase: "downloading", current_bytes: 2_147_483_648, total_bytes: 8_589_934_592 },
+      estimated_remaining_bytes: 6_442_450_944,
+    });
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive={false}
+        resumable={false}
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "25");
+    expect(bar).not.toHaveAttribute("aria-busy");
+  });
+
+  it("Gap-A: paused step (pending + resumable + partial bytes + no live) renders ONE progressbar (the paused bar, not the active bar)", () => {
+    const step = makeStep({
+      id: "model",
+      type: "model_artifact",
+      status: "pending",
+      progress: { phase: "downloading", current_bytes: 1_073_741_824, total_bytes: 4_294_967_296 },
+      estimated_remaining_bytes: 3_221_225_472,
+    });
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive={false}
+        resumable
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    const bars = screen.getAllByRole("progressbar");
+    expect(bars).toHaveLength(1);
+    expect(bars[0]).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getAllByText("Paused").length).toBeGreaterThanOrEqual(1);
   });
 
   it("running bytes line carries the phase label prefix (canonical mock anatomy)", () => {
