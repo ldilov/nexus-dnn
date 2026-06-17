@@ -26,6 +26,19 @@ from .speaker_cache import SpeakerCache, SpeakerCacheKey
 
 VECTOR_KEYS = ("happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm")
 
+# IndexTTS-2 GPT generation defaults (upstream / ComfyUI-node baseline). Greedy
+# with repetition_penalty=1.0 loops into garbled mel; recipe values override.
+DEFAULT_GENERATION = {
+    "do_sample": True,
+    "temperature": 0.8,
+    "top_p": 0.8,
+    "top_k": 30,
+    "num_beams": 10,
+    "repetition_penalty": 10.0,
+    "length_penalty": 0.0,
+    "max_mel_tokens": 3000,
+}
+
 
 def _resolve_use_cuda_kernel(requested: bool | None) -> bool:
     """Decide whether to attempt BigVGAN's custom CUDA kernel JIT build.
@@ -379,7 +392,9 @@ class IndexTtsAdapter:
 
         kwargs["verbose"] = False
         kwargs["stream_return"] = False
-        kwargs.update(gen)
+        # Fill the IndexTTS-2 generation params the recipe doesn't set (notably
+        # repetition_penalty + num_beams); recipe-supplied values override.
+        kwargs.update({**DEFAULT_GENERATION, **gen})
         return kwargs
 
     @staticmethod
