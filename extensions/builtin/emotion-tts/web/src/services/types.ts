@@ -141,19 +141,26 @@ export interface ErrorEnvelope {
 }
 
 export type ProgressEvent =
-  | { type: "segment_started"; runId: string; globalIndex: number }
+  | { type: "segment_started"; runId: string; globalIndex: number; utteranceId?: string | undefined }
   | {
       type: "segment_completed";
       runId: string;
       globalIndex: number;
       durationMs: number;
       cacheHit: boolean;
-      audioArtifactRef: string;
+      // The producer (`dispatcher/events.rs`) emits `utterance_id` here, NOT an
+      // `audio_artifact_ref`. The artifact is fetched lazily from
+      // `/artifacts/{utteranceId}/download`, so the utterance id is the live
+      // handle a completed segment carries. `audioArtifactRef` is retained as
+      // optional only for forward compatibility / legacy fixtures.
+      utteranceId?: string | undefined;
+      audioArtifactRef?: string | undefined;
     }
   | {
       type: "segment_failed";
       runId: string;
       globalIndex: number;
+      utteranceId?: string | undefined;
       failureCategory: string;
       failureDetail: string;
     }

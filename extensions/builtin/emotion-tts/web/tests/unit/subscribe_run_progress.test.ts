@@ -15,7 +15,9 @@ interface CapturedListener {
 
 /** Records the named SSE listeners the real `subscribeSse` registers and lets
  * the test push a named frame straight through `subscribeRunProgress` — i.e.
- * the EventSource layer the function-boundary mocks in run_panel tests skip. */
+ * the EventSource layer the function-boundary mocks in run_panel tests skip.
+ * Frames carry the SNAKE_CASE wire shape the Rust producer actually emits, so
+ * this exercises the snake→camel normalization end-to-end. */
 class FakeEventSource {
   static last: FakeEventSource | null = null;
 
@@ -60,8 +62,8 @@ function job(jobId: string): StoryboardJob {
   return { jobId, label: jobId, segment: { text: jobId, voice_asset_id: "v1" } };
 }
 
-describe("subscribeRunProgress → reducer integration", () => {
-  it("flows a named segment_started frame through to applyEvent (item → generating)", () => {
+describe("subscribeRunProgress → reducer integration (snake_case wire)", () => {
+  it("flows snake_case frames through to drive an item queued → generating → done", () => {
     const jobs: StoryboardJob[] = [job("j0")];
     const chunks: RunChunk[] = [{ runId: "runA", jobs }];
     let items = initialItems(jobs);
@@ -71,16 +73,34 @@ describe("subscribeRunProgress → reducer integration", () => {
       items = applyEvent(items, chunks, event);
     });
 
+    const es = FakeEventSource.last;
+    expect(es).not.toBeNull();
+
     // Producer emits a 1-based global_index per run; chunk runA = [j0] → idx 1.
-    FakeEventSource.last?.dispatchNamed(
+    es?.dispatchNamed(
       "segment_started",
-      JSON.stringify({ type: "segment_started", runId: "runA", globalIndex: 1 }),
+      JSON.stringify({ type: "segment_started", run_id: "runA", global_index: 1 }),
+    );
+    expect(items.get("j0")?.status).toBe("generating");
+
+    es?.dispatchNamed(
+      "segment_completed",
+      JSON.stringify({
+        type: "segment_completed",
+        run_id: "runA",
+        global_index: 1,
+        duration_ms: 1234,
+        cache_hit: false,
+        audio_artifact_ref: "ref",
+      }),
     );
 
-    expect(items.get("j0")?.status).toBe("generating");
+    const item = items.get("j0");
+    expect(item?.status).toBe("done");
+    expect(item?.durationMs).toBe(1234);
   });
 
-  it("flows a named segment_completed frame through to a done item with duration", () => {
+  it("flows a snake_case segment_failed frame through to a failed item", () => {
     const jobs: StoryboardJob[] = [job("j0")];
     const chunks: RunChunk[] = [{ runId: "runA", jobs }];
     let items = initialItems(jobs);
@@ -90,19 +110,35 @@ describe("subscribeRunProgress → reducer integration", () => {
     });
 
     FakeEventSource.last?.dispatchNamed(
-      "segment_completed",
+      "segment_failed",
       JSON.stringify({
-        type: "segment_completed",
-        runId: "runA",
-        globalIndex: 1,
-        durationMs: 123,
-        cacheHit: false,
-        audioArtifactRef: "ref",
+        type: "segment_failed",
+        run_id: "runA",
+        global_index: 1,
+        failure_category: "synthesis",
+        failure_detail: "boom",
       }),
     );
 
     const item = items.get("j0");
-    expect(item?.status).toBe("done");
-    expect(item?.durationMs).toBe(123);
+    expect(item?.status).toBe("failed");
+    expect(item?.failureCategory).toBe("synthesis");
+  });
+
+  it("ignores a snake_case run_terminal frame in the reducer (no item regression)", () => {
+    const jobs: StoryboardJob[] = [job("j0")];
+    const chunks: RunChunk[] = [{ runId: "runA", jobs }];
+    let items = initialItems(jobs);
+
+    subscribeRunProgress("dep_x", "runA", (event: ProgressEvent) => {
+      items = applyEvent(items, chunks, event);
+    });
+
+    FakeEventSource.last?.dispatchNamed(
+      "run_terminal",
+      JSON.stringify({ type: "run_terminal", run_id: "runA", status: "completed" }),
+    );
+
+    expect(items.get("j0")?.status).toBe("queued");
   });
 });

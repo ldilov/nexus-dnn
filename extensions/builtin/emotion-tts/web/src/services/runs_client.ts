@@ -1,4 +1,5 @@
 import { apiFetch, subscribeSse } from "./http";
+import { parseProgressEvent } from "./run_progress_wire";
 import type {
   CreateRunRequest,
   CreateRunResponse,
@@ -108,6 +109,8 @@ export function subscribeRunProgress(
     `/deployments/${deploymentId}/runs/${runId}/progress`,
     onEvent,
     onError,
+    undefined,
+    parseProgressEvent,
   );
 }
 

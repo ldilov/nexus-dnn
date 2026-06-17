@@ -63,18 +63,25 @@ export const RUN_PROGRESS_EVENT_NAMES = [
   "run_terminal",
 ] as const;
 
+/** Translate a raw parsed SSE frame into the consumer's event type. Return
+ * null to drop the frame (unknown shape / type). Defaults to an identity cast
+ * so generic callers without a wire mismatch need not supply one. */
+export type SseParse<T> = (raw: unknown) => T | null;
+
 export function subscribeSse<T>(
   path: string,
   onEvent: (event: T) => void,
   onError?: (err: Event) => void,
   eventNames: readonly string[] = RUN_PROGRESS_EVENT_NAMES,
+  parse: SseParse<T> = (raw) => raw as T,
 ): () => void {
   const url = path.startsWith("http") ? path : `${EXTENSION_PREFIX}${path}`;
   const es = new EventSource(url);
   const handle = (ev: MessageEvent): void => {
     if (!ev.data) return;
     try {
-      onEvent(JSON.parse(ev.data) as T);
+      const parsed = parse(JSON.parse(ev.data));
+      if (parsed !== null) onEvent(parsed);
     } catch {
       /* drop malformed frame */
     }

@@ -23,6 +23,9 @@ export interface ItemState {
   etaMs?: number | undefined;
   durationMs?: number | undefined;
   failureCategory?: string | undefined;
+  // Set when a segment completes — the live handle the storyboard uses to
+  // play the just-rendered audio via `/artifacts/{utteranceId}/download`.
+  utteranceId?: string | undefined;
 }
 
 /** Rough fallback estimate for a single utterance before any have completed,
@@ -89,6 +92,7 @@ export function applyEvent(
         runId: event.runId,
         status: "done",
         durationMs: event.durationMs,
+        utteranceId: event.utteranceId,
         queuePosition: undefined,
         etaMs: undefined,
       });
@@ -176,6 +180,7 @@ export function toRunProgressMap(
       etaMs: it.etaMs,
       durationMs: it.durationMs,
       failureCategory: it.failureCategory,
+      utteranceId: it.utteranceId,
     });
   }
   return out;
