@@ -47,9 +47,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 /** Named SSE events the run-progress stream emits — these MUST stay in sync
- * with the producer's `RunEvent::sse_event_name()` (Rust). The browser's
- * `EventSource.onmessage` fires ONLY for default/`message` frames, so every
- * named frame needs its own `addEventListener`, else the UI never advances. */
+ * with the producer's wire names (Rust `dispatcher/events.rs` `SSE_*` consts,
+ * emitted from both `sse_event_name()` and the replay/poll paths in
+ * `router/runs.rs`). The browser's `EventSource.onmessage` fires ONLY for
+ * default/`message` frames, so every named frame needs its own
+ * `addEventListener`, else the UI never advances.
+ *
+ * Adding a producer event requires updating BOTH this list and the Rust
+ * producer — EventSource has no wildcard listener, so this explicit TS↔Rust
+ * list is intentional and structurally unlinked (no compile-time enforcement). */
 export const RUN_PROGRESS_EVENT_NAMES = [
   "segment_started",
   "segment_completed",

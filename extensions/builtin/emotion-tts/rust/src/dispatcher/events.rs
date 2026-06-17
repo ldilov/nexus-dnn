@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{RunId, UtteranceId};
 
+/// Wire names for the per-run SSE event field — the SINGLE SOURCE OF TRUTH for
+/// the producer side. Both `RunEvent::sse_event_name()` (live loop) and the
+/// late-subscribe replay / DB-poll fast-path in `router::runs` emit these, so a
+/// rename here propagates to every producer site. The frontend mirrors this
+/// list in `web/src/services/http.ts` (`RUN_PROGRESS_EVENT_NAMES`); that
+/// TS↔Rust link is structural, not enforced — keep both in sync.
+pub(crate) const SSE_SEGMENT_STARTED: &str = "segment_started";
+pub(crate) const SSE_SEGMENT_COMPLETED: &str = "segment_completed";
+pub(crate) const SSE_SEGMENT_FAILED: &str = "segment_failed";
+pub(crate) const SSE_RUN_TERMINAL: &str = "run_terminal";
+
 /// Events the dispatcher publishes per-run. Frontend's
 /// `subscribeRunProgress` already handles `segment_started`,
 /// `segment_completed`, `segment_failed`, and `run_terminal` — so the
@@ -46,10 +57,10 @@ impl RunEvent {
 
     pub fn sse_event_name(&self) -> &'static str {
         match self {
-            RunEvent::SegmentStarted { .. } => "segment_started",
-            RunEvent::SegmentCompleted { .. } => "segment_completed",
-            RunEvent::SegmentFailed { .. } => "segment_failed",
-            RunEvent::RunTerminal { .. } => "run_terminal",
+            RunEvent::SegmentStarted { .. } => SSE_SEGMENT_STARTED,
+            RunEvent::SegmentCompleted { .. } => SSE_SEGMENT_COMPLETED,
+            RunEvent::SegmentFailed { .. } => SSE_SEGMENT_FAILED,
+            RunEvent::RunTerminal { .. } => SSE_RUN_TERMINAL,
         }
     }
 }
@@ -62,7 +73,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sse_event_names_match_frontend_listener_list() {
+    fn sse_name_consts_match_frontend_listener_list() {
+        // Pins the single source of truth the producer (live loop + replay /
+        // DB-poll paths in router::runs) and the frontend listener list share.
+        assert_eq!(SSE_SEGMENT_STARTED, "segment_started");
+        assert_eq!(SSE_SEGMENT_COMPLETED, "segment_completed");
+        assert_eq!(SSE_SEGMENT_FAILED, "segment_failed");
+        assert_eq!(SSE_RUN_TERMINAL, "run_terminal");
+    }
+
+    #[test]
+    fn sse_event_name_returns_the_shared_consts() {
         let started = RunEvent::SegmentStarted {
             run_id: "r".into(),
             utterance_id: "u".into(),
@@ -86,9 +107,9 @@ mod tests {
             status: "completed".into(),
         };
 
-        assert_eq!(started.sse_event_name(), "segment_started");
-        assert_eq!(completed.sse_event_name(), "segment_completed");
-        assert_eq!(failed.sse_event_name(), "segment_failed");
-        assert_eq!(terminal.sse_event_name(), "run_terminal");
+        assert_eq!(started.sse_event_name(), SSE_SEGMENT_STARTED);
+        assert_eq!(completed.sse_event_name(), SSE_SEGMENT_COMPLETED);
+        assert_eq!(failed.sse_event_name(), SSE_SEGMENT_FAILED);
+        assert_eq!(terminal.sse_event_name(), SSE_RUN_TERMINAL);
     }
 }

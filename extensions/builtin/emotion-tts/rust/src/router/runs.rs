@@ -155,7 +155,7 @@ fn run_progress_stream(
                             "run_id": run_id.as_str(),
                             "status": row.status,
                         });
-                        yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+                        yield Ok(Event::default().event(crate::dispatcher::events::SSE_RUN_TERMINAL).data(payload.to_string()));
                         return;
                     }
                 }
@@ -169,7 +169,7 @@ fn run_progress_stream(
                 "status": "failed",
                 "error": "dispatcher did not pick up run within 5 minutes",
             });
-            yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+            yield Ok(Event::default().event(crate::dispatcher::events::SSE_RUN_TERMINAL).data(payload.to_string()));
             return;
         };
         // Late-subscribe replay: emit segment_started + segment_completed/
@@ -189,7 +189,7 @@ fn run_progress_stream(
                             "utterance_id": row.utterance_id.as_str(),
                             "global_index": row.global_index,
                         });
-                        yield Ok(Event::default().event("segment_started").data(p.to_string()));
+                        yield Ok(Event::default().event(crate::dispatcher::events::SSE_SEGMENT_STARTED).data(p.to_string()));
                     }
                     "completed" => {
                         let p = serde_json::json!({
@@ -199,7 +199,7 @@ fn run_progress_stream(
                             "global_index": row.global_index,
                             "duration_ms": row.duration_ms.unwrap_or(0),
                         });
-                        yield Ok(Event::default().event("segment_completed").data(p.to_string()));
+                        yield Ok(Event::default().event(crate::dispatcher::events::SSE_SEGMENT_COMPLETED).data(p.to_string()));
                     }
                     "failed" => {
                         let p = serde_json::json!({
@@ -210,7 +210,7 @@ fn run_progress_stream(
                             "failure_category": row.failure_category.unwrap_or_else(|| "unknown".into()),
                             "failure_detail": row.failure_detail,
                         });
-                        yield Ok(Event::default().event("segment_failed").data(p.to_string()));
+                        yield Ok(Event::default().event(crate::dispatcher::events::SSE_SEGMENT_FAILED).data(p.to_string()));
                     }
                     _ => {}
                 }
