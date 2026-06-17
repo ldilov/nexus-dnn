@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod capabilities;
 pub mod media;
 pub mod presets;
 pub mod render;
@@ -53,6 +54,7 @@ impl IntoResponse for Svi2Error {
 #[must_use]
 pub fn build_router(state: AppState) -> Router {
     Router::new()
+        .merge(capabilities::router())
         .merge(presets::router())
         .merge(settings::router())
         .merge(render::router())
@@ -65,6 +67,7 @@ pub fn build_router(state: AppState) -> Router {
 #[must_use]
 pub fn http_routes() -> Vec<String> {
     vec![
+        "/capabilities/attention".into(),
         "/presets".into(),
         "/settings".into(),
         "/render/start".into(),

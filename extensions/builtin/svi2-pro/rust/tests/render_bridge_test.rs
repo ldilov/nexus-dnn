@@ -27,6 +27,37 @@ fn app(
 }
 
 #[tokio::test]
+async fn attention_capabilities_proxies_worker() {
+    let pool = fixtures::memory_pool().await;
+    let router = app(pool, Arc::new(MockRenderFactory));
+
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri("/capabilities/attention")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body["backends"].is_array(),
+        "expected backends array, got: {body}"
+    );
+    assert_eq!(body["default"], "flash2");
+    let ids: Vec<&str> = body["backends"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|b| b["id"].as_str())
+        .collect();
+    assert!(ids.contains(&"sdpa"), "sdpa missing from {ids:?}");
+    assert!(ids.contains(&"flash2"), "flash2 missing from {ids:?}");
+}
+
+#[tokio::test]
 async fn presets_route_proxies_worker() {
     let pool = fixtures::memory_pool().await;
     let router = app(pool, Arc::new(MockRenderFactory));

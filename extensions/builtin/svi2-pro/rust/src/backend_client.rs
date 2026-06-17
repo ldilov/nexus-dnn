@@ -12,6 +12,7 @@ pub mod methods {
     pub const RENDER_START: &str = "svi2.video.render.start";
     pub const RENDER_CANCEL: &str = "svi2.video.render.cancel";
     pub const HANDSHAKE: &str = "handshake";
+    pub const ATTENTION_CAPABILITIES: &str = "svi2.attention.capabilities";
 }
 
 #[derive(Clone)]

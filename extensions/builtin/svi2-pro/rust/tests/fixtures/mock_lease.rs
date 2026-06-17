@@ -55,6 +55,17 @@ impl BackendRuntimeLease for MockRenderLease {
                 "presets": [{ "id": "svi-canonical", "label": "Canonical", "description": "", "params": {} }]
             })),
             "svi2.video.render.cancel" => Ok(json!({ "cancelled": true })),
+            "svi2.attention.capabilities" => Ok(json!({
+                "sm": [12, 0],
+                "cuda_available": true,
+                "default": "flash2",
+                "auto_chain": ["flash2", "sdpa"],
+                "backends": [
+                    { "id": "sdpa", "installed": true, "supported": true, "reason": null, "min_arch": [0, 0], "needs_triton": false, "bf16_only": false },
+                    { "id": "flash2", "installed": true, "supported": true, "reason": null, "min_arch": [8, 0], "needs_triton": false, "bf16_only": false },
+                    { "id": "sage3_fp4", "installed": true, "supported": true, "reason": null, "min_arch": [12, 0], "needs_triton": true, "bf16_only": true }
+                ]
+            })),
             "svi2.video.render.start" => {
                 emit(
                     &self.tx,
