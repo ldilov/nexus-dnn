@@ -66,6 +66,26 @@ _SWITCH_BOUNDARY = 0.9
 _NUM_INFERENCE_STEPS = 50
 _SIGMA_SHIFT = 5.0
 
+_TEACACHE_MULTIPLIER_THRESH: dict[float, float] = {
+    1.0: 0.0,
+    1.25: 0.04,
+    1.5: 0.08,
+    1.75: 0.115,
+    2.0: 0.15,
+    2.25: 0.19,
+    2.5: 0.23,
+}
+
+
+def _resolve_teacache_thresh(params: dict[str, Any]) -> float:
+    raw = params.get("teacache_thresh")
+    if raw is not None:
+        return max(0.0, float(raw))
+    mult = float(params.get("teacache_multiplier", 1.0))
+    keys = list(_TEACACHE_MULTIPLIER_THRESH)
+    nearest = min(keys, key=lambda k: abs(k - mult))
+    return _TEACACHE_MULTIPLIER_THRESH[nearest]
+
 
 _MODE_IMAGE_TO_VIDEO = "image_to_video"
 _MODE_TEXT_TO_VIDEO = "text_to_video"
@@ -199,7 +219,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "rife_model": params.get("rife_model"),
         "rife_weights": params.get("rife_weights"),
         "blocks_to_swap": int(params.get("blocks_to_swap", 40)),
-        "teacache_thresh": float(params.get("teacache_thresh", 0.0)),
+        "teacache_multiplier": float(params.get("teacache_multiplier", 1.0)),
+        "teacache_thresh": _resolve_teacache_thresh(params),
         "motion_scale_t": float(params.get("motion_scale_t", 1.0)),
         "motion_scale_h": float(params.get("motion_scale_h", 1.0)),
         "motion_scale_w": float(params.get("motion_scale_w", 1.0)),

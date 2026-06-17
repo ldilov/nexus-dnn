@@ -45,3 +45,18 @@ def test_schema_accepts_attention_null():
 def test_schema_accepts_attention_omitted():
     schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
     jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"]}, schema)
+
+
+def test_schema_accepts_teacache_multiplier():
+    schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
+    jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"], "teacache_multiplier": 1.5}, schema)
+
+
+def test_schema_accepts_teacache_multiplier_null():
+    schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
+    jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"], "teacache_multiplier": None}, schema)
+
+
+def test_schema_accepts_teacache_thresh_raw():
+    schema = json.loads((ROOT / "schemas/svi2_render_params.schema.json").read_text())
+    jsonschema.validate({"ref_image_path": "x.png", "prompts": ["a"], "teacache_thresh": 0.1}, schema)

@@ -241,6 +241,13 @@
     "attention": {
       "type": ["string", "null"],
       "default": null
+    },
+    "teacache_multiplier": {
+      "type": ["number", "null"],
+      "default": 1.0
+    },
+    "teacache_thresh": {
+      "type": ["number", "null"]
     }
   }
 }
