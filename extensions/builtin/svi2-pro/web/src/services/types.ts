@@ -45,6 +45,7 @@ export interface RenderParams {
   pixel_re_encode?: boolean;
   num_motion_frame?: number;
   blocks_to_swap?: number;
+  teacache_multiplier?: number;
   attention?: string;
   seed?: number;
   seed_multiplier?: number;
