@@ -7,6 +7,7 @@ import { tierSummary } from "../../../domain/tier_summary";
 import { isFlf2vMode, type ValidationIssue } from "../../../domain/validation";
 import { useRenderRequest } from "../../../store/render_request_store";
 import type { RenderParams } from "../../../services/types";
+import { AttentionSelect } from "./attention_select";
 import * as styles from "./tier_form.css";
 
 interface TierFormProps {
@@ -40,6 +41,7 @@ export function TierForm({ issues }: TierFormProps): ReactElement {
             badge={tier.defaultCollapsed ? <Badge tone="neutral">advanced</Badge> : undefined}
           >
             <div className={styles.fieldGrid}>
+              {tier.id === "perf" && <AttentionSelect />}
               {fields.map((spec) => {
                 const lockReason = flf2v ? FLF2V_LOCKED_FIELDS[spec.key] : undefined;
                 return (

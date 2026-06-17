@@ -17,6 +17,7 @@ export function defaultParamsFromSettings(settings: ExtensionSettings): RenderPa
     prompts: [""],
     last_image_path: null,
     blocks_to_swap: settings.blocksToSwap,
+    attention: settings.attentionBackend,
     interpolate_method: settings.interpolateMethod,
     interpolate_fps: settings.interpolateFps,
     models_dir: settings.modelsDir || undefined,

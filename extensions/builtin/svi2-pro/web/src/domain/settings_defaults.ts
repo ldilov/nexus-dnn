@@ -4,6 +4,7 @@ export const ATTENTION_OPTIONS = [
   { value: "auto", label: "Auto (flash2 → sdpa)" },
   { value: "sdpa", label: "SDPA (always works)" },
   { value: "flash2", label: "Flash Attention 2 (recommended)" },
+  { value: "flash3_fp4", label: "FlashAttention 3 FP4" },
   { value: "sage2", label: "SageAttention 2" },
   { value: "sage3_fp4", label: "SageAttention 3 FP4" },
 ] as const;

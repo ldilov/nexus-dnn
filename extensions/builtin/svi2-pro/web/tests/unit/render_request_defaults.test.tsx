@@ -1,11 +1,13 @@
 import { cleanup, render } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, describe, expect, test } from "vitest";
+import { defaultParamsFromSettings } from "../../src/domain/build_params";
+import { DEFAULT_SETTINGS } from "../../src/domain/settings_defaults";
 import {
   RenderRequestProvider,
   useRenderRequest,
 } from "../../src/store/render_request_store";
-import type { PresetSummary } from "../../src/services/types";
+import type { ExtensionSettings, PresetSummary } from "../../src/services/types";
 
 const canonical: PresetSummary = {
   id: "svi-canonical",
@@ -121,5 +123,28 @@ describe("preset switching never leaks the previous preset's keys", () => {
     expect(captured?.params.requires_last_image).toBe(true);
     expect(captured?.params.last_image_path).toBe("/up/end.png");
     expect(captured?.params.num_clips).toBe(1);
+  });
+});
+
+describe("defaultParamsFromSettings seeds attention from attentionBackend", () => {
+  test("uses the default setting (flash2)", () => {
+    const params = defaultParamsFromSettings(DEFAULT_SETTINGS);
+    expect(params.attention).toBe("flash2");
+  });
+
+  test("propagates a non-default attentionBackend", () => {
+    const settings: ExtensionSettings = { ...DEFAULT_SETTINGS, attentionBackend: "sage3_fp4" };
+    const params = defaultParamsFromSettings(settings);
+    expect(params.attention).toBe("sage3_fp4");
+  });
+
+  test("store initialises params.attention from initialSettings.attentionBackend", () => {
+    const settings: ExtensionSettings = { ...DEFAULT_SETTINGS, attentionBackend: "sdpa" };
+    render(
+      <RenderRequestProvider initialSettings={settings}>
+        <Probe />
+      </RenderRequestProvider>,
+    );
+    expect(captured?.params.attention).toBe("sdpa");
   });
 });
