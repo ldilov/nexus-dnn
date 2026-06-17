@@ -97,9 +97,6 @@ export const backendRuntimesFetcher = ([, params]: [
 
 /* -----------------------------------------------------------------------
  * Install lifecycle — T087a (delete), T081 (start), T082 (stop),
- * T083 (restart) client helpers. SSE progress uses the native
- * `EventSource` rather than this module's fetch helper since the
- * response isn't a JSON envelope.
  * ------------------------------------------------------------------- */
 
 export interface InstallRequest {

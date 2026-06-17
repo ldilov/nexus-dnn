@@ -17,8 +17,6 @@ import {
 
 // ─── Fetcher ──────────────────────────────────────────────────────────────
 // SWR needs a fetcher that receives the cache key and returns a Promise.
-// We delegate to the existing `apiFetch` so the envelope contract and error
-// surface stay identical across callers.
 
 export const apiSwrFetcher = <T,>(path: string) => apiFetch<T>(path);
 
@@ -91,10 +89,6 @@ export function useDeploymentsList(
 
 // ─── Deployment detail ────────────────────────────────────────────────────
 //
-// Backend exposes `GET /deployments/{id}` which returns a single
-// `DeploymentRow` — shape identical to a list entry. The detail view needs
-// the same row so it can resolve the deployment's source extension and
-// current revision's effective workflow.
 
 export function useDeployment(
   deploymentId: string | null | undefined,

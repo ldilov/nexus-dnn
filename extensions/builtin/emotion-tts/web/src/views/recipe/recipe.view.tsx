@@ -88,8 +88,6 @@ function stripRecipeMeta(
 ): Record<string, unknown> {
   // The namespaced `__recipe` blob is a sidecar for UI settings (quickMode,
   // cachePolicy) and must not bleed into the generation-overrides payload
-  // sent to the worker. Build a fresh object excluding that key without
-  // tripping the unused-binding lint.
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(overrides)) {
     if (key === RECIPE_META_KEY) continue;
@@ -151,9 +149,6 @@ export function RecipeView(): JSX.Element {
   });
   // Mirror the deployment's default-voice id locally so `QuickVoicePicker`
   // updates propagate without a full loader refetch. `useLoaderData` only
-  // re-runs on route revalidation; until then the picker would persist a
-  // change to the backend but the recipe's `unmappedCount` + `Quick voice`
-  // diagnostic would still observe the stale loader value (HIGH-3).
   const [defaultVoiceAssetId, setDefaultVoiceAssetId] = useState<string | null>(
     deployment.defaultVoiceAssetId ?? null,
   );
@@ -289,9 +284,6 @@ export function RecipeView(): JSX.Element {
 
   // Debounced PATCH: persist recipe-level settings (output format, speed,
   // generation overrides, plus the namespaced `__recipe` sidecar holding
-  // quickMode + cachePolicy) so reloading the page rehydrates the user's
-  // last-known choices. Skips the very first run to avoid bouncing the
-  // loader-seeded values back to the server.
   const isFirstPersistRef = useRef(true);
   useEffect(() => {
     if (isFirstPersistRef.current) {
@@ -373,9 +365,6 @@ export function RecipeView(): JSX.Element {
   const unmappedCount = useMemo(() => {
     // Quick-mode with a default voice covers every unmapped character;
     // the dispatcher (`prepare.rs::prepare`) falls back to the deployment
-    // default when no character mapping resolves. Without a default voice
-    // unmapped lines would fail at run-creation time, so still count them
-    // as unmapped for the pre-flight UI.
     if (quickMode && defaultVoiceAssetId) return 0;
     return characters.filter((c) => !mappingsByLower.has(c.toLowerCase())).length;
   }, [characters, mappingsByLower, quickMode, defaultVoiceAssetId]);

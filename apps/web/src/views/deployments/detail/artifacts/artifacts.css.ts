@@ -128,7 +128,6 @@ export const actionsCell = style([
 
 /* Anchor variant of the icon button — used for the <a download> link.
  * Visually mirrors a Button variant="ghost" size="sm" iconOnly so the
- * three artifact-row controls (play / download / delete) share the same
  * 32px round-icon affordance. */
 export const iconLink = style({
   display: "inline-flex",

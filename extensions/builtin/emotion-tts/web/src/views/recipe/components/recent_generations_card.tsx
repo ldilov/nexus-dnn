@@ -153,11 +153,6 @@ function useRecentUtterances(deploymentId: string): UseRecentResultWithTick {
 function useVoicesByRun(deploymentId: string, refetchTick: number): Map<string, string> {
   // `voiceAssetId → display name` lookup for the recent-generations card.
   // The artifacts endpoint already returns each utterance's resolved voice
-  // id (see `recipe.view`'s server contract); this map is purely a
-  // client-side denormalisation so we can render a name without a separate
-  // request per row. Refreshed alongside the artifacts refetch
-  // (busy → idle transitions, manual Refresh) so a freshly-uploaded voice
-  // is labelable without a page reload.
   const [byId, setById] = useState<Map<string, string>>(() => new Map());
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +195,6 @@ export function RecentGenerationsCard({
 
   // Drop the playing row when refresh starts a new fetch — if the previously
   // playing utterance is gone after refresh, the <audio> would otherwise
-  // unmount mid-play with a stale id sitting in state.
   const handleRefresh = useCallback((): void => {
     setPlayingId(null);
     setActionError(null);

@@ -3,39 +3,6 @@ import { vars } from "../../theme/contract.css";
 
 /* ── Button — canonical contract (host) ────────────────────────────────────
  * One primitive for every push-button affordance in the host shell.
- *
- * Shape ........ rounded-rect (vars.radius.control) by default. Pill is
- *                reserved for status chips and floating capsule toolbars,
- *                NOT regular buttons. The `iconOnly` variant DOES use a
- *                circular shape — a single-glyph icon button has no text
- *                anchor and reads more cleanly as a circle.
- *
- * Sizes ........ xs (24px) | sm (32px) | md (40px) | lg (48px). The host
- *                also ships a `control.heightSm/Md/Lg` token used by form
- *                controls (selects, inputs) at 28/32/40 — the Button
- *                primitive intentionally does NOT reuse those because
- *                buttons need a slightly larger touch target than passive
- *                inputs (24/32/40/48 four-step scale).
- *
- * Variants ..... primary | secondary | ghost | danger.
- *                `tertiary | success | accent` are kept as aliases for
- *                back-compat; new code must use the four canonical names.
- *
- * Padding ...... fluid via vars.space.inset* tokens; matches the existing
- *                inset rhythm so the primitive composes with other tokens.
- *
- * States ....... hover (subtle bg shift), focus-visible (accent ring 2px
- *                offset), disabled (opacity 0.55 + cursor not-allowed),
- *                aria-busy (spinner inherits currentColor; disabled).
- *
- * Carve-outs ... StatusChip, sticky-action-bar floating capsule, tab
- *                triggers, scroll-to-top FAB. They are NOT regular
- *                buttons and do NOT use this primitive.
- *
- * Mirror ....... extensions/builtin/emotion-tts/web/src/components/button
- *                ships the same contract for the extension surface. The
- *                two primitives MUST stay in visual sync — same variant
- *                names, same size names, same shape rule.
  * ─────────────────────────────────────────────────────────────────────── */
 
 export const buttonRecipe = recipe({

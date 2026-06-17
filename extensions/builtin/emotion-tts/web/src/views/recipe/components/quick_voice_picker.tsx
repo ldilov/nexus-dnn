@@ -101,7 +101,6 @@ export function QuickVoicePicker({
 
   // Group by `kind`: speakers go to "Uploaded" (the user-uploaded refs),
   // other kinds (emotion / mixed) go to "Other". Built-in presets aren't in
-  // the data model yet — when they are, route them by a `source` field.
   const grouped = useMemo(() => {
     const uploaded: VoiceAsset[] = [];
     const other: VoiceAsset[] = [];

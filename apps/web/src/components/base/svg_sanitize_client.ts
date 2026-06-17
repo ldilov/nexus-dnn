@@ -1,13 +1,5 @@
 // Client-side SVG re-sanitizer (defense-in-depth mirror of the server's
 // allow-list validator, spec 019 FR-I03 + contracts/module-icon.md §1).
-//
-// The server has already sanitized the SVG at install time; this pass defends
-// against any mid-flight tampering and also against legacy extensions that
-// were installed before the server validator landed.
-//
-// Strategy: parse via DOMParser into a detached document, walk every element,
-// reject the whole SVG on ANY forbidden element/attribute (reject-on-unknown,
-// never strip — a silently-stripped attribute is a footgun).
 
 const ALLOWED_ELEMENTS = new Set([
   "svg",

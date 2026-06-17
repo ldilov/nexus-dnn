@@ -11,10 +11,6 @@ interface LoaderData {
 
 // Mirror of the host's `apps/web/src/types/host_navigate.ts` contract.
 // The extension cannot import host source directly (separate bundle), so the
-// constant + payload shape are duplicated here. Treat the host file as the
-// source of truth — both must move together until a shared contracts package
-// exists. TODO(nexus-host-contracts): publish a workspace package both sides
-// can consume.
 const NEXUS_HOST_NAVIGATE = "nexus-host-navigate";
 
 interface DeploymentDetailNavigateDetail {
@@ -24,9 +20,6 @@ interface DeploymentDetailNavigateDetail {
 
 // Hash-router target for ctrl-/middle-click "open in new tab" semantics.
 // Plain-click navigation goes through the dispatched event, which decouples
-// this extension from any future host route change. The literal here is
-// reachable ONLY via the browser's native link handling — see the boundary
-// note in `apps/web/src/types/host_navigate.ts`.
 function buildHostDeploymentHref(deploymentId: string): string {
   return `#/deployments/${encodeURIComponent(deploymentId)}`;
 }
@@ -53,10 +46,6 @@ function navigateToHostDeployment(
   };
   // CustomEvent without `cancelable: true` cannot signal "no listener" via
   // the dispatchEvent return value — it always returns true. Plain dispatch
-  // is sufficient: when running embedded in the host shell, the host's
-  // boot-time listener picks this up. When the extension runs without a
-  // host (preview / standalone test), the click is a silent no-op and the
-  // browser's native href fallback covers ctrl-/middle-click.
   window.dispatchEvent(
     new CustomEvent<DeploymentDetailNavigateDetail>(NEXUS_HOST_NAVIGATE, {
       detail,

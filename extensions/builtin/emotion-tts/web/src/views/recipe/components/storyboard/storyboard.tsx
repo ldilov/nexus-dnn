@@ -70,7 +70,6 @@ interface StoryboardProps {
   jobProgress?: ReadonlyMap<string, RunProgress> | undefined;
   // Deployment id used to build artifact URLs for previewing rendered segments.
   // Optional so the storyboard renders standalone (e.g. in tests) — Preview is
-  // gated off when absent.
   deploymentId?: string | undefined;
 }
 
@@ -151,14 +150,10 @@ export function Storyboard({
 
   // Retire the cast queue once a generation run finishes successfully — the
   // produced segments live in the Artifacts tab now, so the storyboard starts
-  // fresh instead of re-queueing the same phrases on the next Generate.
   useEffect(() => subscribeRunCompleted(() => setJobs([])), []);
 
   // Voices load async (after mount), so the draft voice can be seeded as "".
   // Re-point it at a real voice once they arrive — otherwise a cast made
-  // before the voice list resolves stores an empty voiceId and the card
-  // false-flags "voice removed". When there's exactly one voice, also heal any
-  // already-cast jobs that point at a missing/empty voice (unambiguous).
   useEffect(() => {
     if (voices.length === 0) return;
     setDraftVoice((cur) => (voices.some((v) => v.id === cur) ? cur : (voices[0] as Voice).id));
@@ -332,7 +327,6 @@ export function Storyboard({
   const labels = useMemo(() => segmentLabels(paragraphs, jobs), [paragraphs, jobs]);
   // The runnable queue, in script order, carried as stably-identified jobs so
   // the run panel can fan them out and stream per-item progress back. A job is
-  // runnable only when its voice still exists and its range has text.
   const queueJobs = useMemo<StoryboardJob[]>(
     () =>
       sortedJobs
@@ -469,7 +463,6 @@ export function Storyboard({
                 const v = job ? voiceById(voices, job.voiceId) : null;
                 // Highlight runs continuously: a contiguous span of words sharing
                 // one job (or one selection) is rounded only at its ends so it
-                // reads as one phrase, not per-word pills.
                 const groupKey = groupKeyOf(seg.id, jobBySeg, selection);
                 const prevKey = groupKeyOf(p.segs[si - 1]?.id, jobBySeg, selection);
                 const nextKey = groupKeyOf(p.segs[si + 1]?.id, jobBySeg, selection);
@@ -688,7 +681,6 @@ export function Storyboard({
             const voiceMissing = isVoiceMissing(j);
             // Live run progress (if any) drives the VISUAL status so cards flip
             // queued → rendering → ready/failed without a refetch; the cast
-            // editor's own summary keeps using j.status.
             const live = jobProgress?.get(j.id);
             const visualStatus: JobStatus = live ? runProgressToJobStatus(live) : j.status;
             const meta = STATUS_META[visualStatus];
@@ -697,8 +689,6 @@ export function Storyboard({
             const text = rangeText(paragraphs, j.segIds);
             // Preview is available only once the segment is rendered AND we have
             // a real artifact handle to play (segment_completed carries the
-            // utterance id). Otherwise the control is disabled so it never
-            // appears clickable with nothing to play.
             const previewUrl =
               visualStatus === "ready"
                 ? artifactAudioUrl(deploymentId, live?.utteranceId)

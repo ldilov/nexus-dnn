@@ -31,7 +31,6 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
 
   // React 19 Actions — each async user intent gets a single hook that owns
   // its pending state + last-error. Replaces three separate
-  // `useState<boolean>` spinners plus manual try/catch.
   const [, deployAction, deploying] = useActionState(async () => {
     try {
       const result = await deployFromModule(moduleId, {});

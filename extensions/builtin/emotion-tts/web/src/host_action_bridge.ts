@@ -140,7 +140,6 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
     } catch {
       // Surface nothing here; the recipe view's banner still shows
       // detailed errors when the user is on that tab. The host shell
-      // simply un-spins the button.
     } finally {
       inFlightLifecycle = false;
       dispatchPrimaryState();
@@ -152,7 +151,6 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
 
   // Kick off the poll loop. Always emit a fresh `ext-action-state` even
   // if the badge hasn't changed — it's cheap and keeps the host in
-  // sync if it mounted late.
   let cancelled = false;
   const poll = async () => {
     try {
@@ -169,7 +167,6 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
 
   // Declare immediately so the host doesn't have to dispatch a request
   // race-free (it still does, but this covers the case where the host
-  // ref attaches after the bridge mounts).
   dispatchDeclare();
 
   return {

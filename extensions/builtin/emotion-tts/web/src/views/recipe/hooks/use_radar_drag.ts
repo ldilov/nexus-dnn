@@ -233,7 +233,6 @@ export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
       if (!nearest) return;
       // Dead-zone: clicks more than INFLUENCE_CONE_DEG off any spoke are ignored,
       // matching the design reference. No ping, no value update — avoids the
-      // "I clicked the gap, why did Sad change?" surprise.
       if (bestDelta > INFLUENCE_CONE_DEG) return;
       event.preventDefault();
       // Convert client→SVG-local coords for the ping. The viewBox matches `size`

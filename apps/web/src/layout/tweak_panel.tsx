@@ -16,7 +16,6 @@ import * as styles from "./tweak_panel.css";
 
 // Discoverability hotkey — macOS preferences convention. Cross-platform
 // `event.metaKey || event.ctrlKey` so Windows / Linux operators get the
-// same affordance via Ctrl+,.
 const HOTKEY_LABEL = "⌘,";
 
 function isHotkey(e: KeyboardEvent): boolean {
@@ -80,9 +79,6 @@ export function TweakPanel() {
 
   // Portal positioning: compute the popover anchor from the trigger's
   // bounding rect on every open + on resize/scroll while open. Anchoring
-  // via document.body escapes the workspace shell's `overflow: hidden`
-  // (which was clipping the popover to a thin sliver against the right
-  // viewport edge). Right-aligned to the trigger; 8px gap below.
   useLayoutEffect(() => {
     if (!open) return;
     const update = (): void => {
@@ -152,7 +148,6 @@ export function TweakPanel() {
 
   // Global hotkey — open or focus the panel from anywhere via ⌘, / Ctrl+,.
   // Skipped when the user is typing in a text input so it doesn't fight
-  // a real comma keystroke.
   useEffect(() => {
     const onHotkey = (e: KeyboardEvent) => {
       if (!isHotkey(e)) return;

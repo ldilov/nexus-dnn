@@ -68,11 +68,9 @@ export const dependenciesResponseSchema = z.object({
   total_remaining_bytes: z.number(),
   // True while an install run is active host-side. Lets a freshly (re)mounted
   // page know it's still installing without waiting for the next WS event.
-  // Optional for tolerance against older host payloads (treated as false).
   install_active: z.boolean().optional(),
   // True when no run is active but a paused, partially-downloaded artifact
   // exists (e.g. a host restart parked an in-flight download). Drives the
-  // "Resume install" affordance; installing continues from the partial bytes.
   install_resumable: z.boolean().optional(),
 });
 export type DependenciesResponse = z.infer<typeof dependenciesResponseSchema>;

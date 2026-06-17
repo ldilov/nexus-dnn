@@ -98,7 +98,6 @@ export function groupByExtension<T extends Groupable>(
 
     // Unknown / missing extension_id → User Workflows bucket. Orphan rows
     // (extension_id set but extension no longer installed) also land here,
-    // annotated so the card can show a "missing source: X" badge.
     if (extId === null || !extById.has(extId)) {
       const annotated: WithOrphan<T> =
         extId === null ? item : { ...item, __orphan: { missingExtensionId: extId } };

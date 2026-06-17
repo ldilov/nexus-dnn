@@ -31,8 +31,6 @@ self.addEventListener("activate", (event) => {
       await self.clients.claim();
       // Reload every controlled window so a freshly-activated worker shows the
       // new build immediately — even pages whose JS predates the
-      // controllerchange-reload listener. `activate` only fires on a real
-      // update (new worker bytes), so this cannot loop on ordinary loads.
       const wins = await self.clients.matchAll({ type: "window" });
       await Promise.all(
         wins.map((client) =>

@@ -12,10 +12,6 @@ import * as css from "./sticky_action_bar.css";
 
 // Mirrors `host_action_bridge.ts` — invoking the bridge instead of calling
 // startRuntime/stopRuntime directly keeps the host shell's "Start runtime"
-// button and this floating toolbar in sync. The bridge is the single source
-// of truth for runtime lifecycle: it flips `inFlightLifecycle = true` and
-// dispatches `ext-action-state` to the host shell on click, then again when
-// the lifecycle settles.
 const EXT_ACTION_INVOKE = "ext-action-invoke";
 const ACTION_RUN = "emotion-tts.run";
 
@@ -54,7 +50,6 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   const [generateBusy, setGenerateBusy] = useState(false);
   // Health updates every 4s; reading it from a ref inside `onRunClick`
   // means the callback closure stays stable and always sees the most recent
-  // badge — no flicker when a click lands between polls (I-4).
   const healthRef = useRef<RuntimeHealth | null>(null);
 
   useEffect(() => {
@@ -98,8 +93,6 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
 
   // Clear the optimistic spinner once the next health poll has observed a
   // lifecycle-transition badge (starting / installing / stopping). At that
-  // point the badge-driven spinner takes over, so we don't double-render
-  // the loading state if the bridge resolves before the poll lands.
   useEffect(() => {
     if (runtimeBusy && (isStarting || isRunning)) {
       setRuntimeBusy(false);
@@ -109,16 +102,10 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   const onRunClick = useCallback((): void => {
     // Delegate to the host action bridge so the host shell's "Start runtime"
     // button and this toolbar reflect the same in-flight state instantly —
-    // the bridge dispatches `ext-action-state` synchronously on click,
-    // before the network call resolves. The bridge owns the actual
-    // start/stop request; we just optimistically flash the local spinner so
-    // the user gets immediate feedback before the next health poll lands.
     setRuntimeBusy(true);
     invokeRuntimeAction();
     // Clear the local optimistic flag once the next health poll observes
     // the lifecycle transition (badge moves into starting/installing/running
-    // /stopping/stopped — anything other than the click-time state). The
-    // existing health-poll effect handles the actual badge updates.
   }, []);
 
   const runtimeLabel = isRunning

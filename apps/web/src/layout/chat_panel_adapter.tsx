@@ -437,10 +437,6 @@ export function ChatPanelAdapter({
 
   // Refresh the picker the moment a download completes in any view.
   // The Model Foundry broadcasts a `nexus:models-changed` event when a
-  // `DownloadJob` transitions to `downloaded` — see
-  // `services/model_events.ts`. Without this listener the user has to
-  // refocus the window or reopen the load dialog before the picker
-  // sees the newly-installed model.
   useEffect(() => {
     const ctrl = new AbortController();
     const unsubscribe = subscribeModelsChanged(() => {

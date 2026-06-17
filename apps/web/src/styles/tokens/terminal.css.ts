@@ -130,8 +130,6 @@ export const terminal = createGlobalTheme(":root", {
 
 // `prefers-reduced-motion` overrides: suspend continuous animation cycles for
 // non-information-carrying motion. Cursor pulse rates are NOT overridden here
-// because the rate encodes system load (FR-064) — the Cursor component itself
-// reduces amplitude in reduced-motion mode while preserving cycle length.
 globalStyle(":root", {
   "@media": {
     "(prefers-reduced-motion: reduce)": {

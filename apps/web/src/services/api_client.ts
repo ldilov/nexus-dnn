@@ -466,7 +466,6 @@ export function fetchLoadState(backendId: string): Promise<LoadStateDto> {
 
 // Spec 011 US5: host-level parameter catalog for a runtime family.
 // Loosely typed — the catalog evolves on its own cadence and the UI parses
-// progressively, dropping unrecognized fields.
 export interface ParameterCatalogResponse {
   family: string;
   snapshot_date: string;
@@ -570,11 +569,9 @@ export function hfRepoDetail(repoId: string): Promise<unknown> {
 
 // Per-extension model lifecycle. `extensionId` must match an extension
 // that registered the huggingface capability at app-assembly time;
-// the host returns 404 otherwise.
 
 // Host-managed model store (spec 017). The canonical source of truth for
 // what's installed on this host, aggregated across every extension that
-// depends on a model.
 export interface HostModelView {
   readonly install_id: string;
   readonly family: string;
@@ -717,7 +714,6 @@ export function patchExtensionHyperparameters(
 
 // =============================================================================
 // Modules surface + ZIP install
-// =============================================================================
 
 export type ModuleIcon =
   | { kind: "symbol"; value: string }
@@ -763,13 +759,9 @@ export interface ModuleSummary {
   installed_at?: string | null;
   // Workflow id backing the module's "Graph" projection on the Blueprint
   // view. Frontend fetches GET /api/v1/workflows/{id} when rendering the
-  // Workflow tab; null for Blank Module.
   workflow_id?: string | null;
   // Extension lifecycle status — `"active"`, `"disabled"`, `"error"`, etc.
   // The Blueprint view gates Recipe + Workflow Graph tabs on `"active"`
-  // so a user landing on a disabled/errored module sees the failure
-  // state instead of a half-rendered surface that 404s on every
-  // extension API call. Null for user/blank modules.
   extension_status?: string | null;
 }
 

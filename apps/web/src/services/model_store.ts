@@ -11,7 +11,6 @@ import { apiFetch } from "./api_client";
 
 // ---------------------------------------------------------------------------
 // Types (mirror the Rust DTOs in `crates/nexus-api/src/dto/model_store.rs`)
-// ---------------------------------------------------------------------------
 
 export type Format =
   | "gguf"
@@ -183,7 +182,6 @@ export interface DownloadJob {
 
 // ---------------------------------------------------------------------------
 // URL / query handling
-// ---------------------------------------------------------------------------
 
 export interface ParsedSearchParams {
   q: string;
@@ -333,7 +331,6 @@ export function serializeSearchParams(p: ParsedSearchParams): URLSearchParams {
 
 // ---------------------------------------------------------------------------
 // Fetchers
-// ---------------------------------------------------------------------------
 
 export function fetchBackends(signal?: AbortSignal): Promise<{
   backends: BackendCapability[];

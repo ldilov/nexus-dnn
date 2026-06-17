@@ -3,7 +3,6 @@ import { draftStorageKey } from "./draft_uuid";
 export interface DraftEnvelope {
   // Where this draft was forked from. Shape: `user:blank`, `ext:{extension_id}`,
   // or `user:{workflow_id}`. Used by the materialize handler to pick a
-  // branch (new workflow row vs. reuse existing extension/user source).
   source_module_id: string;
   // Display name of the fork source, for the draft banner ("Editing draft
   // forked from Cinema Engine. First save creates a new deployment.").

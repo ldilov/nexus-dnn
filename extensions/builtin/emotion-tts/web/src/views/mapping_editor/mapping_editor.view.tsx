@@ -123,7 +123,6 @@ export function MappingEditorView(): JSX.Element {
         setMappings((prev) => prev.map((m) => (m.mappingId === next.mappingId ? next : m)));
         // Surface a brief inline confirmation specifically when the rename
         // landed — the field auto-saves on blur and Enter, but without a
-        // signal users (rightfully) suspect nothing happened.
         if (Object.prototype.hasOwnProperty.call(patch, "characterName")) {
           flashSavedHint(next.mappingId);
         }
@@ -388,8 +387,6 @@ export function MappingEditorView(): JSX.Element {
               if (!trimmed) return;
               // Comparing against `selected.characterName` would be a no-op
               // because `onNameChange` already mutated it. Always persist
-              // the trimmed value — the backend patch is idempotent, so
-              // saving the same name twice is harmless.
               void persistSelected({ characterName: trimmed });
             }}
             savedHint={savedHintFor === selected.mappingId}

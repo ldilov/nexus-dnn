@@ -17894,10 +17894,6 @@ function L1(t) {
 }
 //! Desired concurrent-worker count for the next runtime start.
 //!
-//! Shared between the recipe header's worker selector and the host-action
-//! bridge, which performs the actual `startRuntime`. The host re-clamps to
-//! `[1, EMOTIONTTS_MAX_WORKERS]` regardless of what the UI sends, so this is
-//! only a preference, never a trust boundary.
 let $1 = 1;
 function c2() {
   return $1;
@@ -17907,7 +17903,6 @@ function A0(t) {
 }
 //! Whether the next runtime start should warm (preload models on) all active
 //! workers. Default on; the header's "Preload models on start" toggle and the
-//! host-action bridge share this. The host treats it as a preference only.
 let U1 = !0;
 function B1() {
   return U1;

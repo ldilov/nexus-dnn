@@ -110,9 +110,6 @@ export function StepRow({
 
   // A row renders live progress when it is running OR still DTO-pending but
   // already streaming its own live bytes. The pending-with-live arm matters
-  // because the REST snapshot lags the event bus (no Running overlay), and it
-  // is gated on THIS row's `live` — never the global `installActive` — so a
-  // single-row install never paints bars across sibling rows.
   const rowActive =
     step.status === "running" || (step.status === "pending" && live !== undefined);
   const liveBytesActive = rowActive && live !== undefined && live.totalBytes > 0;

@@ -76,7 +76,6 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
 
   // Drop selection IDs that no longer exist in the latest artifact list
   // (e.g. after a single delete or a server-side prune). Pure derivation —
-  // no extra effects needed.
   const visibleSelected = useMemo(() => {
     if (selected.size === 0) return selected;
     const present = new Set<string>();

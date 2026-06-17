@@ -3,7 +3,6 @@ import { vars } from "../../../theme/tokens.css";
 
 /* Recent generations card — sits at the top of the recipe surface,
  * editorial restraint over volume. Accent left-rail mirrors the
- * Quick-mode toolbar treatment used elsewhere on the page so the
  * recipe shell reads as a single visual system. */
 export const card = style({
   display: "flex",
@@ -94,8 +93,6 @@ export const list = style({
 
 /* Row layout — flex column with an inner flex row for the main content
  * (play | body | download) and an optional audio element below when
- * playing. Replaces the previous grid-template-areas approach which only
- * defined the named areas in the playing state, causing children's
  * gridArea references to fall back to auto-placement and stack weirdly. */
 export const row = style({
   display: "flex",
@@ -198,9 +195,6 @@ export const text = style({
   minWidth: 0,
   // The full text is exposed via the native `title` attribute on the
   // element. Browsers render the OS-level tooltip on pointer hover and
-  // expose it to assistive tech. A CSS-pseudo tooltip would not be
-  // announced by screen readers and could not be reached via keyboard
-  // (the span is non-interactive), so we deliberately avoid one.
 });
 
 export const meta = style({

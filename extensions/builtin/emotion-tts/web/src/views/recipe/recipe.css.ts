@@ -235,18 +235,6 @@ globalStyle(`${quickActions} > *`, {
 
 /* Scroll-up FAB — must satisfy two competing constraints:
  *   1. `position: fixed` needs to be relative to the viewport, not the
- *      transformed ancestor (route-transition wrapper / panel motion
- *      container). That means portaling to document.body, NOT into the
- *      <emotion-tts-app> custom element.
- *   2. But emotion-tts CSS vars only resolve INSIDE <emotion-tts-app>.
- *      Portaled to body, every `vars.color.*` resolves to empty string
- *      and the FAB renders transparent-on-transparent.
- *
- * Resolution: portal to body AND hardcode the visuals (matches the
- * sticky-toolbar fix in commit 4258e67). Spectral-Graphite violet
- * accent + near-white glyph + raised shadow.
- *
- * audit-allow: hex — established escape-hatch for body-portaled
  * extension UI per 4258e67. */
 export const scrollTopBtn = style({
   position: "fixed",
@@ -396,8 +384,6 @@ export const scriptTextarea = style({
 
 /* Quick mode treatment — anchors the textarea with an accent left-rail
  * (mirrors the toolbar above) and switches typography from mono syntax
- * to readable UI prose. Standalone class (no compose-with-base) so the
- * non-Quick scriptTextarea's `color: transparent` can never bleed in;
  * any layout property the textarea needs must therefore live HERE. */
 export const scriptShellQuick = style({
   position: "relative",

@@ -20,8 +20,6 @@ type Severity = "trace" | "debug" | "info" | "warn" | "error";
 
 // llama-server emits `[INFO  ]`, `[WARN  ]`, `[ERROR ]` prefixes with padding,
 // plus `DEBUG`/`TRACE` in verbose mode. When the backend's inferred severity
-// is `info` but the message itself starts with a native level prefix, trust
-// the prefix — it's the authoritative signal from the process.
 const LEVEL_PREFIX = /^\s*\[?\s*(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|ERR|FATAL)\s*\]?\s*/i;
 
 function refineSeverity(rawSeverity: string, message: string): Severity {

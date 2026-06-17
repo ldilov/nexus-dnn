@@ -1,13 +1,5 @@
 // Lightweight cross-view event bus for "the set of installed models
 // changed — please refetch". Used by the Model Foundry to notify the
-// Local Chat adapter (and any other surface that lists installed
-// models) when a download transitions into the `downloaded` state, so
-// the user immediately sees the new model in their chat picker
-// without having to refocus the window or remount the view.
-//
-// Implementation: a `CustomEvent` dispatched on `window`. No state,
-// no subscribers list — `addEventListener` already provides exactly
-// that. SSR-safe: every API checks `typeof window` first.
 
 const EVENT_NAME = "nexus:models-changed";
 

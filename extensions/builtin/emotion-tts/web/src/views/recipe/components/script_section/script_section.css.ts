@@ -9,8 +9,6 @@ export const root = style({
 
 /* Quick-mode toolbar — accent-anchored editorial bar.
  * Default state: muted left-rail.
- * Active state: accent left-rail + tinted gradient + soft inner glow.
- * The accent left-border is the design contract — when Quick mode is on,
  * the same left-rail repeats on the textarea below for visual continuity. */
 export const quickBar = style({
   display: "flex",

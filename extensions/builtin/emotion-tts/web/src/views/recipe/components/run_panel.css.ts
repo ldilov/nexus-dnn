@@ -3,12 +3,6 @@ import { vars } from "../../../theme/tokens.css";
 
 /* ── Generate panel — editorial direction ──────────────────────────
    The Generate slot is the recipe's hero call-to-action. Editorial
-   anchor: a mono "01" numeral on the left, dense diagnostic strip in
-   the middle, oversized labeled CTA on the right with breathing accent
-   glow when ready. Cancel is demoted to a small ghost text-link so it
-   doesn't fight Generate for visual weight.
-
-   Typographic rhythm — chip 36 / cancel 40 / Generate 60 — reads as a
    3-step scale instead of the previous flat 30/52/52. */
 
 export const root = style({
@@ -143,7 +137,6 @@ export const diagDetail = style({
 
 /* CTA slot — wraps the canonical Button primitive. The breathing halo
  * around the Generate button is rendered by `cta::before` when
- * `data-state="idle"` so the Button itself stays a vanilla primary md
  * shape and pulls every visual rule from the design system. */
 const ctaBreath = keyframes({
   "0%, 100%": {
@@ -255,10 +248,6 @@ export const queueDot = style({
 
 /* ── Per-item progress grid (storyboard fan-out) ───────────────────
    A 4-column grid — label | status pill | eta/spinner/duration |
-   failure — that shows one row per cast utterance while N concurrent
-   runs stream their per-segment events. Spectral-Graphite surfaces:
-   each row is a low-surface plinth with a left accent rail keyed to
-   its live status, so the eye can scan generating/done/failed at a
    glance without reading text. */
 export const progressGrid = style({
   display: "grid",

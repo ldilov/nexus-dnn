@@ -15,7 +15,6 @@ const KILL_SWITCH_URL = "/sw-kill.js";
 
 // Re-check for a newer worker this often while a tab stays open across a
 // redeploy — a SPA never navigates, so the browser's navigation-time update
-// check never fires on its own.
 const UPDATE_POLL_MS = 60 * 60 * 1000;
 
 let reloadHookInstalled = false;
@@ -72,8 +71,6 @@ export async function registerServiceWorker(
 
 /// Reload the page once a NEW worker takes control so an already-open tab
 /// picks up the freshly deployed build instead of running the cached bundle.
-/// The very first install (no prior controller) is skipped — only genuine
-/// upgrades trigger the reload.
 function installControllerReload(): void {
   if (reloadHookInstalled) return;
   const sw = navigator.serviceWorker;

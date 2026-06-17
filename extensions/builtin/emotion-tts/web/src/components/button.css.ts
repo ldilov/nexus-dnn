@@ -3,20 +3,6 @@ import { vars } from "../theme/tokens.css";
 
 /* ── Button — canonical contract (emotion-tts extension) ──────────────────
  * Mirror of apps/web/src/components/base/button.css.ts. The two primitives
- * are physically separate (host ↔ extension boundary forbids cross-imports)
- * but their visual contracts MUST stay aligned 1:1.
- *
- * Shape ........ rounded-rect via vars.radius.md by default. Pill is
- *                reserved for status chips and the floating sticky-action
- *                capsule. The `iconOnly` variant uses a circular shape.
- * Sizes ........ xs (24px) | sm (32px) | md (40px) | lg (48px).
- * Variants ..... primary | secondary | ghost | danger.
- *                `warning` kept as alias for any legacy callers.
- * States ....... hover bg shift, focus-visible accent ring, disabled
- *                opacity 0.55 + cursor not-allowed, aria-busy spinner.
- * Carve-outs ... StatusPill, sticky_action_bar floating capsule, recipe
- *                section-collapse toggle. Tab triggers and slider thumbs
- *                are NOT buttons.
  * ─────────────────────────────────────────────────────────────────────── */
 
 const base = style({

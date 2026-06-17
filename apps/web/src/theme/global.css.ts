@@ -18,7 +18,6 @@ globalStyle("html, body, #root", {
   MozOsxFontSmoothing: "grayscale",
   // Shell (`shell.css.ts`) and each page own their own scroll container.
   // Body-level scrolling is forbidden — do not introduce content that
-  // expects the viewport itself to scroll, or it will be clipped.
   overflow: "hidden",
 });
 

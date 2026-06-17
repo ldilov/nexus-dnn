@@ -320,7 +320,6 @@ export function statusSummary(jobs: readonly Job[]): string {
 
 /// Neutral placeholder used when a deployment has no voices yet, or a job
 /// references a voice that no longer exists — keeps every `voiceById` caller
-/// crash-safe (it always gets a real Voice with all fields populated).
 export const FALLBACK_VOICE: Voice = {
   id: "",
   name: "Unassigned",

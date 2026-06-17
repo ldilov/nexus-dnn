@@ -87,8 +87,6 @@ export interface RunSummary {
   originalRunId?: string | null;
   // Utterance counts are NOT emitted by run_summary_json today. Re-add
   // these fields the day the backend starts tracking + serialising them
-  // (`runs.rs::run_summary_json`). Until then their presence here was a
-  // type-safety lie that would render as `NaN%` progress in any view.
   queuedAt: number;
   startedAt?: number | null;
   finishedAt?: number | null;
@@ -150,9 +148,6 @@ export type ProgressEvent =
       cacheHit: boolean;
       // The producer (`dispatcher/events.rs`) emits `utterance_id` here, NOT an
       // `audio_artifact_ref`. The artifact is fetched lazily from
-      // `/artifacts/{utteranceId}/download`, so the utterance id is the live
-      // handle a completed segment carries. `audioArtifactRef` is retained as
-      // optional only for forward compatibility / legacy fixtures.
       utteranceId?: string | undefined;
       audioArtifactRef?: string | undefined;
     }

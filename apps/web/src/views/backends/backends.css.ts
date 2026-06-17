@@ -63,7 +63,6 @@ export const grid = style({
 
 // Error boundary panel — used when the backends fetch fails (e.g. server
 // returns 500 because an adapter's current_summary() errored out). Shows
-// the envelope error message verbatim + a retry button.
 export const errorPanel = style({
   display: "flex",
   flexDirection: "column",

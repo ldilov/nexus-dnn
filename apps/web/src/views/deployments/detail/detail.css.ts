@@ -142,8 +142,6 @@ export const actionIcon = style({
 
 // Inline spinner for actions in `state: "loading"` — borderless,
 // accent-tinted, sized to the button label baseline. Honors
-// prefers-reduced-motion by halving rotation speed (still indicates
-// activity without strobing).
 const actionSpin = keyframes({
   to: { transform: "rotate(360deg)" },
 });

@@ -1,12 +1,5 @@
 // Lists multiple quantization / format artifacts for a model family
 // whose upstream registry didn't declare any `Variant`s. Example: a
-// HuggingFace repo that ships `model-q4_k_m.gguf`, `model-q5_k_m.gguf`,
-// and `model-q8_0.gguf` as bare artifacts — without Variant grouping,
-// the legacy ModelCard could only point at the primary; the operator
-// had no way to pick a different quantization from the card.
-//
-// Visual: reuses the VariantList aesthetic verbatim (Spectral Graphite
-// row pattern) for consistency.
 
 import type {
   Artifact,
@@ -94,8 +87,6 @@ function stateGlyph(state: DownloadState): {
 function artifactLabel(artifact: Artifact): string {
   // Filename is the most operator-recognisable identifier — it carries
   // the quantization suffix in HF GGUF repos (e.g. `model-q4_k_m.gguf`).
-  // Strip any path prefix HF might inject and any common extension —
-  // we already show `format` separately.
   const base = artifact.filename.split(/[\\/]/).pop() ?? artifact.filename;
   return base;
 }
@@ -103,7 +94,6 @@ function artifactLabel(artifact: Artifact): string {
 function artifactDetail(artifact: Artifact): string {
   // `precision` is the most relevant secondary signal — operators
   // pick a quantization by precision (q4, q5, q8, fp16, etc.). When
-  // the upstream registry didn't surface it, fall back to the format.
   const precision = artifact.precision;
   if (precision && precision !== "unknown") {
     return precision;

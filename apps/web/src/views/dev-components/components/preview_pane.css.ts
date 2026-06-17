@@ -21,7 +21,6 @@ export const stage = style({
   position: "relative",
   // Creates a containing block for position:fixed descendants so overlays
   // (install_modal, future modals/popovers) stay bounded inside the stage
-  // instead of taking over the whole playground.
   transform: "translateZ(0)",
   contain: "layout paint",
 });

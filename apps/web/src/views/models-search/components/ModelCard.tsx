@@ -124,9 +124,6 @@ export function ModelCard({
   const showVariants = family.variants.length > 0;
   // Fallback for upstream registries (e.g. HuggingFace) that ship
   // multiple quantization / format artifacts but never declared
-  // `Variant` records — surface them as a flat list so the operator
-  // can pick a quantization without having to inspect the registry
-  // manually.
   const showArtifactList = !showVariants && family.artifacts.length > 1;
   const hasRequiredDeps = family.dependencies.some(
     (d) => d.requirement === "required",
@@ -433,15 +430,10 @@ function PrimaryDownloadAction({
 
 // Mirrors `PrimaryDownloadAction` but for the bundle (deps + primary)
 // download path. Caller is responsible for upstream filtering — only
-// passes `liveState` / `liveJob` when the active job's
-// `requested_kind === "bundle"`, so a concurrent primary-only download
-// doesn't make the bundle button appear to be progressing.
 interface BundleDownloadActionProps {
   family: ModelFamily;
   /// When `showVariants` is true the bundle button is the operator's
   /// PRIMARY action (no separate primary button rendered above it);
-  /// styled accordingly. Otherwise it sits secondary to a primary
-  /// download button.
   primary: boolean;
   liveState: DownloadState | undefined;
   liveJobId: string | undefined;
