@@ -4,6 +4,8 @@ import { vars } from "../../../theme/contract.css";
 export const card = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — fixed card height for uniform grid rows
+  minHeight: "340px",
   gap: vars.density.d4,
   padding: vars.density.padCard,
   background: vars.card.bg,
