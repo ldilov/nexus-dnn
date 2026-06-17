@@ -497,7 +497,6 @@ async fn register_existing_adopts_on_disk_tree_and_dedups_with_foundry() {
 
     // Re-register the same repo+tree -> 200 OK, SAME install_id (the
     // convergence guarantee: an extension's own download dedups against a
-    // later Foundry install of the same repo).
     let again = router
         .oneshot(
             Request::builder()

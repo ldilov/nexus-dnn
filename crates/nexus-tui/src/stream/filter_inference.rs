@@ -94,7 +94,6 @@ fn infer_level_floor(events: &[&EventLine]) -> Option<Severity> {
 fn infer_grep_substring(events: &[&EventLine]) -> Option<String> {
     // Tokenise the first event's summary; for each token, check it
     // appears in every other summary. Return the longest qualifying
-    // token (≥4 chars).
     let first = events[0].summary.as_str();
     let mut best: Option<&str> = None;
     for token in first.split_whitespace() {
@@ -162,7 +161,6 @@ mod tests {
     fn host_log(target: &str, level: &str, message: &str) -> EventLine {
         // EventLine::source for HostLog is `host.{target}` — fixtures
         // pass the bare suffix (e.g. "scheduler") which renders as
-        // `host.scheduler`.
         EventLine::from_nexus_event(NexusEvent::HostLog {
             level: level.into(),
             target: target.into(),

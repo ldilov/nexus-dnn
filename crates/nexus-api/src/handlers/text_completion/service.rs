@@ -75,7 +75,6 @@ impl LeaseFinder for CatalogLeaseFinder {
             .map_err(|e| TextCompletionError::Internal(format!("catalog list: {e}")))?;
         // First pass: collect eligible (entry, install, lease) triples
         // that satisfy CAPABILITY_TAG + every required_tag. Then rank
-        // by how many preferred_tags they also match and pick the top.
         let mut eligible: Vec<(usize, Arc<dyn BackendRuntimeLease>)> = Vec::new();
         for entry in entries {
             if !entry.capability_tags.iter().any(|t| t == CAPABILITY_TAG) {
@@ -437,9 +436,6 @@ impl TextCompletionService for LeaseBackedTextCompletion {
         };
         // ephemeral release is the LeaseBackedTextCompletion's
         // responsibility post-completion. complete_inner handles the
-        // happy/error release for the lease it actually used; this
-        // outer arm only matters for the Timeout branch, which is
-        // already handled by lease.send_rpc's own cancel-on-error.
         let _ = ephemeral;
         outcome
     }
@@ -465,7 +461,6 @@ impl LeaseBackedTextCompletion {
             None => {
                 // No Ready lease — fall back to on-demand spawn iff
                 // the caller asked for ephemeral semantics AND an
-                // acquirer is wired. Otherwise behave as before (503).
                 if ephemeral {
                     if let Some(acq) = &self.acquirer {
                         match acq.acquire(&selection).await? {
@@ -483,8 +478,6 @@ impl LeaseBackedTextCompletion {
         let lease_id = lease.id();
         // Option γ activity tracking: bump in_flight for the whole
         // broker call so the idle reaper cannot release this lease
-        // mid-prompt. Paired `activity_end` runs unconditionally at
-        // both happy and error exits below.
         if let Some(tracker) = &self.activity {
             tracker.activity_start(&lease_id).await;
         }
@@ -987,7 +980,6 @@ mod tests {
 
         // The cancel-on-non-Done is best-effort and lives inside the
         // inner future; the timeout drops that future, so cancel may or
-        // may not fire. We only assert the start RPC was issued.
         let calls = lease.rpc_calls();
         assert!(
             calls.iter().any(|(m, _)| m == METHOD_START),

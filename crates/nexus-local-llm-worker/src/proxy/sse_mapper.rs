@@ -100,7 +100,10 @@ mod tests {
     fn finish_reason_stop_becomes_done_event() {
         let data = r#"{"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":11,"total_tokens":18}}"#;
         match map_sse_chunk(data).expect("ok") {
-            OperatorStreamEvent::Done { finish_reason, usage } => {
+            OperatorStreamEvent::Done {
+                finish_reason,
+                usage,
+            } => {
                 assert_eq!(finish_reason, "stop");
                 assert_eq!(usage.prompt_tokens, 7);
                 assert_eq!(usage.completion_tokens, 11);

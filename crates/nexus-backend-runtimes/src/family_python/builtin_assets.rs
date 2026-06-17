@@ -112,7 +112,10 @@ fn parse_req(range: &str) -> Option<semver::VersionReq> {
 /// Resolve the best interpreter asset for `target_triple` satisfying an
 /// optional `version_range`. With no range the [`DEFAULT_PYTHON_VERSION`] is
 /// returned; with a range the highest matching version wins.
-pub fn for_target_matching(target_triple: &str, version_range: Option<&str>) -> Option<PythonAsset> {
+pub fn for_target_matching(
+    target_triple: &str,
+    version_range: Option<&str>,
+) -> Option<PythonAsset> {
     let mut entries: Vec<&BuiltinEntry> = REGISTRY
         .iter()
         .filter(|e| e.target_triple == target_triple)

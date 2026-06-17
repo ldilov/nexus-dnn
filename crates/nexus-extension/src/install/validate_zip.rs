@@ -55,8 +55,6 @@ pub fn validate<R: Read + Seek>(
 
         // Step 3 — second gate: re-walk components, refuse any `..` /
         // root / prefix. `enclosed_name` already does this for most cases,
-        // but a belt-and-braces scan here defends against crate version
-        // drift.
         if !path_is_safe(&enclosed) {
             return Err(ZipInstallError::SlipAttempt);
         }
@@ -77,7 +75,6 @@ pub fn validate<R: Read + Seek>(
 
         // Step 4 — manifest at depth ≤ 2. `"manifest.toml"` at root is the
         // canonical form; `"{extension_id}/manifest.toml"` wrapped once is
-        // the tolerated form.
         if manifest_entry_name.is_none() && is_manifest_entry(&enclosed) {
             manifest_entry_name = Some(name.clone());
         }
@@ -87,7 +84,6 @@ pub fn validate<R: Read + Seek>(
 
     // Step 6 — manifest-peek for executable-path policy. Read ONLY the
     // manifest entry bytes from the central directory and extract the
-    // declared `entrypoint` so we can allowlist the worker path prefix.
     let allowlist = peek_executable_allowlist(archive, &manifest_entry_name)?;
     check_executables(archive, &allowlist)?;
 

@@ -188,7 +188,6 @@ pub async fn uninstall_extension(
 ) -> Result<ApiResponse<UninstallSummary>, ApiError> {
     // Validate the extension is registered so typos return 404 rather than a
     // silent zero-result uninstall. A registered-but-never-installed extension
-    // is still a valid uninstall target (idempotent no-op, AC-5.6).
     if state
         .extension_registry
         .get_extension(&extension_id)

@@ -25,11 +25,15 @@ pub async fn post_embeddings(
     req: EmbeddingsRequest,
 ) -> WorkerResult<EmbeddingsResponse> {
     let url = format!("{}/v1/embeddings", base_url.trim_end_matches('/'));
-    let resp = client.post(&url).json(&req).send().await.map_err(|e| {
-        WorkerError::BackendUnavailable {
-            reason: format!("{e}"),
-        }
-    })?;
+    let resp =
+        client
+            .post(&url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| WorkerError::BackendUnavailable {
+                reason: format!("{e}"),
+            })?;
     if !resp.status().is_success() {
         return Err(WorkerError::BackendUnavailable {
             reason: format!("upstream returned {}", resp.status()),

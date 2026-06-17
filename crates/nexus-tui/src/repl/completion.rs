@@ -260,11 +260,6 @@ impl Completer for SlashCompleter {
 
         // Three completion regimes:
         //   1. Still typing the command name  → suggest slash commands.
-        //   2. Typed the command + a space    → suggest arguments with an
-        //      empty prefix (everything matches; description tooltips
-        //      tell the operator what each argument shape means).
-        //   3. Typed the command + partial arg → filter argument
-        //      suggestions by `arg_so_far` prefix.
         let (arg_so_far, arg_start) = match parts.next() {
             Some(arg) => {
                 let start = head.len() - arg.len();
@@ -711,7 +706,6 @@ mod tests {
     fn inspect_punctuated_prefix_falls_through_to_substring() {
         // "run:" contains punctuation so it's not ULID-shaped — we expect
         // the description-substring matcher to find it (descriptions
-        // contain the source label like "run:r1").
         let events = vec![
             mk_event("01ABC", "node started a", "run:r1", Severity::Info),
             mk_event("01DEF", "node started b", "host.app", Severity::Info),
@@ -737,15 +731,9 @@ mod tests {
         ];
         // "01A" — ULID-shape, alphanumeric: 01ABCDEF matches ULID prefix
         // path, 01YYYALPHA contains "01a" in its lowercased haystack only
-        // if the description mentions it... it doesn't here. Use "alpha"
-        // instead — non-ULID-shape, hits 01XYZQQQ via description.
         let out = inspect_event_suggestions(&events, "alpha", span(), default_style_for);
         // Both 01XYZQQQ ("alpha thing") and 01YYYALPHA ("beta thing" — its
         // ULID contains "ALPHA" but description doesn't) — only the
-        // description-substring path runs (non-ULID-shape "alpha" — wait,
-        // alpha IS alphanumeric). The test of ordering uses
-        // double-matching: ULID prefix vs description match.
-        // Just confirm 01XYZQQQ is in the result (description hit).
         assert!(out.iter().any(|s| s.value == "01XYZQQQ"));
     }
 
@@ -897,7 +885,6 @@ mod tests {
     fn observed_sources_helper_preserves_recency_order() {
         // The recency contract is enforced by HashSet sidecar + Vec push.
         // This test verifies the algorithm symmetrically with a minimal
-        // setup that mirrors `observed_sources` without needing a ring.
         let observed_newest_first = ["c", "a", "b", "a", "c"];
         let mut seen: HashSet<&str> = HashSet::new();
         let mut out: Vec<&str> = Vec::new();

@@ -83,15 +83,9 @@ impl InstallRunner {
 
         // Halted-run note: when a step Failed and the runner broke out of the loop,
         // subsequent steps were never reached and have NO entry in `statuses`. Per
-        // FR-040 the next `GET /dependencies` will probe each step fresh — the
-        // unreached ones return `NotSatisfied` which renders as `pending`. This is
-        // intentional: the user sees `step1 = failed` (overlaid from runner-state),
-        // `step2..N = pending`. There is no "blocked-by-upstream" status because the
-        // probe is what decides satisfaction, not the runner's halt point.
 
         // Resolve the terminal outcome: cancellation wins over plain failure (so the
         // UI can show a distinct "cancelled" message), success requires every step
-        // to be `Ok` or `Skipped`, anything else is a categorised failure.
         let outcome = if ctx.cancellation_token.is_cancelled() {
             InstallOutcome::Cancelled
         } else if all_satisfied {
@@ -102,8 +96,6 @@ impl InstallRunner {
 
         // Always emit the terminal event so subscribers can clear their "active"
         // state. The per-step events emitted earlier convey per-step success/failure;
-        // `outcome` here is the one-shot summary so subscribers that don't reconcile
-        // per-step events still get an authoritative answer.
         let total_ms = started.elapsed().as_millis() as u64;
         let final_summary: Vec<(&str, &'static str)> = self
             .plan
@@ -315,8 +307,6 @@ async fn run_one_step(
 
     // Wrap the shared sink so handler-emitted progress events (which don't know
     // their own step id and pass `String::new()`) are re-tagged with this step's
-    // id before reaching the host event bus. The byte-stream fetch path already
-    // tags its own step id; the wrapper only fills blanks, never overwrites.
     let scoped_sink: Arc<dyn ProgressSink> = Arc::new(StepScopedSink {
         inner: ctx.progress_sink.clone(),
         step_id: step.id.clone(),

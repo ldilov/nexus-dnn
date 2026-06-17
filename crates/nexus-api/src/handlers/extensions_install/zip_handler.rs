@@ -51,7 +51,6 @@ pub async fn install_from_zip(
 
     // Remove the uploaded ZIP regardless of outcome — the pipeline's staging
     // RAII already cleaned up its own working dir, but it never owned the
-    // raw upload.
     let _ = tokio::fs::remove_file(&zip_path).await;
 
     let result: ZipInstallResult = result.map_err(zip_install_err_to_api)?;
@@ -121,8 +120,6 @@ async fn receive_zip_field(
 fn refresh_registry(state: &AppState, extensions_root: &std::path::Path) -> Result<(), ApiError> {
     // Spec 019 pipeline step 11 — make the newly-installed extension visible
     // to the in-process registry. We use the same host/protocol versions the
-    // pipeline validator inherits from discover_and_activate; for the
-    // refresh call we accept the defaults baked into the crate.
     let host_version = Version::new(1, 0, 0);
     let protocol_version = Version::new(1, 0, 0);
     state

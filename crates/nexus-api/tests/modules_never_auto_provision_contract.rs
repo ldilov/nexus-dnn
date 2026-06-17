@@ -218,8 +218,6 @@ async fn no_module_endpoint_creates_install_rows() {
 async fn endpoint_without_runtime_returns_diagnostic_not_install() {
     // The failing fixture: an extension with status='active' but no
     // matching host_runtime_installs row. Calling the deploy shortcut MUST
-    // succeed-or-fail with a structured response — it MUST NOT silently
-    // create a runtime install row to satisfy the request.
     let state = build_state().await;
     state.db.insert_extension(&ext("nai-no-rt")).await.unwrap();
     state
@@ -238,7 +236,6 @@ async fn endpoint_without_runtime_returns_diagnostic_not_install() {
     .await;
     // Either the deploy succeeded WITHOUT touching runtime_installs, or it
     // failed with a structured error — both satisfy FR-031. The forbidden
-    // outcome is a silent install side-effect.
     assert!(
         status.is_success() || status.is_client_error() || status.is_server_error(),
         "any structured response is fine; forbidden behavior is a silent install"

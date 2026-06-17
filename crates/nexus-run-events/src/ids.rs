@@ -22,9 +22,7 @@ pub enum IdError {
 
 /// Worker-side monotonic sequence number. Authoritative for ordering of
 /// events within a single run.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SeqNum(u64);
 
@@ -87,18 +85,7 @@ impl SourceId {
 /// Index of a transformer layer within a model. Bounded by the model's
 /// `n_layer`; out-of-range values surface as `ScraperUnknown` events
 /// from the scraper layer rather than being constructed here.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LayerIndex(u32);
 
@@ -146,10 +133,7 @@ mod tests {
 
     #[test]
     fn run_id_rejects_invalid_char() {
-        assert_eq!(
-            RunId::try_new("bad/id"),
-            Err(IdError::InvalidChar('/'))
-        );
+        assert_eq!(RunId::try_new("bad/id"), Err(IdError::InvalidChar('/')));
     }
 
     #[test]

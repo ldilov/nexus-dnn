@@ -48,7 +48,6 @@ async fn fetch_artifact_at_least_80pct_of_baseline_throughput() {
 
     // Baseline: bare reqwest streaming download (no sha verify, no archive).
     // Run twice to take the best of two — first run is often skewed by TCP
-    // warm-up / wiremock state.
     let mut baseline_best = u128::MAX;
     for _ in 0..2 {
         let client = reqwest::Client::new();
@@ -86,9 +85,6 @@ async fn fetch_artifact_at_least_80pct_of_baseline_throughput() {
 
     // The plan target is ≥80% — but loopback servers and async runtimes have
     // significant variance on small payloads. We accept a 60% floor in release
-    // to reduce flake while still catching gross regressions. In debug builds
-    // the chunk-loop / sha2 / reqwest overhead diverges enough to make any
-    // ratio assertion meaningless, so the assertion only fires in release.
     #[cfg(not(debug_assertions))]
     assert!(
         ratio >= 0.60,

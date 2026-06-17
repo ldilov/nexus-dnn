@@ -47,10 +47,7 @@ impl MetadataExtractor for SafetensorsExtractor {
 
         let layer_from_keys = max_layer_from_keys(&key_universe);
 
-        let config = resolved
-            .config
-            .as_deref()
-            .and_then(|p| read_config(p).ok());
+        let config = resolved.config.as_deref().and_then(|p| read_config(p).ok());
 
         let layer_count = config
             .as_ref()
@@ -90,12 +87,9 @@ fn handle_header_error(
     install_id: &str,
 ) -> Result<ExtractedMetadata, ExtractError> {
     match err {
-        ExtractError::MalformedHeader(msg) if msg.starts_with("header too large") => {
-            Ok(ExtractedMetadata::failed(
-                install_id,
-                ArtifactFormat::Safetensors,
-            ))
-        }
+        ExtractError::MalformedHeader(msg) if msg.starts_with("header too large") => Ok(
+            ExtractedMetadata::failed(install_id, ArtifactFormat::Safetensors),
+        ),
         other => Err(other),
     }
 }
@@ -195,9 +189,7 @@ fn read_index_keys(path: &Path) -> Result<Vec<String>, ExtractError> {
         .get("weight_map")
         .and_then(|v| v.as_object())
         .ok_or_else(|| {
-            ExtractError::MalformedHeader(
-                "index.json missing weight_map object".to_string(),
-            )
+            ExtractError::MalformedHeader("index.json missing weight_map object".to_string())
         })?;
     Ok(map.keys().cloned().collect())
 }
@@ -301,7 +293,10 @@ mod tests {
 
     #[test]
     fn max_layer_none_when_no_match() {
-        let keys = vec!["embeddings.weight".to_string(), "lm_head.weight".to_string()];
+        let keys = vec![
+            "embeddings.weight".to_string(),
+            "lm_head.weight".to_string(),
+        ];
         assert_eq!(max_layer_from_keys(&keys), None);
     }
 }

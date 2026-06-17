@@ -200,7 +200,6 @@ impl AmbientPrompt {
         };
         // Evict every prior prompt entry regardless of row — the prompt
         // is the only producer of these target kinds, and previous
-        // registrations may now sit at stale rows due to terminal scroll.
         reg.retain_targets(|t| !matches!(t, ClickTarget::Sparkline | ClickTarget::FilterIndicator));
         let row_lookup = || {
             if self.mouse_enabled {
@@ -259,10 +258,6 @@ impl Prompt for AmbientPrompt {
 
         // Sparkline OR state-aware placeholder. When the stream is idle
         // (no events sampled yet, or every sample is 0) the 8-cell
-        // braille bar collapses to a row of blank-glyphs that reads as
-        // a void — replace it with a short text token tied to
-        // connection health so the operator always knows what's going
-        // on at a glance.
         let sparkline_start = col;
         if snapshot.sparkline.is_idle() {
             let (placeholder, placeholder_color) = match snapshot.connection_health {
@@ -320,8 +315,6 @@ impl Prompt for AmbientPrompt {
 
         // Spec 044 S2 — live incremental filter bar. When the user is
         // mid-typing a `/`-filter, the buffer text trails the badge as
-        // `[/ embed_]` so the operator can see exactly what regex is
-        // being applied per keystroke.
         if let Some(query) = snapshot.filter_query.as_deref() {
             left.push(' ');
             col = col.saturating_add(1);

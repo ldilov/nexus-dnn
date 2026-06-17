@@ -132,7 +132,6 @@ async fn drive(state: &AppState, request: &PipelineRequest) -> Result<(), Generi
 
     // Look up the family handler. Missing handler is a pipeline-level
     // failure — the catalog said the runtime was available, but no
-    // host-side code can drive it.
     let handler = state
         .family_handlers
         .get(request.runtime_family)
@@ -169,8 +168,6 @@ async fn drive(state: &AppState, request: &PipelineRequest) -> Result<(), Generi
 
     // Assemble the install context. The resolver treats `extension_root`
     // as the base for `file://` URLs in the version manifest — and those
-    // URLs are conventionally relative to the manifest file, not the
-    // extension root. So we pass the manifest's parent dir.
     let manifest_dir = manifest_path
         .parent()
         .map(std::path::Path::to_path_buf)

@@ -86,7 +86,6 @@ pub fn render_table(spec: &TableSpec<'_>, rows: &[Row]) -> String {
 
     // Header line (optional). Caller passes a fully-composed title
     // including any leading icon (`⚡ pressure · totals`, `✎ brush`,
-    // etc.) — table.rs does NOT auto-prepend any tree-style glyph.
     if let Some(title) = spec.title {
         out.push_str(ANSI_GRAPHITE_BLUE);
         out.push_str(GUTTER);

@@ -260,7 +260,6 @@ mod tests {
     fn run_id_takes_precedence_over_deploy_id() {
         // ExtensionInstallStepStarted carries extension + install_run
         // — pretend the *first* event is the run, the *second* shares
-        // run_id, ensure run is the matched kind.
         let mut threader = CorrelationThreader::default();
         let now = Instant::now();
         threader.note_rendered(&run_event("r1"), now);

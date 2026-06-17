@@ -235,7 +235,6 @@ async fn handler_reports_python_family_and_bootstrap_delegates() {
 
     // `without_asset()` makes the no-asset condition deterministic: the handler
     // delegates to `bootstrap::run(ctx, None)` and fails with
-    // PythonBootstrapFailed regardless of the host's builtin pin or network.
     let handler = FamilyPythonHandler::without_asset();
     let mut ctx = fixture_ctx(&partial, &install, &cache);
     let err = handler

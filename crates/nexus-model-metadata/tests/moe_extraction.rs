@@ -20,8 +20,7 @@ use tempfile::TempDir;
 fn gguf_extract_marks_mixtral_fixture_as_moe() {
     let tmp = TempDir::new().expect("tempdir");
     let path = tmp.path().join("mixtral_8x7b_header.gguf");
-    write_synthetic_gguf_with_expert_count(&path, "llama", 32, 32768, 4096, 8)
-        .expect("emit gguf");
+    write_synthetic_gguf_with_expert_count(&path, "llama", 32, 32768, 4096, 8).expect("emit gguf");
 
     let meta = GgufExtractor::default()
         .extract(&path, "mixtral-test")
@@ -64,8 +63,7 @@ fn gguf_extract_arch_name_fallback_marks_qwen3moe_as_moe() {
 fn gguf_extract_expert_count_zero_marks_dense() {
     let tmp = TempDir::new().expect("tempdir");
     let path = tmp.path().join("expert_count_zero.gguf");
-    write_synthetic_gguf_with_expert_count(&path, "llama", 32, 8192, 4096, 0)
-        .expect("emit gguf");
+    write_synthetic_gguf_with_expert_count(&path, "llama", 32, 8192, 4096, 0).expect("emit gguf");
 
     let meta = GgufExtractor::default()
         .extract(&path, "zero-experts-test")

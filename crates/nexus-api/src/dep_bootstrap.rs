@@ -161,7 +161,6 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
             resolved_profile: Some(r.accelerator),
             // Install row does not track post-extract bytes; report 0 rather
             // than fabricating a value. Probe artifacts are about identity
-            // and location, not size accounting.
             bytes_placed: 0,
         }))
     }
@@ -220,8 +219,6 @@ impl RealRuntimeBootstrapper {
 
         // Resolve the interpreter asset. An explicit override (env-configured
         // `NEXUS_EMBEDDED_PYTHON_*`) always wins; otherwise pick the registry
-        // asset whose version satisfies the step's declared range, so different
-        // extensions can pin different Python versions on the same host.
         let asset: nexus_backend_runtimes::family_python::PythonAsset = match self
             .python_asset
             .as_ref()
@@ -763,7 +760,6 @@ impl ModelStoreClient for RealModelStoreClient {
     ) -> Result<Vec<String>, DepError> {
         // Whole-repo selections can only be enumerated with a network call, which
         // probe() forbids — report "all present" and lean on family_integrity for
-        // the post-install size audit instead.
         if selection.is_unrestricted() {
             return Ok(Vec::new());
         }
@@ -782,10 +778,6 @@ impl ModelStoreClient for RealModelStoreClient {
                 Ok(matched) => matched.into_iter().map(str::to_owned).collect(),
                 // The glob matched nothing in the (sparse) install_map. For a
                 // verify that means the glob-declared files were never
-                // downloaded — report them ABSENT so probe() returns
-                // NotSatisfied and the step re-runs, NOT a fatal error.
-                // `filter`'s empty-match case is `Backend`; a bad glob is
-                // `InvalidSpec` and stays a real error.
                 Err(DepError::Backend(_)) => {
                     let pattern = selection
                         .include
@@ -978,8 +970,6 @@ impl ModelStoreClient for RealModelStoreClient {
             }),
             // `DownloadState` is `#[non_exhaustive]`. Treat any future variant
             // as a transient in-progress state to keep the handler safe under
-            // upstream evolution; the orchestrator will eventually flip the
-            // job to a known terminal state.
             _ => Ok(ModelDownloadProgress::InProgress {
                 current_bytes: job.progress_bytes,
                 total_bytes: job.total_bytes.unwrap_or(0),
@@ -1289,10 +1279,6 @@ async fn run_handshake_protocol(
 
     // The worker is allowed to emit JSON-RPC *notifications* (frames with
     // `method` but no `id`) at any point — log lines, progress events,
-    // etc. Skip those and keep reading until we either:
-    //   * see a *response* (frame with our request id + result/error)
-    //   * the stream closes (worker died)
-    //   * hit the line cap (worker is misbehaving / never replying)
     let mut reader = BufReader::new(stdout);
     const MAX_NOTIFICATIONS_BEFORE_RESPONSE: usize = 64;
     for attempt in 0..=MAX_NOTIFICATIONS_BEFORE_RESPONSE {
@@ -1644,7 +1630,6 @@ mod tests {
     async fn runtime_probe_returns_none_when_version_predicate_excludes_installed_row() {
         // A row exists for python 3.10.x but the manifest asks for >=3.11. The
         // resolver MUST reject the row and return None — otherwise the dep gate
-        // would flip green for an incompatible runtime.
         let pool = fresh_pool_with_runtime_installs().await;
         sqlx::query(
             "INSERT INTO host_runtime_installs (install_id, family, version, accelerator, install_root, state, created_at, updated_at) \
@@ -1756,7 +1741,6 @@ mod tests {
 
         // The legacy DB row is intentionally NOT inserted by bootstrap_python.
         // Probe must still flip Satisfied via filesystem inspection of
-        // target_dir, otherwise the UI will spin in PENDING forever.
         let probed = bootstrapper
             .probe("python", Some(">=3.11"), &["cpu".into()], &target_dir)
             .await

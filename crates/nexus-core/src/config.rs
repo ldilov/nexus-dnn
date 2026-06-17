@@ -106,7 +106,6 @@ impl NexusConfig {
 
         // Installed / container layout: built-in extensions ship alongside the
         // executable. Probe the common relative locations before falling back
-        // to the dev-time workspace root.
         if let Ok(exe) = std::env::current_exe()
             && let Some(exe_dir) = exe.parent()
         {

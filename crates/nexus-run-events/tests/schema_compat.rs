@@ -10,9 +10,9 @@
 use std::collections::BTreeMap;
 
 use nexus_run_events::{
-    AllocationTarget, AnsiSpan, ErrorReason, EventBatch, GapReason, LayerIndex,
-    LineStream, MetricUnit, PhaseName, PhaseState, RunEventItem, RunId, SeqNum,
-    Severity, SourceId, TensorGroup, WidgetKind, SCHEMA_V1,
+    AllocationTarget, AnsiSpan, ErrorReason, EventBatch, GapReason, LayerIndex, LineStream,
+    MetricUnit, PhaseName, PhaseState, RunEventItem, RunId, SeqNum, Severity, SourceId,
+    TensorGroup, WidgetKind, SCHEMA_V1,
 };
 
 fn run_id() -> RunId {
@@ -25,8 +25,7 @@ fn source_id() -> SourceId {
 
 fn assert_round_trip(event: &RunEventItem) {
     let json = serde_json::to_string(event).expect("serialise");
-    let parsed: RunEventItem =
-        serde_json::from_str(&json).expect("deserialise");
+    let parsed: RunEventItem = serde_json::from_str(&json).expect("deserialise");
     assert_eq!(event, &parsed, "round-trip mismatch for {json}");
 }
 
@@ -136,8 +135,7 @@ fn artifact_round_trip() {
         mime: "audio/wav".to_owned(),
         bytes: Some(2_048),
         digest_sha256: Some(
-            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-                .to_owned(),
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_owned(),
         ),
     };
     assert_round_trip(&event);
@@ -225,8 +223,7 @@ fn event_batch_round_trip() {
         events: vec![event],
     };
     let json = serde_json::to_string(&batch).expect("serialise batch");
-    let parsed: EventBatch =
-        serde_json::from_str(&json).expect("deserialise batch");
+    let parsed: EventBatch = serde_json::from_str(&json).expect("deserialise batch");
     assert_eq!(batch, parsed);
 }
 

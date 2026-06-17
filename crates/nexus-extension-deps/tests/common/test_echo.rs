@@ -91,7 +91,6 @@ impl StepHandler for TestEchoHandler {
             })?;
         // TestEchoHandler doesn't have a step_id at this point — `run` only sees
         // the spec. The runner re-tags step_id in emitted events. For the
-        // invocation log, derive a placeholder.
         self.invocations.lock().expect("lock").push(EchoInvocation {
             step_id: String::new(),
             message: parsed.message.clone(),

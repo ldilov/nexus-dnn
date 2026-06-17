@@ -93,7 +93,6 @@ pub fn classify(line: &EventLine) -> EventClass {
         if fields.contains_key("http.error") {
             // Backend reported an HTTP error even without a status code
             // (e.g. connection reset, DNS failure). Treat as failure
-            // with status=0 sentinel.
             return EventClass::HttpFailure { status: 0 };
         }
         if let Some(status_str) = fields.get("http.status_code")
@@ -114,15 +113,12 @@ pub fn classify(line: &EventLine) -> EventClass {
 fn is_panic_message(s: &str) -> bool {
     // Canonical Rust panic preamble: `thread 'main' panicked at ...`.
     // The std panic hook always emits this exact shape regardless of
-    // `RUST_BACKTRACE`.
     s.starts_with("thread '") && s.contains("panicked at")
 }
 
 fn has_stack_trace(s: &str) -> bool {
     // Three shapes we recognise:
     //
-    // 1. Rust panic `at` frames: `\n   at fn_path (file:line:col)`.
-    //    Cheap multi-line indicator.
     if RUST_AT_FRAME.is_match(s) {
         return true;
     }

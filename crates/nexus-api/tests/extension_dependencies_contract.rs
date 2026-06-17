@@ -174,7 +174,6 @@ fn install_started_response_shape() {
 fn nullable_fields_serialise_as_null_not_omitted() {
     // Per the OpenAPI contract, `artifact`, `last_error`, `progress`, and the
     // hint/log fields are explicitly nullable — clients (incl. zod) expect
-    // `null` rather than missing keys.
     let step = StepDto {
         id: "validate".to_owned(),
         step_type: "validation".to_owned(),

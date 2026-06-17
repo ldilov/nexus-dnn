@@ -58,11 +58,6 @@ pub async fn start_install(
 
     // Adopt any store-sink bytes whose install-map rows were lost (terminal-job
     // prune / fresh DB) BEFORE the runner probes, so model_artifact's per-file
-    // verify sees already-present files and skips a needless re-download. Runs at
-    // most once per process (the whole-sink walk grows with sink size); the
-    // operator-triggered revalidate route reconciles unconditionally. Best effort
-    // + generic (host-owned sink only) — a failure must not block install, and on
-    // failure we clear the guard so a later install retries the adopt.
     if INSTALL_PATH_BACKFILL_DONE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()

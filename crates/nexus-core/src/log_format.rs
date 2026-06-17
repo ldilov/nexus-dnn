@@ -52,9 +52,6 @@ pub struct PrettyFormat {
 const RESET: &str = "\x1b[0m";
 // Bright-black (ANSI 90) — readable grey on dark terminal themes while
 // still receding behind cyan-coloured first-party targets. The previous
-// value used the additional `2;` (dim) attribute on top of bright-black,
-// which collapsed to near-pure-black on most dark schemes and made the
-// noisy `worker.stderr` bridge target effectively invisible.
 const DIM_GREY: &str = "\x1b[90m";
 const CYAN: &str = "\x1b[36m";
 
@@ -79,10 +76,6 @@ where
 
         // Banner target opts out of the standard prefix. The message is
         // emitted verbatim so the caller has full control over visual
-        // layout (alignment, indents, box-drawing). Banner messages may
-        // include inline ANSI escapes for status coloring; on the
-        // non-ANSI path we strip them so the on-disk log file stays
-        // plain text.
         if meta.target() == BANNER_TARGET {
             if self.use_ansi {
                 ctx.format_fields(writer.by_ref(), event)?;
@@ -126,7 +119,6 @@ where
 
         // 4. Message + structured fields, compact-style on the same line.
         //    `format_fields` writes the message first, then `key=value`
-        //    pairs separated by spaces.
         ctx.format_fields(writer.by_ref(), event)?;
         writeln!(writer)
     }
@@ -145,7 +137,6 @@ fn write_ansi_stripped(writer: &mut Writer<'_>, input: &str) -> fmt::Result {
         if c == '\x1b' {
             // Look for the `[` that opens a CSI run; if we don't find
             // one, fall through and re-emit the ESC byte (defensive —
-            // shouldn't happen with our message generators).
             match chars.next() {
                 Some('[') => {
                     for end in chars.by_ref() {

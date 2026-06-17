@@ -143,8 +143,6 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
 
     // Thread-leaf indent — when this event continues an earlier
     // thread, prefix `  ╰─ ` in lavender. The visible columns the
-    // indent occupies shift every subsequent click target right by
-    // the same amount, so the registry stays accurate.
     if cfg.thread_leaf {
         let indent = thread_indent_prefix();
         out.push_str(THREAD_LEAF_ANSI_OPEN);

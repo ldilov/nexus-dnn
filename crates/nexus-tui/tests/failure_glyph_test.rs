@@ -44,8 +44,6 @@ fn config() -> RenderConfig {
 
 // The severity glyph always renders immediately before the severity
 // label (e.g. `○ INFO`, `✖ ERROR`). Asserting on `<glyph> INFO`/`ERROR`
-// avoids false positives from the category glyph (e.g. SourceCategory::Host
-// also renders as `●`).
 #[test]
 fn info_http_failure_renders_filled_dot() {
     let mut f = BTreeMap::new();

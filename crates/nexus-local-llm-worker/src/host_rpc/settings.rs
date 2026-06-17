@@ -19,7 +19,9 @@ impl SettingsKey {
         match self {
             SettingsKey::PoolCap => "local-llm.pool.cap".into(),
             SettingsKey::PoolIdleTimeoutSecs => "local-llm.pool.idle_timeout_secs".into(),
-            SettingsKey::AcquireLeaseTimeoutSecs => "local-llm.pool.acquire_lease_timeout_secs".into(),
+            SettingsKey::AcquireLeaseTimeoutSecs => {
+                "local-llm.pool.acquire_lease_timeout_secs".into()
+            }
             SettingsKey::RuntimePreferenceFor(model_id) => {
                 format!("local-llm.runtime_preferences.{model_id}")
             }

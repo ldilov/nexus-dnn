@@ -88,7 +88,6 @@ fn http_failure_renders_status_request_response_sections() {
     assert!(sections.contains(&InspectorSection::HttpResponse));
     // Default-expanded for HttpFailure: status + response visible.
     // (HttpRequest is collapsed by default per the Define Q3 matrix —
-    // operators expand it on demand.)
     assert!(layout.rendered.contains("503"));
     assert!(layout.rendered.contains("upstream timeout"));
 }
@@ -127,9 +126,6 @@ fn long_stack_trace_truncates_with_more_frames_footer() {
 
     // Footer presence is the canonical check that truncation fired.
     // Frame names can leak into the Header section's summary echo
-    // (the full message body is shown there), so we don't assert
-    // "fn_7 absent" — it's allowed in the header echo but absent
-    // from the parsed `at` frames in the StackTrace section.
     assert!(
         layout.rendered.contains("… 3 more frames"),
         "expected truncation footer; got: {}",
@@ -183,8 +179,6 @@ fn exception_default_expands_stack_trace() {
 fn workspace_frame_wraps_in_osc8_hyperlink() {
     // S5 — workspace stack-trace frames get OSC-8 hyperlinks pointing
     // at the vscode://file/ scheme so terminals that support OSC-8
-    // can hand off to the IDE. Older terminals strip the escape and
-    // render the bare `file:line:col` text.
     let msg = "request failed\n   at handler::call (src/lib.rs:1:1)";
     let evt = host_event(msg, BTreeMap::new());
     let class = classify(&evt);

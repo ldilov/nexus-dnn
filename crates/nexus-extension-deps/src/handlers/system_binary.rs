@@ -183,10 +183,6 @@ impl StepHandler for SystemBinaryHandler {
 
         // Opt-in: resolve via system PATH first. This takes precedence over a
         // declared source, so a binary present on PATH satisfies the step even
-        // when no source exists for the host platform — the documented
-        // mitigation for platforms (e.g. linux-arm64) we can't pin a download
-        // for. Also covers ubiquitous utilities (ffmpeg, git) whose system
-        // install is canonical and whose manifest URLs are moving targets.
         if parsed.allow_system_path
             && let Some(found) = locate_on_path(&parsed.id)
         {
@@ -237,10 +233,6 @@ impl StepHandler for SystemBinaryHandler {
 
         // PATH-fallback runs before source selection. The runner skips
         // `probe()` entirely under force-reinstall (`force=true`), so without
-        // this check a forced reinstall would attempt to re-download a binary
-        // the user already has on PATH. Checking PATH first also lets a
-        // system binary satisfy the step on platforms with no declared source
-        // (e.g. linux-arm64) — `allow_system_path` is the documented mitigation.
         if parsed.allow_system_path
             && let Some(found) = locate_on_path(&parsed.id)
         {

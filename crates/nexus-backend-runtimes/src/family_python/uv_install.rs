@@ -278,9 +278,16 @@ dependencies = ["foo"]
         let inv = UvInvocation::default();
         // Project declares deepspeed → must emit --no-extra
         let with = sync_args_for(&inv, &["dev".into(), "deepspeed".into()]);
-        assert!(with.iter().any(|a| a == &format!("--no-extra={WINDOWS_EXCLUDED_EXTRA}")));
+        assert!(
+            with.iter()
+                .any(|a| a == &format!("--no-extra={WINDOWS_EXCLUDED_EXTRA}"))
+        );
         // Project does NOT declare deepspeed → must NOT emit --no-extra
         let without = sync_args_for(&inv, &["dev".into()]);
-        assert!(!without.iter().any(|a| a == &format!("--no-extra={WINDOWS_EXCLUDED_EXTRA}")));
+        assert!(
+            !without
+                .iter()
+                .any(|a| a == &format!("--no-extra={WINDOWS_EXCLUDED_EXTRA}"))
+        );
     }
 }

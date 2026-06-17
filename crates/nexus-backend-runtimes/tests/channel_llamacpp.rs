@@ -8,7 +8,6 @@ use nexus_backend_runtimes::events::BackendEventBus;
 use nexus_backend_runtimes::settings::AcceleratorProfile;
 use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
 
-
 #[allow(dead_code)]
 fn make_request(port: u16) -> SpawnRuntimeRequest {
     SpawnRuntimeRequest {

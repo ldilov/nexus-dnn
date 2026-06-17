@@ -170,8 +170,8 @@ impl StdioLease {
 
             let (id, rx) = self.matchmaker.allocate();
             let request = RpcRequest::new(id, method, params);
-            let frame = serde_json::to_value(&request)
-                .map_err(|e| LeaseError::Internal(e.to_string()))?;
+            let frame =
+                serde_json::to_value(&request).map_err(|e| LeaseError::Internal(e.to_string()))?;
 
             tracing::debug!(rpc_id = %id, "rpc dispatched");
 
@@ -258,7 +258,6 @@ impl BackendRuntimeLease for StdioLease {
 
         // Cooperative: ask the worker to shutdown, best-effort. Failures
         // (worker already dead, stdin closed) are ignored — we're about
-        // to reap anyway.
         let _ = tokio::time::timeout(
             Duration::from_secs(1),
             self.send_rpc_with_timeout("shutdown", serde_json::Value::Null, Duration::from_secs(1)),
@@ -272,7 +271,6 @@ impl BackendRuntimeLease for StdioLease {
 
         // Wait up to SHUTDOWN_GRACE for the child to exit; SIGKILL if it
         // lingers. `child` is Option because we take it to run wait()
-        // exclusively.
         let mut guard = self.child.lock().await;
         if let Some(mut child) = guard.take() {
             match tokio::time::timeout(SHUTDOWN_GRACE, child.wait()).await {
@@ -310,7 +308,6 @@ async fn writer_loop(mut stdin: ChildStdin, mut rx: mpsc::Receiver<WriterCmd>) {
             WriterCmd::Frame(value) => {
                 // Write frame inline — re-implementing framer::write_frame
                 // here avoids holding stdin across an .await inside a
-                // generic writer. Same 8 MB cap applies.
                 let bytes = match serde_json::to_vec(&value) {
                     Ok(b) => b,
                     Err(e) => {
@@ -413,7 +410,6 @@ fn classify_stderr_line(line: &str) -> StderrLevel {
     }
     // BigVGAN / indextts use `>> Failed ...` for non-fatal degradation
     // and `>> X restored from: Y` for status updates. Treat the failed
-    // prefix as a warning, the restored prefix as info.
     if trimmed.starts_with(">> Failed") || trimmed.starts_with(">>> Failed") {
         return StderrLevel::Warn;
     }

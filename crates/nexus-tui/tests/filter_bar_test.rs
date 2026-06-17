@@ -21,10 +21,6 @@ use nexus_tui::stream::filter::FilterState;
 
 // We can't import the private `filter_controller_loop`; instead we
 // reimplement the surface as a thin in-test helper that calls the
-// same public APIs (FilterState::set_grep, prompt_state.filter_query).
-// If the production loop drifts, these tests catch it via the
-// snapshot-test surface above (filter behaviour) AND the mouse_edit_mode
-// unit tests (channel routing).
 async fn drive(
     keys: Vec<FilterKey>,
     filter: Arc<RwLock<FilterState>>,
@@ -201,8 +197,6 @@ async fn invalid_regex_mid_typing_preserves_previous_pattern() {
             FilterKey::Char('o'),
             // Now extend with `(` to make it `foo(` — an unclosed
             // capture group, invalid regex. The set_grep call should
-            // return Err and FilterState should retain the previous
-            // valid value.
             FilterKey::Char('('),
         ],
         Arc::clone(&filter),

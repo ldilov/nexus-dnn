@@ -37,6 +37,5 @@ pub async fn get_layout(
 
     // Layout definitions are structurally recursive and extension-defined. We
     // return the YAML-derived JSON tree verbatim; the frontend layout renderer
-    // walks it via the component registry.
     Ok(ApiResponse::ok(layout.content))
 }

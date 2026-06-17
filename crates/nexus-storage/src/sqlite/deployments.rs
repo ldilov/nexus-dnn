@@ -466,17 +466,6 @@ impl DeploymentMappers {
     ) -> Result<Vec<DeploymentRowRaw>, StorageError> {
         // Spec 019 FR-050 follow-up (T400) — project the primary source link's
         // `source_extension_id` + `source_id` (for user-workflow sources)
-        // onto every row so the UI can render a module provenance badge
-        // without an N+1 fetch. The LEFT JOIN is scoped to the deployment's
-        // current revision and the `is_primary_source=1` row; if either side
-        // is NULL (legacy rows predating 018's source-link writes), both
-        // projected columns stay NULL and the frontend falls back to a
-        // generic badge.
-        //
-        // `include_deleted` (default false) — soft-deleted rows (where
-        // `deleted_at IS NOT NULL`) are excluded from the standard listing.
-        // Pass `true` only for admin/recycle-bin surfaces that intend to
-        // surface tombstones.
         let rows = sqlx::query(
             "SELECT d.id, d.workspace_id, d.slug, d.display_name, d.description, \
              d.state, d.restore_state, d.is_archived, d.is_favorite, \
@@ -539,7 +528,6 @@ impl DeploymentMappers {
     pub async fn purge_deployment(&self, id: &str) -> Result<u64, StorageError> {
         // Collect revision IDs first so we can clean per-revision tables
         // without relying on cascade constraints (the schema does not
-        // enforce ON DELETE CASCADE).
         let rev_rows = sqlx::query("SELECT id FROM deployment_revisions WHERE deployment_id = ?")
             .bind(id)
             .fetch_all(&self.pool)
@@ -551,10 +539,12 @@ impl DeploymentMappers {
 
         // Per-revision child tables.
         for rev_id in &revision_ids {
-            sqlx::query("DELETE FROM deployment_artifact_bindings WHERE deployment_revision_id = ?")
-                .bind(rev_id)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(
+                "DELETE FROM deployment_artifact_bindings WHERE deployment_revision_id = ?",
+            )
+            .bind(rev_id)
+            .execute(&self.pool)
+            .await?;
             sqlx::query("DELETE FROM deployment_model_bindings WHERE deployment_revision_id = ?")
                 .bind(rev_id)
                 .execute(&self.pool)

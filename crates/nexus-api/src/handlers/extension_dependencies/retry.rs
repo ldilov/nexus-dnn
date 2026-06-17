@@ -105,7 +105,6 @@ pub async fn retry_step(
 
         // Build an upstream-artifacts map from prior `Ok` statuses recorded in the
         // run state — handlers that consult upstream metadata still see the right
-        // values when only one step is being re-run.
         let upstream_artifacts: HashMap<String, StepArtifact> = {
             let guard = run_state.lock().await;
             guard
@@ -132,7 +131,6 @@ pub async fn retry_step(
             install_run_id,
             // Per-row Retry/Reinstall is an explicit user action — they want
             // the step to actually re-run, not be short-circuited by a probe
-            // that says "already installed".
             force: true,
         };
         let result = runner

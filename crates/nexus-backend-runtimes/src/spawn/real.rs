@@ -126,10 +126,6 @@ impl Spawner {
     ) -> JoinHandle<()> {
         // Route the runtime child's stdout/stderr into the shared log
         // pipeline so llama-server's native `[INFO]/[WARN]/[ERROR]` output
-        // reaches the host event bus as `BackendEvent::LogLine` — same
-        // channel the probe phase already uses (spec 011/012). Previously
-        // these streams were drained to `/dev/null` via `drain_stream`,
-        // which is why no runtime-server logs ever surfaced in the UI.
         spawn_runtime_log_pipes(
             &mut prep.child,
             family.clone(),

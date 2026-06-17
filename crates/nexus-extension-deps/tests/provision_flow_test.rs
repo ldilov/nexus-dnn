@@ -113,9 +113,6 @@ struct MockModelStore {
 
 // Intentionally does NOT override `verify_files_present`: the full-install test
 // uses an unrestricted (no `files[]`) model_artifact selection, so probe() takes
-// the no-network fast path and never calls it. A future author who adds an
-// explicit `files[]` selection to that test must also override this here, or the
-// default no-op will give a false "all present" pass.
 #[async_trait]
 impl ModelStoreClient for MockModelStore {
     async fn is_family_installed(

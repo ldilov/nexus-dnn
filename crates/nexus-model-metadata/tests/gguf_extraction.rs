@@ -123,7 +123,6 @@ fn gguf_malformed_header_returns_failed() {
 
     // Act — extractor must not panic on malformed input. It should either
     // return Ok(metadata with Failed status) or Err(ExtractError) — both are
-    // acceptable, as long as the process survives.
     let result = std::panic::catch_unwind(|| extractor.extract(&path, "broken-install"));
     let outcome = result.expect("extractor must not panic on malformed header");
 

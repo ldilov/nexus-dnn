@@ -35,8 +35,6 @@ pub async fn delete(
 
     // If the manager has a live handle, releasing it is the fast path —
     // it flips the lease row to `released` via the StdioLease's
-    // drop / release pipeline's parent host wiring (future). For v1,
-    // also update the row directly so the HTTP view stays consistent.
     if let Some(handle) = state.lease_manager.get(&lease_id).await {
         let _ = state.lease_manager.release(&lease_id).await;
         // Belt + suspenders: make sure the persistent row reflects
@@ -51,7 +49,6 @@ pub async fn delete(
 
     // No live handle — consult the persistent row so we can return the
     // right status: 404 for unknown, 409 when the row is already
-    // terminal, 204 for a rare race where another worker just released.
     let leases = SqliteLeasesRepo::new(state.db.pool().clone());
     match leases.get(&lease_id).await {
         Ok(Some(row)) => {

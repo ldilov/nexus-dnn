@@ -588,7 +588,6 @@ fn print_curtain_line(report: &SettleReport) {
     };
     // Palette: graphite dim brackets + bold blue title + violet count +
     // soft slate duration. ANSI 256 colour codes degrade gracefully on
-    // older terminals; the line stays readable even without colour.
     let line = format!(
         "\x1b[38;5;245m╾───\x1b[0m \
          \x1b[1;38;5;75m✦ boot complete\x1b[0m \
@@ -1091,7 +1090,6 @@ fn apply_filter_buffer(filter: &Arc<RwLock<FilterState>>, buffer: &str) {
     if let Err(err) = f.set_grep(pattern) {
         // Don't surface bad regex during typing — the user might be
         // mid-keystroke (e.g. `(` while typing `(foo|bar)`). The
-        // previous valid pattern is preserved silently.
         let _ = err;
     }
 }

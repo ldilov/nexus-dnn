@@ -55,7 +55,6 @@ fn every_shipped_workflow_validates_against_its_extensions_operators() {
 
         // Gather this extension's operator definitions. Real production setups
         // could cross-reference operators from other extensions; for this
-        // smoke test we expect each builtin extension to be self-contained.
         let operators = load_operators_for(&ext_dir);
 
         for wf_entry in fs::read_dir(&workflows_dir).unwrap() {
@@ -88,9 +87,6 @@ fn every_shipped_workflow_validates_against_its_extensions_operators() {
 fn every_node_input_resolves_to_a_real_operator_port_name() {
     // Handle IDs in the React Flow graph are sourced from the operator's port
     // `name`. This test walks every shipped workflow, resolves each edge
-    // endpoint to an operator port, and asserts the name exists on the spec.
-    // If this passes, the canvas cannot ever render a handle without a
-    // backing spec port — which is the invariant the user asked us to test.
     let root = repo_root();
     let builtin = root.join("extensions").join("builtin");
 
@@ -154,7 +150,6 @@ fn every_node_input_resolves_to_a_real_operator_port_name() {
 fn builtin_manifests_parse_cleanly() {
     // A user-facing symptom of a broken manifest is "extension failed to
     // load" at boot, which then makes the whole catalog empty. Pin the
-    // manifest parse as a separate test so regressions localize.
     let root = repo_root();
     let builtin = root.join("extensions").join("builtin");
     for ext_entry in fs::read_dir(&builtin).unwrap() {

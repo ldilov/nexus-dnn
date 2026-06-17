@@ -43,7 +43,6 @@ async fn dropped_response_does_not_leak_state() {
 
     // Read just the first frame (stream_started) — that proves the
     // handler took the open path; then we drop the body without
-    // consuming the rest, simulating a client disconnect.
     let body = resp
         .into_body()
         .collect()
@@ -66,7 +65,6 @@ async fn dropped_response_does_not_leak_state() {
 
     // Cancel after disconnect: handler is idempotent → 204. This
     // exercises the registry path even though we cannot directly
-    // observe internal state.
     let resp2 = app
         .oneshot(
             Request::builder()
@@ -92,7 +90,6 @@ async fn second_concurrent_request_succeeds_after_first_disconnects() {
 
     // Two back-to-back streams on the same router state. If client_disconnect
     // had wedged the lease somehow, the second would fail. Both must
-    // succeed — the FakeStreamProvider does not require lease release.
     for label in ["first", "second"] {
         let resp = app
             .clone()

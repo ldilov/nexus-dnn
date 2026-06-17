@@ -33,9 +33,8 @@ async fn first_run_scans_legacy_paths_and_writes_marker_then_second_run_is_noop(
     let host_client = harness.host_client.clone();
 
     let root_clone = root.to_path_buf();
-    let migration_task = tokio::spawn(async move {
-        migration::run_if_needed(&host_client, &root_clone).await
-    });
+    let migration_task =
+        tokio::spawn(async move { migration::run_if_needed(&host_client, &root_clone).await });
 
     let bin_call = harness
         .fake_host
@@ -88,13 +87,11 @@ async fn first_run_scans_legacy_paths_and_writes_marker_then_second_run_is_noop(
 
     let host_for_second = harness.host_client.clone();
     let root_for_second = root.to_path_buf();
-    let second = tokio::spawn(async move {
-        migration::run_if_needed(&host_for_second, &root_for_second).await
-    });
-    second
-        .await
-        .expect("join")
-        .expect("second run success");
+    let second =
+        tokio::spawn(
+            async move { migration::run_if_needed(&host_for_second, &root_for_second).await },
+        );
+    second.await.expect("join").expect("second run success");
 
     let no_more = harness
         .fake_host
@@ -115,9 +112,8 @@ async fn missing_legacy_tree_produces_empty_but_valid_marker() {
     let host_client = harness.host_client.clone();
 
     let root_clone = root.to_path_buf();
-    let task = tokio::spawn(async move {
-        migration::run_if_needed(&host_client, &root_clone).await
-    });
+    let task =
+        tokio::spawn(async move { migration::run_if_needed(&host_client, &root_clone).await });
 
     let no_call = harness
         .fake_host

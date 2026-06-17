@@ -200,7 +200,6 @@ pub async fn deactivate_contributions_with_drain(
 
     // Flip the catalog rows only after leases drain (matches the
     // lifecycle cascade in data-model.md §9: state transitions follow
-    // subprocess reaping).
     for e in entries {
         if e.implementation_status != ImplementationStatus::Unavailable {
             catalog_repo

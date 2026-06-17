@@ -237,8 +237,6 @@ fn parse_asset_name(name: &str) -> Option<ParsedAsset> {
     };
     // Accelerator availability is platform-specific:
     //  - linux-arm64: CPU + Vulkan (upstream ships no CUDA arm64 build).
-    //  - x64 (win/linux): CPU + CUDA (Vulkan x64 is not surfaced — CUDA is the
-    //    preferred GPU path there).
     match (platform, accelerator_profile) {
         ("linux-arm64", AcceleratorProfile::Cuda12 | AcceleratorProfile::Cuda13) => return None,
         ("windows-x64" | "linux-x64", AcceleratorProfile::Vulkan) => return None,

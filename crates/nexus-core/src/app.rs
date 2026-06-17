@@ -52,8 +52,6 @@ impl NexusApp {
         );
         // Self-diagnostic banner: gather environment facts
         // (ffmpeg/nvcc on PATH, free disk, db size, etc.) so any
-        // "why is X broken?" debug session has the answers in the log
-        // without needing to re-run anything.
         crate::diagnostic::run_and_log(&self.config);
         Ok(())
     }
@@ -152,10 +150,6 @@ impl NexusApp {
 
                                 // Bridge manifest.backend_runtimes → host catalog.
                                 // Without this hop the `/api/v1/backend-runtimes` list
-                                // surface stays empty even when extensions declare
-                                // runtimes, and downstream lease acquisition (e.g.
-                                // the text-completion broker) always returns 503
-                                // `no_eligible_backend`.
                                 if let Some(activated) = <nexus_extension::InMemoryExtensionRegistry as nexus_extension::ExtensionRegistry>::get_extension(&extension_registry, ext_id) {
                                     let contributions = &activated.manifest.backend_runtimes;
                                     if !contributions.is_empty() {
@@ -329,9 +323,6 @@ impl NexusApp {
 
         // Construct the model-store client up front so the same instance can
         // flow into (a) the extension router registry — extensions that need
-        // to query installed model paths at acquire time consume it through
-        // their own contract — and (b) the AppState `dep_model_store` field
-        // below. Avoids two parallel constructions diverging.
         let model_store_client: Arc<dyn nexus_extension_deps::ModelStoreClient> =
             Arc::new(nexus_api::dep_bootstrap::RealModelStoreClient::new(
                 install_map_for_dep.clone(),
@@ -448,9 +439,6 @@ impl NexusApp {
             ),
             // Spec 035 — generic extension dependency installer wiring. Real
             // probe adapters delegate to host_runtime_installs (runtime) and
-            // model_store_installed_artifacts (model_artifact); the action
-            // path (full pipeline install / download-job creation) still
-            // routes through the existing Backends + Models Search UIs.
             dep_handler_registry: Some(nexus_api::dep_bootstrap::default_dep_handler_registry()),
             dep_install_state: std::sync::Arc::new(Default::default()),
             dep_runtime_bootstrapper: Some(std::sync::Arc::new(
@@ -476,11 +464,6 @@ impl NexusApp {
 
         // Spec 049 D5 — publish the actually-bound port to child worker
         // subprocesses via `NEXUS_HOST_PORT`. Children inherit the host's
-        // env, so any extension worker can hit
-        // `http://127.0.0.1:$NEXUS_HOST_PORT/api/v1/services/text-completion`
-        // without rolling stdio plumbing. Setting it AFTER bind eliminates
-        // the cold-start race — the port is guaranteed open by the time
-        // any child observes the var.
         match listener.local_addr() {
             Ok(addr) => {
                 // SAFETY: set_var is called once during startup, before any
@@ -882,17 +865,6 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
 
     // The banner target opts out of the standard timestamp/icon/level/
     // target prefix (see crates/nexus-core/src/log_format.rs). Each line
-    // is emitted verbatim so the column alignment and section dividers
-    // hold visually.
-    //
-    // Banner status tokens are intentionally plain text. An earlier
-    // pass tried to color `[active]` green via raw ANSI escapes, but
-    // hand-rolled ANSI doesn't auto-enable Windows
-    // ENABLE_VIRTUAL_TERMINAL_PROCESSING the way tracing-subscriber's
-    // own `with_ansi(true)` (via `nu-ansi-term`) does — so the codes
-    // rendered as literal `\x1b[32m` text on classic Windows consoles.
-    // Until we wire `enable_ansi_support` at startup or build a more
-    // robust terminal detection, the banner stays plain.
 
     let rule_thick = "─".repeat(60);
     let rule_thin = "·".repeat(60);

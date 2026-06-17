@@ -18,9 +18,6 @@ use super::common::{build_app, build_post_request, happy_path_body, parse_sse};
 async fn explicit_cancel_emits_cancelled_terminal() {
     // Script enough tokens that the stream will still be in-flight when
     // we call cancel. The fake spawns a producer task that sends each
-    // item with no delay, but the SSE channel buffer is 16 — sending
-    // > 16 items forces the producer to await between sends, giving us
-    // a window to cancel.
     let mut script: Vec<StreamItem> = (0..50)
         .map(|i| StreamItem::Token(format!("tok{i}-")))
         .collect();
@@ -55,8 +52,6 @@ async fn explicit_cancel_emits_cancelled_terminal() {
 
     // The handler instance went out of scope after `oneshot` completed,
     // but the registry lived on the AppState shared with the route.
-    // Because each `oneshot` call gets its own router clone, the cancel
-    // endpoint MUST be hit on the SAME router state — re-use `app`.
     let cancel_resp = app
         .oneshot(
             Request::builder()

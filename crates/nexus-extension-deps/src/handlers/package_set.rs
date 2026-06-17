@@ -196,8 +196,6 @@ impl StepHandler for PackageSetHandler {
 
         // `uv sync` installs from the manifest into a venv. Setting UV_PYTHON to
         // the embedded interpreter prevents uv from searching PATH and picking
-        // up a different system Python. UV_PROJECT_ENVIRONMENT pins the venv
-        // location to our extension-local packages dir.
         let project_dir = manifest_full
             .parent()
             .unwrap_or(ctx.extension_dir)
@@ -215,7 +213,6 @@ impl StepHandler for PackageSetHandler {
 
         // Per-extension uv cache so wheel builds for one extension can never
         // poison another. Costs disk (no cross-extension wheel sharing) but
-        // gives strict isolation — each extension has its own resolver state.
         let uv_cache = ctx
             .extension_data_dir
             .join("runtime")
@@ -248,14 +245,9 @@ impl StepHandler for PackageSetHandler {
             .env("UV_CACHE_DIR", &uv_cache)
             // Stop uv from reading `~/.config/uv/` or workspace-level config —
             // user-level config (custom indexes, registries, auth tokens)
-            // must not influence an extension install.
             .env("UV_NO_CONFIG", "1")
             // Strip Python env vars that would otherwise inject the user's
             // global Python state into the new venv. PYTHONHOME makes the
-            // interpreter look for stdlib elsewhere; PYTHONPATH leaks
-            // user-installed packages; PYTHONSTARTUP runs arbitrary code on
-            // every interpreter launch; PYTHONUSERBASE points pip at the
-            // user-site dir.
             .env_remove("PYTHONHOME")
             .env_remove("PYTHONPATH")
             .env_remove("PYTHONSTARTUP")
@@ -263,8 +255,6 @@ impl StepHandler for PackageSetHandler {
             .env_remove("PYTHONNOUSERSITE")
             // Strip pip-discovery env vars so an inherited
             // PIP_INDEX_URL/EXTRA_INDEX_URL/CONFIG_FILE can't redirect uv to
-            // a different registry. The pyproject + UV_PROJECT_ENVIRONMENT
-            // are the only sources of truth.
             .env_remove("PIP_INDEX_URL")
             .env_remove("PIP_EXTRA_INDEX_URL")
             .env_remove("PIP_CONFIG_FILE")
@@ -298,10 +288,6 @@ impl StepHandler for PackageSetHandler {
 
         // Drain stdout/stderr concurrently with wait() so the child's pipe
         // buffers never fill up (which would deadlock it). Take the handles
-        // out of the Child so we can keep `child` borrowable for kill/wait.
-        // stdout is drained raw; stderr is line-streamed so uv's discrete
-        // summary lines (`Resolved/Prepared/Installed N packages`) drive a
-        // live progress bar instead of arriving in one silent blob at the end.
         use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
         let mut stdout_pipe = child.stdout.take().expect("stdout piped");
         let stderr_pipe = child.stderr.take().expect("stderr piped");
@@ -782,7 +768,6 @@ mod tests {
 
         // Stand up just enough of a StepContext to exercise the path helpers.
         // The other fields are not read by venv_dir/marker_path/locate_uv/
-        // python_interpreter so we use cheap stubs.
         let model_store: std::sync::Arc<dyn crate::ModelStoreClient> =
             std::sync::Arc::new(stubs::ModelStore);
         let runtime_bootstrapper: std::sync::Arc<dyn crate::RuntimeBootstrapper> =
@@ -832,7 +817,6 @@ mod tests {
 
         // The interpreter probe MUST only check candidates under
         // <extension_data_dir>/runtime/python — it must never look at
-        // PATH, registry, or any user-level install.
         let py = python_interpreter(&ctx); // returns None for non-existent paths
         assert!(py.is_none(), "no fixture present so probe must return None");
     }

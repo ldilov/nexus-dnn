@@ -224,11 +224,6 @@ impl EditMode for MouseAwareEditMode {
 
         // Filter mode — closed: `Ctrl+/` (or `Ctrl+_` on some terminals
         // that swallow the `/` chord) promotes to filter-mode open.
-        // Bare `/` is RESERVED for slash commands (`/grep`, `/inspect`,
-        // `/follow`, …) — auto-intercepting it broke muscle memory and
-        // the Define Q1 "modal-with-fallback" escape was never fully
-        // designed. The Ctrl chord is unambiguous: it never conflicts
-        // with command sigils or filter regexes.
         if let (Some(focus), Some(tx)) = (&self.filter_focus, &self.filter_key_tx)
             && !focus.is_open()
             && let Event::Key(key_event) = inner_event
@@ -241,18 +236,12 @@ impl EditMode for MouseAwareEditMode {
             focus.open();
             // Wake the controller so it can clear the prompt area and
             // start rendering the filter bar. If the controller's
-            // receiver is gone (task panicked or shutdown beat us),
-            // roll the focus flag back to closed so reedline keeps
-            // the keyboard — otherwise the prompt would freeze
-            // (review H3 — flag-vs-consumer desync).
             use tokio::sync::mpsc::error::TrySendError;
             match tx.try_send(FilterKey::Backspace) {
                 Ok(()) | Err(TrySendError::Full(_)) => {}
                 Err(TrySendError::Closed(_)) => {
                     // Controller is gone — close the flag and swallow
                     // the chord. We never let it fall through to
-                    // reedline because the chord is a control sequence,
-                    // not printable input.
                     focus.close();
                 }
             }
@@ -294,7 +283,6 @@ impl MouseAwareEditMode {
                 KeyCode::Char('u') | KeyCode::Char('w') => self.buffer_chars = 0,
                 // Ctrl+A / Ctrl+E (BOL/EOL motion) suggest the user is
                 // operating on an already-populated line — force the
-                // mirror non-zero so `/` here does NOT open filter.
                 KeyCode::Char('a') | KeyCode::Char('e') => {
                     self.buffer_chars = self.buffer_chars.max(1);
                 }
@@ -309,8 +297,6 @@ impl MouseAwareEditMode {
             KeyCode::Enter | KeyCode::Esc => self.buffer_chars = 0,
             // History recall, end-of-line motion, and other navigation
             // that may have just replaced the buffer with non-empty
-            // content. Force non-zero so `/` after these does NOT
-            // hijack focus into filter mode (review H2).
             KeyCode::Up | KeyCode::Down | KeyCode::Home | KeyCode::End => {
                 self.buffer_chars = self.buffer_chars.max(1);
             }

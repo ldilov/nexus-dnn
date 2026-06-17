@@ -36,7 +36,6 @@ pub async fn delete(
 
     // Block uninstall while a live lease exists — data-model.md §9 says
     // uninstall cascades to `abandoned`, but only after all consumers
-    // have been drained.
     let live_count = state
         .lease_manager
         .live_count_for_install(&install_id)
@@ -76,8 +75,6 @@ pub async fn delete(
 
     // Single-row update via mark_abandoned_for_runtime — but that affects
     // every install for this runtime. Scope to this install by using
-    // update_status with Abandoned; soft-FK semantics mean the catalog
-    // row is untouched.
     use nexus_backend_runtimes::generic::enums::InstallStatus;
     if let Err(e) = installs
         .update_status(&install_id, InstallStatus::Abandoned, None)

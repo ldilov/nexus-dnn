@@ -206,7 +206,6 @@ async fn reload_of_extension_in_duplicate_tag_state_returns_409() {
         harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path(), &dup_path]).await;
     // Reloading the duplicate extension re-runs validation — the duplicate tag
     // is already present in the registry, so collect_custom_elements detects
-    // the collision and the handler returns 409 with no state change.
     let (status, body, _) = call(
         harness.state,
         "POST",

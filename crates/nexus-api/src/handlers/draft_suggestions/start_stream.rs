@@ -202,7 +202,6 @@ pub async fn start_stream(
 
         // Stream ended without an explicit terminator → emit `cancelled`
         // with `client_disconnected` so the wire contract's "exactly one
-        // terminal event" invariant holds.
         let terminal = terminated_with.unwrap_or(SuggestionResponseEvent::Cancelled {
             reason: CancelReason::ClientDisconnected.as_wire_str().into(),
             tokens_emitted,

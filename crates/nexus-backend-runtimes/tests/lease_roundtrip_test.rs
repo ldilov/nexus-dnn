@@ -27,8 +27,6 @@ fn workspace_root() -> PathBuf {
 fn python_executable() -> &'static str {
     // Windows conventionally uses `python`; Linux / macOS may have
     // `python3` without `python`. Tests are expected to run on the same
-    // dev machine that built the test-echo asset zip, so whichever
-    // python is on PATH is fine — we don't pin a specific version.
     if cfg!(windows) { "python" } else { "python3" }
 }
 
@@ -121,7 +119,6 @@ async fn t072_unknown_method_returns_rpc_error() {
 async fn t072_slow_response_hits_timeout() {
     // Spawn a one-shot python subprocess that reads a request but never
     // replies — framed via a tiny in-test stub rather than the echo
-    // worker (which always replies).
     let stub_script = r#"
 import sys
 # Read one line then sleep forever, ignoring any further input.
@@ -163,7 +160,6 @@ time.sleep(300)
 async fn t073_worker_crash_mid_request_returns_worker_crashed() {
     // A worker that exits immediately after reading one request. The
     // host enqueues a request, the worker dies before replying, and
-    // the matchmaker must surface `WorkerCrashed` on the pending RPC.
     let stub_script = r#"
 import sys
 sys.stdin.readline()

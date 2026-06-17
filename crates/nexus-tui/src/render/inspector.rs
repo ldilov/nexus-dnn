@@ -31,8 +31,6 @@ pub enum InspectorSection {
     RawPayload,
     // S4 — Sub-sectioned inspector for classified failure events.
     // These sections only render when [`InspectorRenderConfig.event_class`]
-    // marks the event as `HttpFailure`/`HttpSuccess` (HttpStatus,
-    // HttpRequest, HttpResponse) or `Exception`/`Panic` (StackTrace).
     HttpStatus,
     HttpRequest,
     HttpResponse,
@@ -114,8 +112,6 @@ pub fn default_collapsed_for_class(
         EventClass::Plain | EventClass::HttpSuccess { .. } => {
             // Use the historical default — Header/Metadata/Fields
             // expanded; everything else collapsed. The Define-Q3 matrix
-            // says Plain fully collapses but the existing UX already
-            // expands these — preserve to avoid snapshot churn here.
             collapsed.insert(InspectorSection::CorrelationKeys);
             collapsed.insert(InspectorSection::RecentContext);
             collapsed.insert(InspectorSection::CorrelatedEvents);
@@ -357,8 +353,6 @@ pub fn render_inspector_layout(
 
     // Spec 044 S4 — per-class sub-sections. Only emit when the
     // classifier marks this event as HTTP-flavoured or
-    // exception-flavoured. Plain events get no sub-sections, so the
-    // legacy 8-section layout renders byte-identically for them.
     if let Some(class) = cfg.event_class {
         use crate::inspector::classifier::EventClass;
         match class {
@@ -525,7 +519,6 @@ fn push_http_sections(
         } else {
             // Snippet only — first 200 chars + ellipsis. Sanitise
             // before truncation so multi-byte ESC sequences can't
-            // straddle the boundary.
             let safe_body = sanitize_for_terminal(body);
             let mut snippet: String = safe_body.chars().take(200).collect();
             if safe_body.chars().count() > 200 {
@@ -578,12 +571,6 @@ fn push_stack_trace_section(
     for frame in frames.iter().take(render_count) {
         // Build the location text; wrap in OSC-8 if the frame is
         // workspace code AND we have a file+line. Non-workspace frames
-        // stay plain because clicking into a registry/site-packages
-        // path is rarely useful — and dimming should remain visible.
-        // The visible LABEL text is sanitised — host-controlled paths
-        // may carry embedded ANSI escapes that would otherwise hijack
-        // the terminal when rendered. The URL passed to OSC-8 is
-        // separately percent-encoded by `build_frame_url`.
         let safe_file_label: std::borrow::Cow<'_, str> = frame
             .file
             .as_deref()
@@ -611,7 +598,6 @@ fn push_stack_trace_section(
         } else {
             // location_styled is either plain text (sanitised below
             // before URL-encoding) or our own OSC-8 wrap around a
-            // url+label — both safe to interpolate.
             format!("  at {safe_function}  ·  {location_styled}")
         };
         if frame.is_workspace_frame() {
@@ -652,10 +638,6 @@ fn build_frame_url(file: &str, line: u32, column: Option<u32>) -> String {
     let normalized = file.replace('\\', "/");
     // Percent-encode every byte that could break out of the URL or
     // hijack the OSC-8 escape envelope — ESC (0x1B), BEL (0x07), CSI
-    // (0x9B), C0 controls, plus URI-significant characters (space, `?`,
-    // `#`, `"`, `'`, `<`, `>`, backtick) and `%` itself for round-trip
-    // safety. RFC 3986 unreserved characters and the `/` separator are
-    // left intact so paths stay readable.
     let encoded = percent_encode_path(&normalized);
     match column {
         Some(c) => format!("vscode://file/{encoded}:{line}:{c}"),
@@ -745,8 +727,6 @@ fn push_target_header(out: &mut String, target: &EventLine, depth: ColorDepth) {
     );
     // target.source and target.summary are host-controlled — strip any
     // embedded terminal escape bytes before interpolating, so a
-    // malicious log payload can't clear the screen or rewrite the
-    // terminal title via the inspector echo of its own summary.
     let safe_source = sanitize_for_terminal(&target.source);
     let safe_summary = sanitize_for_terminal(&target.summary);
     let summary = format!("{safe_source} — {safe_summary}");

@@ -88,8 +88,6 @@ pub async fn list_dependencies(
     let mut any_partial = false;
     // Probe every step concurrently. The snapshot probe has no inter-step data
     // dependency (`upstream` stays empty here), so the old sequential `for`
-    // walk was pure stacked I/O latency — slow for extensions with many
-    // model_artifact steps. join_all overlaps the awaits in one task.
     let probed = futures_util::future::join_all(
         plan.steps
             .iter()

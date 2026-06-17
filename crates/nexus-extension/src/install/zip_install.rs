@@ -77,7 +77,6 @@ impl ZipInstallPipeline {
     pub fn install_from_file(&self, zip_path: &Path) -> Result<ZipInstallResult, ZipInstallError> {
         // Defence-in-depth: enforce the compressed cap even though the axum
         // body limit is the primary gate. This protects any future non-HTTP
-        // caller (CLI, cron) that bypasses the axum layer.
         let compressed_size = std::fs::metadata(zip_path)?.len();
         if compressed_size > self.size_limits.max_compressed_bytes {
             return Err(ZipInstallError::SizeLimit {
@@ -106,7 +105,6 @@ impl ZipInstallPipeline {
 
         // Step 9 — SVG icon sanitization runs regardless of whether the
         // icon is wrapped in ManifestIcon.svg or elsewhere; here we only
-        // touch the manifest field because that's the FR-I03 surface.
         if let Some(svg) = manifest
             .extension
             .icon
@@ -118,8 +116,6 @@ impl ZipInstallPipeline {
 
         // The ZIP may wrap the manifest under an extension_id-named dir.
         // If so, promote that dir's contents to unpacked_root before the
-        // atomic rename — the extensions_root layout is always
-        // `extensions_root/{id}/manifest.{yaml,toml}` at top level.
         let final_src = flatten_wrapper_dir(unpacked_root.clone(), &validated)?;
 
         // Step 10 — atomic rename into final destination.

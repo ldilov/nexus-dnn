@@ -109,8 +109,6 @@ fn hover_on_run_id_emits_bold_around_glyph() {
     });
     // HostLog doesn't carry a correlation.run_id by derivation. Skip if the
     // EventLine doesn't expose one; the runtime's run-id click registration
-    // guards on `correlation.run_id.is_some()` so this branch only triggers
-    // when both a target and the matching field exist.
     if line.correlation.run_id.is_none() {
         return;
     }

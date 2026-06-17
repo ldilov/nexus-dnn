@@ -200,7 +200,6 @@ async fn execute(
 ) {
     // Inspector-session lifecycle: any command other than Inspect /
     // InspectorToggle dismisses an in-progress session so the held
-    // ambient events flush before the new command's output prints.
     if !matches!(
         cmd,
         ParsedCommand::Inspect(_) | ParsedCommand::InspectorToggle { .. }
@@ -538,10 +537,6 @@ fn clear_prior_inspector_block(handles: &ControllerHandles) {
     };
     // Always evict stale `InspectorSection` click targets — even when
     // no prior anchor is recorded the registry may still carry entries
-    // from an earlier inspector session that survived a partial wipe.
-    // Without this eviction, a click on the new card's row could
-    // resolve to an old section's target whose rows shifted underneath
-    // it (the "click toggles the wrong section" symptom).
     if let Ok(mut reg) = handles.click_registry.lock() {
         reg.retain_targets(|t| {
             !matches!(
@@ -586,8 +581,6 @@ fn compute_block_top(old_row: Option<u16>, new_row: Option<u16>, total_rows: u16
         (_, Some(new)) => {
             // After the print, the block occupies rows
             // `new - total_rows .. new`. Saturating-sub keeps us in
-            // bounds even if the terminal is so small the block
-            // overflows its top edge.
             Some(new.saturating_sub(total_rows))
         }
         (Some(old), None) => Some(old),
@@ -1393,7 +1386,6 @@ mod help_render_tests {
     fn compute_block_top_full_scroll_clamps_to_zero() {
         // 30-row block on a 24-row terminal printed from row 20:
         // cursor ends at row 23 (terminal-bottom-clamped). Block top
-        // = 23 − 30 = saturating_sub → 0.
         assert_eq!(compute_block_top(Some(20), Some(23), 30), Some(0));
     }
 
@@ -1401,7 +1393,6 @@ mod help_render_tests {
     fn compute_block_top_partial_scroll_returns_new_minus_height() {
         // 20-row block printed from row 10 on a 24-row terminal:
         // cursor ends at row 23. Block top = 23 − 20 = 3 (shifted up
-        // by 7 rows of scroll).
         assert_eq!(compute_block_top(Some(10), Some(23), 20), Some(3));
     }
 

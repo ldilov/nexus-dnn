@@ -139,7 +139,6 @@ async fn recipe_references_workflow_with_attributed_nodes() {
 
     // 4. Edge preserves the connection compose_prompt.prompt → chat_turn.prompt
     //    which is what makes the recipe's chat turn actually depend on the
-    //    compose step at runtime.
     let edges: serde_json::Value = serde_json::from_str(&loaded_wf.edges).unwrap();
     let e = &edges.as_array().unwrap()[0];
     assert_eq!(e["source_node"], "compose_prompt");
@@ -218,10 +217,6 @@ async fn uninstalled_extension_leaves_workflow_orphaned_with_attribution_intact(
 
     // User edits, then extension is "uninstalled" at the policy layer
     // (DB row would remain for integrity — disabled extensions keep their
-    // row so FK holds). Assert that a user-edited copy still carries the
-    // old extension_id so the catalog can render the "missing source" badge
-    // spec §Edge Cases requires when the extension is later *fully* removed
-    // from the registry, not just disabled.
     let mut edited = wf.clone();
     edited.user_edited_at = Some("2026-04-14T10:00:00Z".into());
     db.update_workflow(&edited).await.unwrap();

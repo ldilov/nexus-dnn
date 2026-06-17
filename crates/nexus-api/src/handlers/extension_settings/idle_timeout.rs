@@ -55,7 +55,6 @@ pub async fn patch_idle_timeout(
 
     // Validate the extension exists in the host's extension registry —
     // otherwise the request silently no-ops and operators can't tell
-    // typos from "extension contributes no runtimes".
     if state
         .extension_registry
         .get_extension(&extension_id)
@@ -77,8 +76,6 @@ pub async fn patch_idle_timeout(
 
     // Collect every install id contributed by any of this extension's
     // runtimes. Empty result is valid — extension contributes no
-    // runtimes — the handler still records the request but reports 0
-    // installs updated.
     let mut install_ids = Vec::new();
     for entry in &catalog_entries {
         let installs = installs_repo

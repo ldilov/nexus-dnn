@@ -97,9 +97,6 @@ impl StepHandler for ValidationHandler {
     async fn probe(&self, ctx: &StepContext<'_>, _spec: &Value) -> Result<ProbeResult, DepError> {
         // Filesystem-backed: the marker is written by `run()` on a successful
         // handshake and removed at the start of every `run()` attempt, so its
-        // presence is a durable proof that the most recent install completed.
-        // After an app restart, this is what keeps the Validate row green
-        // without a re-handshake against a worker that isn't running yet.
         let marker = marker_path(ctx.extension_data_dir);
         if tokio::fs::metadata(&marker).await.is_ok() {
             return Ok(ProbeResult::Satisfied {
@@ -121,7 +118,6 @@ impl StepHandler for ValidationHandler {
 
         // Always invalidate the previous marker before re-attempting. If the
         // handshake fails below, no stale "ok" marker survives — probe() will
-        // correctly report NotSatisfied on the next `GET /dependencies`.
         let _ = tokio::fs::remove_file(&marker).await;
 
         // First-progress promptly so the validation row shows `running` instead

@@ -65,9 +65,6 @@ async fn request_id_middleware(mut req: Request, next: Next) -> Response {
     let status = response.status();
     // Threshold above which a 2xx is interesting enough to deserve `info`.
     // Anything faster is per-second polling chatter (`/metrics`,
-    // `/operators`, `/backend-runtime-leases`, `/llm/backends`, etc.) and
-    // floods the terminal with no analytic value — drop to `debug` so the
-    // operator can opt back in with `RUST_LOG=nexus_api::request=debug`.
     const SLOW_2XX_MS: u64 = 100;
     if status.is_server_error() {
         tracing::error!(target: "nexus_api::request",
@@ -192,8 +189,6 @@ pub fn build(state: AppState) -> Router {
         )
         // Spec 054 G5 — host-owned uninstall overlay. Generic by `:id`:
         // releases the extension's leases, removes its runtime/venv install +
-        // data dir, drops its model refs and refcount-GCs exclusively-owned
-        // models. Zero extension literals in the handler.
         .route(
             "/extensions/{id}/uninstall",
             post(extension_dependencies::uninstall_extension),
@@ -395,8 +390,6 @@ pub fn build(state: AppState) -> Router {
         )
         // Model-first runtime spawn: host picks the right runtime for the
         // model's family, validates hyperparameters against the catalog,
-        // and passes `--model <path>` on the command line. Single call for
-        // extensions — no need to wire up /lease themselves.
         .route("/backends/load-model", post(backends::load_model))
         .route("/backends/{installId}/lease", post(backends::create_lease))
         .route(
@@ -507,13 +500,6 @@ pub fn build(state: AppState) -> Router {
 
     // Draft AI suggestion stream (spec 037 / Phase 8 + T078b). Mounted
     // under the host root because the routes already include
-    // `/api/v1/...` paths and ship their own `Extension`-attached state.
-    // The provider is the lease-backed implementation that drives the
-    // generic text-completion JSON-RPC contract — runtimes opt in by
-    // tagging their catalog entry with the canonical capability tag.
-    // When no participating runtime has a Ready lease, the provider
-    // returns `NoEligibleBackend` and the endpoint answers with the
-    // documented 503 + CTA payload.
     let catalog_repo: std::sync::Arc<
         dyn nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo,
     > = std::sync::Arc::new(
@@ -538,9 +524,6 @@ pub fn build(state: AppState) -> Router {
 
     // Spec 049 — generic text-completion broker. Buffered request/
     // response over the canonical text-completion JSON-RPC contract.
-    // Boundary contract: see crate-level docstring in
-    // `handlers::text_completion`. CI grep guard enforces no
-    // extension-specific names land in this module.
     let text_completion_catalog: std::sync::Arc<
         dyn nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo,
     > = std::sync::Arc::new(
@@ -616,7 +599,6 @@ pub fn build(state: AppState) -> Router {
         .layer(CatchPanicLayer::new())
         // request_id MUST be the outermost user-visible layer so the
         // span is active for everything inside it (including
-        // deprecation_headers, CORS, compression, and the handler).
         .layer(middleware::from_fn(request_id_middleware))
         .layer(middleware::from_fn(deprecation_headers))
         .layer(

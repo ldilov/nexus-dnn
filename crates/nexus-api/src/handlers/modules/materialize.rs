@@ -104,7 +104,6 @@ pub async fn materialize(
     let entry = DraftEntry {
         // For extension/user forks no new workflow row exists — cache the
         // projected module_id instead so idempotent replays echo the same
-        // envelope the client saw first.
         workflow_id: workflow_id_for_source.source_workflow_id_or_empty(),
         deployment_id: saved.deployment_id.to_string(),
         deployment_revision_id: saved.revision_id.to_string(),
@@ -176,7 +175,6 @@ async fn materialize_source(
         }
         // Blank Module fork (explicit `"user:blank"`, absent, or
         // unrecognized prefix — treat unrecognized as Blank for forward-
-        // compat; the new-workflow path is the most conservative default).
         _ => {
             let workflow_id = format!("wfl_{}", Uuid::new_v4().simple());
             let now = Utc::now().to_rfc3339();

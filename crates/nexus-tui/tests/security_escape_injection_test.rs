@@ -71,7 +71,6 @@ fn render(evt: EventLine) -> String {
 fn http_response_body_with_escape_does_not_clear_screen() {
     // A malicious host log carrying `\x1b[2J\x1b[H` in the response
     // body would clear the screen if interpolated raw. The sanitiser
-    // must strip the ESC.
     let mut f = BTreeMap::new();
     f.insert("http.status_code".into(), "500".into());
     f.insert(
@@ -108,7 +107,6 @@ fn http_url_with_escape_does_not_set_terminal_title() {
     let rendered = render(evt);
     // Note: HttpRequest section is collapsed by default for HttpFailure
     // — the URL never reaches the rendered output. The defence in depth
-    // is verified by the next test.
     assert!(!rendered.contains("\x1b]0;malicious"));
     assert!(!rendered.contains('\x07'));
 }
@@ -117,7 +115,6 @@ fn http_url_with_escape_does_not_set_terminal_title() {
 fn stack_frame_function_with_escape_does_not_leak_into_render() {
     // The stack-trace parser pulls `function` and `file` from regex
     // captures of arbitrary host text. A malicious frame could carry
-    // ESC bytes inside the function name.
     let msg = "boom\n   at \x1b[31mevil\x1b[0m::foo (src/lib.rs:1:1)";
     let evt = host_event(msg, BTreeMap::new());
     let class = classify(&evt);
@@ -125,11 +122,6 @@ fn stack_frame_function_with_escape_does_not_leak_into_render() {
     let rendered = render(evt);
     // The renderer's own ANSI escapes (gutter color, dim, etc.) ARE
     // expected. What must NOT survive is the attacker-controlled
-    // `\x1b[31m` from inside the function name.
-    // We check by counting: if no sanitisation happened, two ESC
-    // bytes appear within the StackTrace section line itself.
-    // A simpler witness: the literal string `\x1b[31mevil\x1b[0m::foo`
-    // must NOT appear in the rendered output.
     assert!(
         !rendered.contains("\x1b[31mevil\x1b[0m::foo"),
         "attacker ESC bytes must be stripped from stack-frame function names"
@@ -160,9 +152,6 @@ fn osc8_refuses_label_with_escape() {
 fn workspace_frame_with_spaces_in_path_is_percent_encoded() {
     // Real-world POSIX path with a space: "/home/My User/project/lib.rs"
     // The OSC-8 URL must percent-encode the space so the URI is valid.
-    // (Windows `C:` drive letters are not currently parseable by the
-    // stack-trace regex — the colon collides with the line-separator
-    // expectation. Tracked as a future parser improvement.)
     let msg = "panic\n   at crate::foo (/home/My User/project/lib.rs:5:1)";
     let evt = host_event(msg, BTreeMap::new());
     let rendered = render(evt);

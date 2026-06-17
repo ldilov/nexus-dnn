@@ -279,7 +279,6 @@ mod tests {
         let collected: Vec<_> = handle.items.collect().await;
         // The fake spawns its emit-task before checking cancel for the
         // first item, but with cancel pre-set the loop breaks on the
-        // first iteration → empty.
         assert!(
             collected.is_empty() || collected.len() < 4,
             "cancel should truncate; got {:?}",

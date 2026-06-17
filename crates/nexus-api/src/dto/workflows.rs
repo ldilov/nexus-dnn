@@ -123,7 +123,6 @@ impl From<&WorkflowRecord> for WorkflowDto {
 
         // Group nodes by stage id. Declared stages populate first; nodes whose
         // `stage` field does not match any declared stage fall into a synthetic
-        // "ungrouped" stage so they remain visible.
         let stage_defs: Vec<serde_json::Value> = parse_optional_json(r.stages.as_deref());
         let mut stages_with_nodes: Vec<WorkflowStageDto> = stage_defs
             .iter()

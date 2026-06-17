@@ -226,8 +226,6 @@ impl SuggestionStreamProvider for LeaseBackedStreamProvider {
         let lease_guard = LeaseGuard::new(move || {
             // Best-effort cooperative cancel on drop. The stream may
             // have already terminated naturally — `send_rpc` for an
-            // unknown stream_id MUST be a no-op on the worker side per
-            // the contract.
             let lease = lease_for_guard;
             let stream_id = stream_id_for_guard;
             tokio::spawn(async move {

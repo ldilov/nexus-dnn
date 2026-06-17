@@ -91,7 +91,10 @@ impl FakeHost {
 
     pub async fn try_take_call(&self, timeout: Duration) -> Option<RpcRequest> {
         let mut rx = self.requests.lock().await;
-        tokio::time::timeout(timeout, rx.recv()).await.ok().flatten()
+        tokio::time::timeout(timeout, rx.recv())
+            .await
+            .ok()
+            .flatten()
     }
 
     pub async fn reply_ok(&self, id: u64, result: Value) {

@@ -124,7 +124,6 @@ async fn restarts_from_byte_zero_after_previous_mismatch() {
 
     // Mark wiremock to NOT honour Range — server returns 200 always — and we should
     // still complete because the implementation discards the partial when meta has a
-    // mismatch flag.
     let req = FetchRequest::new(
         format!("{}/blob.bin", server.uri()),
         expected,

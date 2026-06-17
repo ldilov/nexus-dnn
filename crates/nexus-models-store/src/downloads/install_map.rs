@@ -476,7 +476,6 @@ impl InstallMap {
                 Ok(None) => break,
                 // A mid-walk read error truncates the scan rather than silently
                 // logging "complete"; mark it so callers can tell incomplete
-                // from empty, and stop (a failing dir handle won't recover).
                 Err(e) => {
                     report.scan_truncated = true;
                     tracing::warn!(
@@ -555,8 +554,6 @@ impl InstallMap {
         for filename in &manifest.files {
             // `filename` is arbitrary JSON from the sidecar — reject anything
             // that isn't a plain relative path so a `../` entry can't stat (or
-            // record a row for) bytes outside the sink. `job_id_str` is already
-            // UUID-validated above.
             let fname = std::path::Path::new(filename.as_str());
             if fname
                 .components()
@@ -1727,7 +1724,6 @@ mod tests {
         assert!(!report.scan_truncated, "clean scan is not truncated");
         // Partition invariant: every scanned dir is accounted for exactly once.
         // The valid job had a readable sidecar + UUID (1 processed dir); the
-        // other was non-uuid. None were skipped-no-sidecar here.
         let processed_dirs =
             report.scanned_jobs - report.skipped_no_sidecar - report.skipped_non_uuid;
         assert_eq!(processed_dirs, 1, "exactly one dir reached file processing");

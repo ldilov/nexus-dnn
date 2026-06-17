@@ -33,7 +33,6 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 fn nexus_dot_id_regex(text: &str) -> bool {
     // Cheap hand-rolled scan for a `nexus.<lowercase-id>` literal — does
     // not require pulling in a full regex crate dependency. Matches the
-    // intent of the boundary rule: flag any `nexus.<extension-id>` form.
     let bytes = text.as_bytes();
     let needle = b"nexus.";
     if bytes.len() < needle.len() {
@@ -47,7 +46,6 @@ fn nexus_dot_id_regex(text: &str) -> bool {
         }
         // After `nexus.`, require at least one [a-z0-9_-] char. This
         // distinguishes `nexus.local-llm` from incidental sentences like
-        // "the Nexus." (mid-sentence punctuation).
         let next = bytes.get(i + needle.len());
         if let Some(&c) = next
             && (c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_' || c == b'-')
@@ -70,7 +68,6 @@ fn handler_module_contains_no_extension_id_literals() {
 
     // Each banned literal MUST NOT appear anywhere under the handler
     // module — not in code, not in comments, not in doc strings. This
-    // matches Constitution XIII.7's "zero matches" requirement.
     let banned_literals = ["local-llm", "local_llm", "emotion-tts", "emotiontts"];
 
     let mut violations: Vec<String> = Vec::new();
@@ -130,8 +127,6 @@ fn audit_does_not_false_positive_on_neutral_text() {
 fn audit_does_not_false_positive_on_lowercase_prose_ending_in_period() {
     // Regression guard for an edge case raised during the spec 037
     // Phase 8 review: lowercase "nexus." at end of sentence (followed by
-    // newline / whitespace / period) MUST NOT match — the trailing char
-    // class requires `[a-z0-9_-]` which excludes whitespace.
     assert!(!nexus_dot_id_regex("the nexus.\n"));
     assert!(!nexus_dot_id_regex("the nexus. End"));
     assert!(!nexus_dot_id_regex("nexus.."));

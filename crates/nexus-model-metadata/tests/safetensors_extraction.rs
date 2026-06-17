@@ -60,7 +60,6 @@ fn safetensors_config_sidecar_provides_max_context() {
 
     // Architecture should be normalized to a lower-case family name
     // ("Qwen2ForCausalLM" -> "qwen2"); we accept any case-insensitive
-    // match against "qwen2" to stay tolerant of extractor impl details.
     let arch = meta.architecture.expect("architecture set");
     assert!(
         arch.to_ascii_lowercase().contains("qwen2"),
@@ -77,7 +76,6 @@ fn safetensors_header_too_large_returns_failed() {
     let extractor = SafetensorsExtractor::new();
     // Must not panic; must surface a Failed status either as Ok(meta) with
     // Failed status or via a structured ExtractError — both are acceptable
-    // because the extractor may choose to report via ExtractedMetadata.
     match extractor.extract(&path, "install-bogus-header") {
         Ok(meta) => {
             assert_eq!(meta.format, ArtifactFormat::Safetensors);

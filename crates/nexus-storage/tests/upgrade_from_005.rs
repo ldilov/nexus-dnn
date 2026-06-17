@@ -5,7 +5,6 @@ use sqlx::sqlite::SqlitePool;
 async fn apply_legacy_migrations_only(pool: &SqlitePool) {
     // Apply migrations 001..005 only — simulate a host that last ran before
     // 006 landed. If any of these statements ever diverge from the real files
-    // the test will fail loudly.
     for path in &[
         "../../migrations/001_initial.sql",
         "../../migrations/002_recipes_contributions.sql",
@@ -77,10 +76,6 @@ async fn upgrading_to_006_preserves_row_counts() {
 
     // 3. Reopen via the full Database constructor — this applies all migrations
     //    including 006. We use a shared in-memory URL so the pool reopens the
-    //    same database. (sqlite::memory: creates a new DB each time, so we
-    //    cannot truly persist across connections. We instead verify the
-    //    deterministic application order of a fresh DB: 001..006 all apply
-    //    cleanly on top of one another.)
     let db = SqliteDatabase::new("sqlite::memory:").await.unwrap();
 
     // 4. Seed the same rows after 006 migration and assert the new columns

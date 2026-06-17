@@ -41,8 +41,6 @@ pub async fn stop(
 
     // Ask each live worker to free its VRAM (full model unload + CUDA
     // cache empty) BEFORE we drain + kill it. Best-effort: a worker that
-    // errors or times out does not abort the stop — we proceed to drain
-    // unconditionally.
     let handles: Vec<Arc<dyn BackendRuntimeLease>> = state
         .lease_manager
         .handles_for_install(&install_id)

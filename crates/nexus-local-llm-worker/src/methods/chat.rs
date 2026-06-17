@@ -15,9 +15,7 @@ pub async fn handle_new_thread(_req: NewThreadRequest) -> WorkerResult<Thread> {
     Err(not_implemented("llm.new_thread"))
 }
 
-pub async fn handle_list_threads(
-    _req: ListThreadsRequest,
-) -> WorkerResult<ThreadListResponse> {
+pub async fn handle_list_threads(_req: ListThreadsRequest) -> WorkerResult<ThreadListResponse> {
     Err(not_implemented("llm.list_threads"))
 }
 

@@ -246,7 +246,6 @@ async fn deploy_400_on_draft_id() {
     .await;
     // The draft path collides with the materialize router prefix; the route
     // matches /modules/{module_id}/deployments so the draft id is rejected
-    // here with 400, not the materialize endpoint.
     assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
     assert_eq!(body["error"]["code"], "module.draft_id_not_allowed");
 }

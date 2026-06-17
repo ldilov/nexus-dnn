@@ -62,7 +62,8 @@ async fn handle_one(
             match serde_json::from_value::<BackendStatePayload>(notification.params.clone()) {
                 Ok(payload) => {
                     debug!(lease_id = %payload.lease_id, state = %payload.state, "backend.state");
-                    pool.on_backend_state(&payload.lease_id, payload.state).await;
+                    pool.on_backend_state(&payload.lease_id, payload.state)
+                        .await;
                 }
                 Err(e) => warn!(error = %e, "failed to parse backend.state"),
             }
@@ -71,7 +72,8 @@ async fn handle_one(
             match serde_json::from_value::<ModelRemovedPayload>(notification.params.clone()) {
                 Ok(payload) => {
                     info!(model_id = %payload.model_id, "model.removed → evicting");
-                    pool.evict_by_model(&payload.model_id, "model_removed").await;
+                    pool.evict_by_model(&payload.model_id, "model_removed")
+                        .await;
                 }
                 Err(e) => warn!(error = %e, "failed to parse model.removed"),
             }

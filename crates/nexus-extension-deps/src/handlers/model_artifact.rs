@@ -96,9 +96,6 @@ impl StepHandler for ModelArtifactHandler {
 
         // An explicit `files[]`/include/exclude selection must have EVERY declared
         // file on disk — `is_family_installed` flips green as soon as any one file
-        // of the family is present, which silently masks a never-downloaded file
-        // (the render then fails at load time instead of the install healing).
-        // Unrestricted selections keep the historical fast-path (no network probe).
         if !parsed.selection.is_unrestricted() {
             let missing = ctx
                 .model_store
@@ -165,7 +162,6 @@ impl StepHandler for ModelArtifactHandler {
         let accelerator = resolve_accelerator(&parsed, ctx);
         // Forced reinstall: wipe this extension's prior copy first so the
         // download below starts fresh (and reports byte progress) instead of
-        // re-attaching to an already-complete job that streams nothing.
         if ctx.force {
             tracing::info!(
                 target: "extension_install::model_artifact",
@@ -194,9 +190,6 @@ impl StepHandler for ModelArtifactHandler {
 
         // Throttle the structured tracing output so we get one log line per
         // ~5 seconds of download progress (or every 10% advancement,
-        // whichever comes first), instead of one per 500ms poll. The
-        // ProgressSink event still fires every poll so the UI bar stays
-        // smooth.
         let mut last_log_at = std::time::Instant::now();
         let mut last_log_bytes: u64 = 0;
         let mut last_log_pct: u8 = 0;
@@ -275,7 +268,6 @@ impl StepHandler for ModelArtifactHandler {
                     );
                     // Record the Foundry ownership ref so the model is GC'd only
                     // when the last referencing extension drops it. Non-fatal:
-                    // a failed ref-write must not fail an otherwise-good install.
                     if let Err(err) = ctx
                         .model_store
                         .record_reference(
@@ -296,8 +288,6 @@ impl StepHandler for ModelArtifactHandler {
 
                     // Fail LOUD if a declared file never materialised: a job can
                     // report Completed while a selected file is still absent. Only
-                    // explicit selections are verifiable here (whole-repo needs a
-                    // network call, forbidden in this no-network gate).
                     if !parsed.selection.is_unrestricted() {
                         let missing = ctx
                             .model_store

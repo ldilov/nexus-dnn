@@ -101,7 +101,6 @@ pub fn render_ribbon(snap: &RibbonSnapshot) -> String {
 
     // Connection state — only show when not Healthy (no point in
     // saying "yep, still connected" every transition; the prompt
-    // right-margin already carries that info).
     if !matches!(snap.connection, ConnectionHealth::Healthy) {
         push_separator(&mut out);
         let (dot, color, label) = match snap.connection {

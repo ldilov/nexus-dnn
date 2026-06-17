@@ -130,7 +130,6 @@ impl StepHandler for RuntimeHandler {
 
         // The bootstrapper is opaque (download + verify + extract happen inside
         // the host adapter), so we bracket it with explicit phase transitions
-        // rather than mid-flight bytes (AC-2.4).
         emit(
             StepProgress::phase("resolving")
                 .with_message(format!("resolving {} runtime", parsed.family)),

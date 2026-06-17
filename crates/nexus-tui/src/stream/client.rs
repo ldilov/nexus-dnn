@@ -163,10 +163,6 @@ async fn endpoint_loop(
     let mut resume = ResumeState::default();
     // Flap suppression: only emit `Reconnected` / `ConnectionLost`
     // notices for an endpoint that previously delivered at least one
-    // event in the current session. An endpoint that opens-then-closes
-    // without producing data stays silent, and the backoff is NOT
-    // reset until first event — so flapping endpoints fall back to the
-    // 5 s ceiling instead of spamming at 100 ms intervals.
     let mut have_announced_active = false;
     let mut have_emitted_lost = false;
 
