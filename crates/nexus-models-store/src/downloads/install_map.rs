@@ -326,8 +326,9 @@ impl InstallMap {
     }
 
     /// Reconcile a single install-map row against disk: `true` if its resolved
-    /// file `<sink_root>/<job_id>/<filename>` still exists, `false` (after
-    /// deleting the row AND its artifact-refs) if the file vanished.
+    /// file `<sink_root>/<job_id>/<filename>` still exists and passes the size
+    /// check, `false` (after deleting the row AND its artifact-refs) if the file
+    /// is missing or its on-disk size differs from the recorded `size_bytes`.
     ///
     /// Disk is the source of truth (AC-1.1/1.2/1.3). A self-heal that left the
     /// `model_store_artifact_refs` rows behind would strand orphan refs, so the
@@ -338,9 +339,25 @@ impl InstallMap {
         sink_root: &std::path::Path,
     ) -> JobStoreResult<bool> {
         let path = sink_root.join(&row.job_id).join(&row.filename);
-        if tokio::fs::metadata(&path).await.is_ok() {
-            return Ok(true);
+        enum PruneReason {
+            Missing,
+            Truncated { on_disk: u64, expected: u64 },
         }
+        let prune = match tokio::fs::metadata(&path).await {
+            Err(_) => Some(PruneReason::Missing),
+            Ok(meta) => match row.size_bytes {
+                Some(expected) if expected > 0 && meta.len() != expected => {
+                    Some(PruneReason::Truncated {
+                        on_disk: meta.len(),
+                        expected,
+                    })
+                }
+                _ => None,
+            },
+        };
+        let Some(reason) = prune else {
+            return Ok(true);
+        };
         sqlx::query("DELETE FROM model_store_installed_artifacts WHERE artifact_id = ?1")
             .bind(&row.artifact_id)
             .execute(self.pool.as_ref())
@@ -359,13 +376,24 @@ impl InstallMap {
                 "reconcile: index.json entry prune failed"
             );
         }
-        tracing::info!(
-            target: "model_store",
-            artifact_id = %row.artifact_id,
-            job_id = %row.job_id,
-            path = %path.display(),
-            "reconcile: file missing on disk — pruned stale row + refs"
-        );
+        match reason {
+            PruneReason::Missing => tracing::info!(
+                target: "model_store",
+                artifact_id = %row.artifact_id,
+                job_id = %row.job_id,
+                path = %path.display(),
+                "reconcile: file missing on disk — pruned stale row + refs"
+            ),
+            PruneReason::Truncated { on_disk, expected } => tracing::info!(
+                target: "model_store",
+                artifact_id = %row.artifact_id,
+                job_id = %row.job_id,
+                on_disk_bytes = on_disk,
+                expected_bytes = expected,
+                path = %path.display(),
+                "reconcile: on-disk size != expected — pruned truncated row + refs"
+            ),
+        }
         Ok(false)
     }
 
@@ -1745,5 +1773,228 @@ mod tests {
         .await;
         let report = map.backfill_install_map_from_sink(sink_root).await.unwrap();
         assert!(!report.scan_truncated);
+    }
+
+    /// A row whose on-disk file is shorter than `size_bytes` reconciles to
+    /// `false` and is pruned (the DGX i2v-low truncated-blob scenario).
+    #[tokio::test]
+    async fn reconcile_prunes_row_when_file_truncated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        let real_contents: &[u8] = b"short";
+        let big_expected: u64 = 1_000_000;
+        let record = InstalledArtifactRecord {
+            artifact_id: ArtifactId::from("hf:a/trunc#model.gguf"),
+            family_id: FamilyId::from("hf:a/trunc"),
+            variant_id: None,
+            format: Format::Gguf,
+            source_provider: "huggingface".into(),
+            source_repo: "acme/model".into(),
+            source_revision: None,
+            filename: "model.gguf".into(),
+            job_id: JobId::from_uuid(uuid::Uuid::parse_str(JOB_A).unwrap()),
+            sha256: None,
+            size_bytes: Some(big_expected),
+        };
+        map.record(record).await.unwrap();
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("model.gguf"), real_contents)
+            .await
+            .unwrap();
+
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/trunc"))
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        let present = map
+            .reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        assert!(!present, "truncated blob reconciles to absent");
+        assert!(
+            map.list_for_family(&FamilyId::from("hf:a/trunc"))
+                .await
+                .unwrap()
+                .is_empty(),
+            "truncated row deleted"
+        );
+    }
+
+    /// A row whose on-disk file size exactly matches `size_bytes` keeps the row.
+    #[tokio::test]
+    async fn reconcile_keeps_row_when_size_matches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let contents: &[u8] = b"exact-weights";
+        seed_install(&map, sink_root, "hf:a/exact", JOB_A, "model.gguf", contents).await;
+
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/exact"))
+            .await
+            .unwrap();
+        let present = map
+            .reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        assert!(present, "size-matching file reconciles to present");
+        assert_eq!(
+            map.list_for_family(&FamilyId::from("hf:a/exact"))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    /// A row with `size_bytes = None` falls back to presence-only: file exists →
+    /// returns `true` regardless of size.
+    #[tokio::test]
+    async fn reconcile_keeps_row_when_size_unknown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        let record = InstalledArtifactRecord {
+            artifact_id: ArtifactId::from("hf:a/nosize#model.gguf"),
+            family_id: FamilyId::from("hf:a/nosize"),
+            variant_id: None,
+            format: Format::Gguf,
+            source_provider: "huggingface".into(),
+            source_repo: "acme/model".into(),
+            source_revision: None,
+            filename: "model.gguf".into(),
+            job_id: JobId::from_uuid(uuid::Uuid::parse_str(JOB_A).unwrap()),
+            sha256: None,
+            size_bytes: None,
+        };
+        map.record(record).await.unwrap();
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("model.gguf"), b"any-bytes")
+            .await
+            .unwrap();
+
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/nosize"))
+            .await
+            .unwrap();
+        let present = map
+            .reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        assert!(present, "unknown size falls back to presence-only");
+        assert_eq!(
+            map.list_for_family(&FamilyId::from("hf:a/nosize"))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    /// Truncation prune also cleans up the row's `index.json` entry, mirroring
+    /// the missing-file self-heal path.
+    #[tokio::test]
+    async fn reconcile_prunes_index_entry_on_truncation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        let record = InstalledArtifactRecord {
+            artifact_id: ArtifactId::from("hf:a/trunc3#model.gguf"),
+            family_id: FamilyId::from("hf:a/trunc3"),
+            variant_id: None,
+            format: Format::Gguf,
+            source_provider: "huggingface".into(),
+            source_repo: "acme/model".into(),
+            source_revision: None,
+            filename: "model.gguf".into(),
+            job_id: JobId::from_uuid(uuid::Uuid::parse_str(JOB_A).unwrap()),
+            sha256: None,
+            size_bytes: Some(1_000_000),
+        };
+        map.record(record).await.unwrap();
+        crate::downloads::legibility::upsert_index_entry(
+            sink_root,
+            JOB_A,
+            crate::downloads::legibility::IndexEntry {
+                family_id: "hf:a/trunc3".into(),
+                repo: "a/trunc3".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("model.gguf"), b"short")
+            .await
+            .unwrap();
+
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/trunc3"))
+            .await
+            .unwrap();
+        map.reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        let index = crate::downloads::legibility::read_index(sink_root)
+            .await
+            .unwrap();
+        assert!(
+            index.get(JOB_A).is_none(),
+            "index entry pruned on truncation prune"
+        );
+    }
+
+    /// Truncation prune also drops the row's artifact-refs (no orphan refs).
+    #[tokio::test]
+    async fn reconcile_removes_refs_on_truncation_prune() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        let record = InstalledArtifactRecord {
+            artifact_id: ArtifactId::from("hf:a/trunc2#model.gguf"),
+            family_id: FamilyId::from("hf:a/trunc2"),
+            variant_id: None,
+            format: Format::Gguf,
+            source_provider: "huggingface".into(),
+            source_repo: "acme/model".into(),
+            source_revision: None,
+            filename: "model.gguf".into(),
+            job_id: JobId::from_uuid(uuid::Uuid::parse_str(JOB_A).unwrap()),
+            sha256: None,
+            size_bytes: Some(999_999),
+        };
+        map.record(record).await.unwrap();
+        map.add_ref(JOB_A, "ext.alpha").await.unwrap();
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("model.gguf"), b"truncated")
+            .await
+            .unwrap();
+
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/trunc2"))
+            .await
+            .unwrap();
+        map.reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        assert_eq!(
+            map.refcount(JOB_A).await.unwrap(),
+            0,
+            "no orphan refs after truncation prune"
+        );
     }
 }
