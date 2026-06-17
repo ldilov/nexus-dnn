@@ -99,3 +99,12 @@ export const suffixText = style({
   stroke: vars.color.surfaceMuted,
   strokeWidth: "2.5px",
 });
+
+export const its = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+  textAlign: "center",
+  fontVariantNumeric: "tabular-nums",
+  letterSpacing: "0.04em",
+});

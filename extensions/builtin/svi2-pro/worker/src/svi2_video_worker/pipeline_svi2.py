@@ -843,9 +843,19 @@ def _run_render(
         seed_ctx_posi = ctx_cache[first_prompt].to(device)
         seed_ctx_nega = neg_context.to(device) if neg_context is not None else seed_ctx_posi
 
-        def _t2v_seed_on_step(step_idx: int, num_steps: int, _sigma: float) -> None:
+        def _t2v_seed_on_step(step: int, num_steps: int, seconds: float) -> None:
             t2v_load_hb.stop()
-            frac = 0.02 + 0.03 * ((step_idx + 1) / max(num_steps, 1))
+            _notify(
+                worker,
+                "svi2.video.clip.step",
+                {
+                    "clip_index": 0,
+                    "step": step,
+                    "total_steps": num_steps,
+                    "seconds_per_step": round(seconds, 2),
+                },
+            )
+            frac = 0.02 + 0.03 * (step / max(num_steps, 1))
             _notify(worker, "svi2.video.progress", {"fraction": round(frac, 4), "stage": "t2v_seed_clip"})
 
         try:

@@ -42,6 +42,8 @@ export function SpeedGauge({ secondsPerStep }: SpeedGaugeProps): ReactElement {
   const fraction = hasValue ? fractionFor(secondsPerStep) : 0;
   const needleDeg = SWEEP_DEG * fraction;
   const valueLabel = hasValue ? secondsPerStep.toFixed(1) : "—";
+  const its = hasValue ? 1 / secondsPerStep : null;
+  const itsLabel = its === null ? "—" : its >= 1 ? its.toFixed(2) : its.toFixed(3);
 
   return (
     <div
@@ -118,6 +120,7 @@ export function SpeedGauge({ secondsPerStep }: SpeedGaugeProps): ReactElement {
           s/it
         </text>
       </svg>
+      <span className={styles.its}>{itsLabel} it/s</span>
     </div>
   );
 }
