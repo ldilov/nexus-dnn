@@ -22725,6 +22725,24 @@ const Dw = [
     step: 1,
     default: 40,
     help: "DiT blocks offloaded to CPU. Higher = LESS VRAM (40 = lowest peak ~10 GiB). 40 is 16 GB-safe."
+  },
+  {
+    key: "teacache_multiplier",
+    label: "TeaCache speedup",
+    tier: "perf",
+    control: "select",
+    numeric: !0,
+    default: 1,
+    options: [
+      { value: "1", label: "Off (1×)" },
+      { value: "1.25", label: "1.25× (near-lossless)" },
+      { value: "1.5", label: "1.5×" },
+      { value: "1.75", label: "1.75×" },
+      { value: "2", label: "2× (softer)" },
+      { value: "2.25", label: "2.25×" },
+      { value: "2.5", label: "2.5× (artifacts likely)" }
+    ],
+    help: "Caches diffusion steps when frame-to-frame change is small — higher = faster but more ghosting/artifacts. Off = full quality."
   }
 ];
 function M3(e) {
