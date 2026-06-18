@@ -1,0 +1,18 @@
+[package]
+name = "nexus-civitai"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Resolve-only Civitai client for the Nexus-DNN host model store"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+wiremock = "0.6"
