@@ -3,7 +3,9 @@ import {
   DEFAULT_SEARCH_PARAMS,
   parseSearchParams,
   serializeSearchParams,
+  directTargetFromFamily,
   type ParsedSearchParams,
+  type ModelFamily,
 } from "./model_store";
 
 describe("parseSearchParams / serializeSearchParams", () => {
@@ -27,6 +29,7 @@ describe("parseSearchParams / serializeSearchParams", () => {
       page: 3,
       pageSize: 50,
       view: "list",
+      source: "from_url",
     };
     const qs = serializeSearchParams(input);
     const back = parseSearchParams(new URLSearchParams(qs.toString()));
@@ -116,5 +119,40 @@ describe("parseSearchParams / serializeSearchParams", () => {
       const back = parseSearchParams(new URLSearchParams(qs.toString()));
       expect(back).toEqual(p);
     }
+  });
+});
+
+describe("source param", () => {
+  it("defaults to huggingface and round-trips from_url", () => {
+    expect(DEFAULT_SEARCH_PARAMS.source).toBe("huggingface");
+    const qs = serializeSearchParams({
+      ...DEFAULT_SEARCH_PARAMS,
+      source: "from_url",
+    });
+    expect(qs.get("source")).toBe("from_url");
+    const parsed = parseSearchParams(new URLSearchParams("source=from_url"));
+    expect(parsed.source).toBe("from_url");
+  });
+
+  it("ignores unknown source values", () => {
+    const parsed = parseSearchParams(new URLSearchParams("source=bogus"));
+    expect(parsed.source).toBe("huggingface");
+  });
+});
+
+describe("directTargetFromFamily", () => {
+  it("derives a direct target from the primary artifact", () => {
+    const family = {
+      family_id: "direct_url:m.gguf",
+      repository: { repo_id: "m.gguf", source_provider: "direct_url" },
+      artifacts: [
+        { artifact_id: "a0", role: "primary", filename: "m.gguf",
+          download_url: "https://x/m.gguf", sha256: null, size_bytes: 10 },
+      ],
+    } as unknown as ModelFamily;
+    const t = directTargetFromFamily(family)!;
+    expect(t.download_url).toBe("https://x/m.gguf");
+    expect(t.sha256).toBeNull();
+    expect(t.source_provider).toBe("direct_url");
   });
 });

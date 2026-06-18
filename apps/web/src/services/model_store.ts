@@ -203,6 +203,7 @@ export interface ParsedSearchParams {
   page: number;
   pageSize: number;
   view: "grid" | "list";
+  source: "huggingface" | "from_url";
 }
 
 export const DEFAULT_SEARCH_PARAMS: ParsedSearchParams = {
@@ -219,6 +220,7 @@ export const DEFAULT_SEARCH_PARAMS: ParsedSearchParams = {
   page: 1,
   pageSize: 30,
   view: "grid",
+  source: "huggingface",
 };
 
 const VALID_FORMATS: ReadonlySet<Format> = new Set([
@@ -287,6 +289,10 @@ export function parseSearchParams(qs: URLSearchParams): ParsedSearchParams {
   const pageRaw = Number.parseInt(qs.get("page") ?? "1", 10);
   const pageSizeRaw = Number.parseInt(qs.get("page_size") ?? "30", 10);
 
+  const sourceRaw = qs.get("source") ?? "huggingface";
+  const source: ParsedSearchParams["source"] =
+    sourceRaw === "from_url" ? "from_url" : "huggingface";
+
   return {
     q: qs.get("q") ?? "",
     repo: qs.get("repo") ?? "",
@@ -308,6 +314,7 @@ export function parseSearchParams(qs: URLSearchParams): ParsedSearchParams {
       50,
     ),
     view,
+    source,
   };
 }
 
@@ -326,6 +333,7 @@ export function serializeSearchParams(p: ParsedSearchParams): URLSearchParams {
   if (p.page !== 1) qs.set("page", String(p.page));
   if (p.pageSize !== 30) qs.set("page_size", String(p.pageSize));
   if (p.view !== "grid") qs.set("view", p.view);
+  if (p.source !== "huggingface") qs.set("source", p.source);
   return qs;
 }
 
@@ -454,6 +462,82 @@ export function revalidateHostModels(
   return apiFetch("/host/models/revalidate", {
     method: "POST",
     expect: "raw",
+    signal,
+  });
+}
+
+export function resolveUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<ModelFamily> {
+  return apiFetch("/model-store/resolve-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+    signal,
+  });
+}
+
+export interface DirectDownloadTarget {
+  source_provider: string;
+  source_repo: string;
+  artifact_id: string;
+  filename: string;
+  role: DependencyRole;
+  download_url: string;
+  sha256: string | null;
+  size_bytes: number | null;
+}
+
+export function createDirectDownload(
+  familyId: string,
+  direct: DirectDownloadTarget,
+  signal?: AbortSignal,
+): Promise<DownloadJob> {
+  return apiFetch("/model-store/downloads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ family_id: familyId, direct }),
+    signal,
+  });
+}
+
+export function directTargetFromFamily(
+  family: ModelFamily,
+): DirectDownloadTarget | null {
+  const primary =
+    family.artifacts.find((a) => a.role === "primary") ?? family.artifacts[0];
+  if (!primary) return null;
+  return {
+    source_provider: family.repository.source_provider,
+    source_repo: family.repository.repo_id,
+    artifact_id: primary.artifact_id,
+    filename: primary.filename,
+    role: primary.role,
+    download_url: primary.download_url,
+    sha256: primary.sha256,
+    size_bytes: primary.size_bytes,
+  };
+}
+
+export interface TokenStatus {
+  configured: boolean;
+}
+
+export function fetchCivitaiTokenStatus(
+  signal?: AbortSignal,
+): Promise<TokenStatus> {
+  return apiFetch("/model-store/settings/civitai-token", { signal });
+}
+
+export function setCivitaiToken(
+  token: string,
+  signal?: AbortSignal,
+): Promise<TokenStatus> {
+  return apiFetch("/model-store/settings/civitai-token", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
     signal,
   });
 }
