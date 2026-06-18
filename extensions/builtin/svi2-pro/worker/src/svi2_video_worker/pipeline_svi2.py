@@ -244,6 +244,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "output_path": params.get("output_path", "out.mp4"),
         "device": params.get("device"),
         "attention": params.get("attention"),
+        "use_torch_compile": bool(params.get("use_torch_compile", False)),
     }
 
 
@@ -954,6 +955,14 @@ def _run_render(
         teacache_on = teacache_thresh > 0.0
         models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
         models.low.dit.configure_tea_cache(teacache_on, teacache_thresh)
+
+        if params["use_torch_compile"] and blocks_to_swap == 0:
+            try:
+                models.high.dit = torch.compile(models.high.dit)
+                models.low.dit = torch.compile(models.low.dit)
+                log_vram("torch.compile enabled (blocks_to_swap=0)")
+            except Exception as exc:
+                print(f"[compile] torch.compile failed, using eager: {exc}", file=sys.stderr, flush=True)
 
         mst, msh, msw = params["motion_scale_t"], params["motion_scale_h"], params["motion_scale_w"]
         motion_schedule = params.get("motion_scale_schedule")  # per-clip temporal ramp

@@ -46,6 +46,7 @@ export interface RenderParams {
   num_motion_frame?: number;
   blocks_to_swap?: number;
   teacache_multiplier?: number;
+  use_torch_compile?: boolean;
   attention?: string;
   seed?: number;
   seed_multiplier?: number;

@@ -248,6 +248,10 @@
     },
     "teacache_thresh": {
       "type": ["number", "null"]
+    },
+    "use_torch_compile": {
+      "type": ["boolean", "null"],
+      "default": false
     }
   }
 }

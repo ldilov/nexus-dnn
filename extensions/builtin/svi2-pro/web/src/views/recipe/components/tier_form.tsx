@@ -8,6 +8,7 @@ import { isFlf2vMode, type ValidationIssue } from "../../../domain/validation";
 import { useRenderRequest } from "../../../store/render_request_store";
 import type { RenderParams } from "../../../services/types";
 import { AttentionSelect } from "./attention_select";
+import { TorchCompileToggle } from "./torch_compile_toggle";
 import * as styles from "./tier_form.css";
 
 interface TierFormProps {
@@ -42,6 +43,7 @@ export function TierForm({ issues }: TierFormProps): ReactElement {
           >
             <div className={styles.fieldGrid}>
               {tier.id === "perf" && <AttentionSelect />}
+              {tier.id === "perf" && <TorchCompileToggle />}
               {fields.map((spec) => {
                 const lockReason = flf2v ? FLF2V_LOCKED_FIELDS[spec.key] : undefined;
                 return (
