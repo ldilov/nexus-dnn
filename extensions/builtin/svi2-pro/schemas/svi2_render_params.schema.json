@@ -91,6 +91,19 @@
       ],
       "default": "HIGH"
     },
+    "upscale_model": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "maxine",
+        "drct-l-hq",
+        "drct-l-real",
+        "hat-l",
+        "swinir-l",
+        "realesrgan"
+      ],
+      "default": "auto"
+    },
     "interpolate_method": {
       "type": "string",
       "enum": ["rife", "rife_torch", "rife_ncnn", "ffmpeg"],

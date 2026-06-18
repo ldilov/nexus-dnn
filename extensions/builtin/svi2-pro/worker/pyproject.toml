@@ -29,6 +29,10 @@ diffusers = [
   "av>=12.0",
   "imageio>=2.37",
   "imageio-ffmpeg>=0.6",
+  # Transformer SR (DRCT-L/HAT/SwinIR) loader — permissive core archs only.
+  # Pure-python; its deps (torch/torchvision/safetensors/numpy/einops) are
+  # already pinned above, so it adds no native build on aarch64.
+  "spandrel>=0.4.1",
 ]
 flash = [
   "flash-attn ; sys_platform == 'win32'",

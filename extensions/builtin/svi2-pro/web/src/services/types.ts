@@ -16,6 +16,14 @@ export type UpscaleQuality =
   | "HIGHBITRATE_MEDIUM"
   | "HIGHBITRATE_HIGH"
   | "HIGHBITRATE_ULTRA";
+export type UpscaleModel =
+  | "auto"
+  | "maxine"
+  | "drct-l-hq"
+  | "drct-l-real"
+  | "hat-l"
+  | "swinir-l"
+  | "realesrgan";
 
 export interface RenderParams {
   mode?: GenerationMode;
@@ -30,6 +38,7 @@ export interface RenderParams {
   interpolate_method?: InterpolateMethod;
   upscale_factor?: number;
   upscale_quality?: UpscaleQuality;
+  upscale_model?: UpscaleModel;
   frames_per_clip?: number;
   num_inference_steps?: number;
   sigma_shift?: number;

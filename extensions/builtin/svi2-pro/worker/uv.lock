@@ -575,6 +575,7 @@ diffusers = [
     { name = "regex" },
     { name = "safetensors" },
     { name = "sentencepiece" },
+    { name = "spandrel" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "transformers" },
@@ -630,6 +631,7 @@ requires-dist = [
     { name = "sageattn3", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'sage'", path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl" },
     { name = "sageattn3", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'sage'", path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl" },
     { name = "sentencepiece", marker = "extra == 'diffusers'", specifier = ">=0.2" },
+    { name = "spandrel", marker = "extra == 'diffusers'", specifier = ">=0.4.1" },
     { name = "torch", marker = "extra == 'diffusers'", specifier = ">=2.12", index = "https://download.pytorch.org/whl/cu132" },
     { name = "torchvision", marker = "extra == 'diffusers'", specifier = ">=0.27", index = "https://download.pytorch.org/whl/cu132" },
     { name = "transformers", marker = "extra == 'diffusers'", specifier = ">=4.41" },
@@ -1280,6 +1282,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
+name = "spandrel"
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "numpy" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2a/8f/ab4565c23dd67a036ab72101a830cebd7ca026b2fddf5771bbf6284f6228/spandrel-0.4.2.tar.gz", hash = "sha256:fefa4ea966c6a5b7721dcf24f3e2062a5a96a395c8bedcb570fb55971fdcbccb", size = 247544, upload-time = "2026-02-21T01:52:26.342Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/74/31/411ea965835534c43d4b98d451968354876e0e867ea1fd42669e4cca0732/spandrel-0.4.2-py3-none-any.whl", hash = "sha256:6c93e3ecbeb0e548fd2df45a605472b34c1614287c56b51bb33cdef7ae5235b5", size = 320811, upload-time = "2026-02-21T01:52:25.015Z" },
 ]
 
 [[package]]
