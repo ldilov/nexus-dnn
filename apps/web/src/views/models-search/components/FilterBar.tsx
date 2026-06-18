@@ -39,9 +39,10 @@ export function FilterBar({
           aria-label="Source"
           className={s.sourceSelect}
           value={params.source}
-          onChange={(e) =>
-            onSourceChange(e.target.value as ParsedSearchParams["source"])
-          }
+          onChange={(e) => {
+            setUrl("");
+            onSourceChange(e.target.value as ParsedSearchParams["source"]);
+          }}
         >
           <option value="huggingface">Hugging Face</option>
           <option value="from_url">From URL</option>

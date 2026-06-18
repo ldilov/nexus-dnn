@@ -47,6 +47,7 @@ export interface ModelsSearchUIProps {
   identityByFamily: Record<string, ModelOnDiskIdentity | undefined>;
   onQueryChange: (q: string) => void;
   onSourceChange: (source: ParsedSearchParams["source"]) => void;
+  onToggleShowUnsupported: () => void;
   onCycleInstalled: () => void;
   onClearInstalled: () => void;
   onClearAll: () => void;
@@ -92,6 +93,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     identityByFamily,
     onQueryChange,
     onSourceChange,
+    onToggleShowUnsupported,
     onCycleInstalled,
     onClearInstalled,
     onClearAll,
@@ -193,7 +195,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
             <EmptyState
               showUnsupported={params.showUnsupported}
               installedMode={params.installed}
-              onToggleShowUnsupported={() => {}}
+              onToggleShowUnsupported={onToggleShowUnsupported}
               onClearInstalled={onClearInstalled}
             />
           )}
@@ -237,7 +239,12 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
       {isFromUrl && (
         <>
           {resolveError && (
-            <ErrorState error={resolveError} onRetry={onRetry} />
+            <div className={s.bannerDegraded} role="alert">
+              <span className="material-symbols-outlined" aria-hidden="true">
+                error
+              </span>
+              {resolveError.message}
+            </div>
           )}
           {!resolveError && resolving && <SkeletonGrid />}
           {!resolveError && !resolving && resolved && (

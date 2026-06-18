@@ -404,6 +404,11 @@ export function ModelsSearchView() {
         setResolveError(null);
         mutateParams({ source, page: 1 });
       },
+      onToggleShowUnsupported: () =>
+        mutateParams({
+          showUnsupported: !loaderData.params.showUnsupported,
+          page: 1,
+        }),
       onCycleInstalled: () => {
         const current = loaderData.params.installed;
         const next: ParsedSearchParams["installed"] =
