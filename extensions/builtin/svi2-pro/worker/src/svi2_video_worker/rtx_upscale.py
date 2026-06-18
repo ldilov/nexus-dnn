@@ -61,7 +61,11 @@ def try_rtx_upscale(
         _log(logger, "rtx_upscale.unavailable", error="cuda not available")
         return False
 
-    q = getattr(VideoSuperRes.QualityLevel, quality.upper(), None)
+    # `QualityLevel` is attached to the class by nvvfx's effects/__init__;
+    # guard the lookup so a future API shift degrades to a logged skip
+    # rather than aborting the render (this stage is always optional).
+    quality_enum = getattr(VideoSuperRes, "QualityLevel", None)
+    q = getattr(quality_enum, quality.upper(), None) if quality_enum is not None else None
     if q is None:
         _log(logger, "rtx_upscale.bad_quality", quality=quality)
         return False

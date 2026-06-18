@@ -218,6 +218,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "num_motion_frame": num_motion_frame,
         "upscale_factor": _validate_upscale_factor(params),
         "upscale_quality": _validate_upscale_quality(params),
+        "upscale_model": _validate_upscale_model(params),
         "interpolate_fps": int(params.get("interpolate_fps", 0)),
         "interpolate_method": str(params.get("interpolate_method", "rife")),
         "rife_bin": params.get("rife_bin"),
@@ -268,6 +269,83 @@ def _validate_upscale_quality(params: dict[str, Any]) -> str:
             f"upscale_quality must be one of {UPSCALE_QUALITIES}; got {quality}"
         )
     return quality
+
+
+# Upscaler engine selection. "auto" tries Maxine first (fast Tensor-Core path
+# on Windows/RTX), then the DRCT-L transformer, then Real-ESRGAN — so an
+# aarch64 host where Maxine has no build still gets the best available model.
+UPSCALE_MODELS = (
+    "auto", "maxine", "drct-l-hq", "drct-l-real", "hat-l", "swinir-l", "realesrgan"
+)
+DEFAULT_UPSCALE_MODEL = "auto"
+
+
+def _validate_upscale_model(params: dict[str, Any]) -> str:
+    model = str(params.get("upscale_model", DEFAULT_UPSCALE_MODEL)).lower()
+    if model not in UPSCALE_MODELS:
+        raise ValueError(
+            f"upscale_model must be one of {UPSCALE_MODELS}; got {model}"
+        )
+    return model
+
+
+def _run_upscale_chain(
+    worker: Any,
+    params: dict[str, Any],
+    video_path: Path,
+    output_path: Path,
+    fps: float,
+    log_vram: Callable[[str], None],
+) -> tuple[Path, str]:
+    """Apply the optional super-resolution stage per `upscale_model`. "auto"
+    tries Maxine → DRCT-L → Real-ESRGAN so an aarch64 host (no Maxine build)
+    still lands the best available model. Every engine is fail-soft; a miss
+    keeps native resolution. Returns (possibly-upscaled path, engine tag)."""
+    factor: int = params["upscale_factor"]
+    if factor <= 0:
+        return video_path, ""
+
+    model = params["upscale_model"]
+    order = ["maxine", "drct-l-hq", "realesrgan"] if model == "auto" else [model]
+    logger = getattr(worker, "logger", None)
+    models_dir = params.get("models_dir")
+
+    _notify(worker, "svi2.video.progress", {"fraction": 0.975, "stage": "upscaling"})
+    # Transformer/ESRGAN engines run per-frame (far slower than Maxine's
+    # Tensor-Core path), so a heartbeat keeps the client watchdog fed.
+    with _ProgressHeartbeat(worker, "upscaling", 0.975):
+        for engine in order:
+            out = output_path.parent / (
+                f"{output_path.stem}_{engine.replace('-', '_')}_x{factor}{output_path.suffix}"
+            )
+            if engine == "maxine":
+                from .rtx_upscale import try_rtx_upscale
+
+                if try_rtx_upscale(
+                    video_path, out, factor,
+                    quality=params["upscale_quality"], fps=fps, logger=logger,
+                ):
+                    log_vram(f"maxine upscale x{factor} ({params['upscale_quality']})")
+                    return out, "maxine_vsr"
+            elif engine == "realesrgan":
+                from .esrgan_torch_upscale import try_esrgan_upscale
+
+                if try_esrgan_upscale(
+                    video_path, out, factor, fps=fps, logger=logger, models_dir=models_dir
+                ):
+                    log_vram(f"realesrgan upscale x{factor}")
+                    return out, "esrgan_torch"
+            else:
+                from .spandrel_upscale import try_spandrel_upscale
+
+                if try_spandrel_upscale(
+                    video_path, out, factor, model_name=engine,
+                    fps=fps, logger=logger, models_dir=models_dir,
+                ):
+                    log_vram(f"{engine} upscale x{factor}")
+                    return out, engine.replace("-", "_")
+    log_vram("upscale unavailable — keeping native resolution")
+    return video_path, ""
 
 
 def resolve_models_dir(explicit: str | None = None) -> Path:
@@ -1143,32 +1221,14 @@ def _run_render(
                 torch.cuda.empty_cache()
             log_vram("experts released post-render")
 
-        # Optional Maxine RTX super-resolution BEFORE interpolation — fewer frames
-        # to upscale at native fps, and RIFE then interpolates at the final size.
+        # Optional super-resolution BEFORE interpolation — fewer frames to
+        # upscale at native fps, and RIFE then interpolates at the final size.
+        # Engine per upscale_model: Maxine (Win/RTX) → DRCT-L → Real-ESRGAN.
         upscale_factor: int = params["upscale_factor"]
-        upscale_engine = ""
         base_path = video_path
-        if upscale_factor > 0:
-            from .rtx_upscale import try_rtx_upscale
-
-            _notify(worker, "svi2.video.progress", {"fraction": 0.975, "stage": "upscaling"})
-            up_out = output_path.parent / (
-                f"{output_path.stem}_x{upscale_factor}{output_path.suffix}"
-            )
-            upscaled = try_rtx_upscale(
-                video_path,
-                up_out,
-                upscale_factor,
-                quality=params["upscale_quality"],
-                fps=fps,
-                logger=getattr(worker, "logger", None),
-            )
-            if upscaled:
-                video_path = up_out
-                upscale_engine = "maxine_vsr"
-                log_vram(f"rtx upscale x{upscale_factor} ({params['upscale_quality']})")
-            else:
-                log_vram("rtx upscale unavailable — keeping native resolution")
+        video_path, upscale_engine = _run_upscale_chain(
+            worker, params, video_path, output_path, fps, log_vram
+        )
 
         # Optional frame interpolation: native render stays at fps; this adds frames
         # to reach interpolate_fps (smooth high-fps, no speed-up). Off when 0/<=fps.
@@ -1207,6 +1267,7 @@ def _run_render(
             "interpolate_engine": interp_engine,
             "upscale_factor": upscale_factor if upscale_engine else 0,
             "upscale_quality": params["upscale_quality"],
+            "upscale_model": params["upscale_model"],
             "upscale_engine": upscale_engine,
             "num_clips": num_clips,
             "frames": total_frames,
