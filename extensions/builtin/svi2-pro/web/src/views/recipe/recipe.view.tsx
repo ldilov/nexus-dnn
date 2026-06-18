@@ -10,6 +10,7 @@ import type { RenderJob } from "../../services/types";
 import { useRenderRequest } from "../../store/render_request_store";
 import { AnchorInputs } from "./components/anchor_inputs";
 import { BaseModelSelect } from "./components/base_model_select";
+import { LoraControls } from "./components/lora_controls";
 import { DistributionBanner } from "./components/distribution_banner";
 import { GenerationModeToggle } from "./components/generation_mode_toggle";
 import { HistoryList } from "./components/history_list";
@@ -138,6 +139,7 @@ export function RecipeView(): ReactElement {
             <LengthControl />
             <ResolutionControl presets={presets} />
             <BaseModelSelect />
+            <LoraControls />
           </div>
           <TierForm issues={issues} />
           <OutputSpecBar presets={presets} />
