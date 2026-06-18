@@ -42,6 +42,8 @@ pub struct ModelRepository {
 pub enum SourceProvider {
     #[default]
     Huggingface,
+    Civitai,
+    DirectUrl,
     #[serde(other)]
     Other,
 }
@@ -156,5 +158,23 @@ mod tests {
     fn source_provider_serialises_snake_case() {
         let p = SourceProvider::Huggingface;
         assert_eq!(serde_json::to_string(&p).unwrap(), "\"huggingface\"");
+    }
+
+    #[test]
+    fn source_provider_civitai_and_direct_url_round_trip() {
+        assert_eq!(
+            serde_json::to_string(&SourceProvider::Civitai).unwrap(),
+            "\"civitai\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SourceProvider::DirectUrl).unwrap(),
+            "\"direct_url\""
+        );
+        let c: SourceProvider = serde_json::from_str("\"civitai\"").unwrap();
+        assert_eq!(c, SourceProvider::Civitai);
+        let d: SourceProvider = serde_json::from_str("\"direct_url\"").unwrap();
+        assert_eq!(d, SourceProvider::DirectUrl);
+        let o: SourceProvider = serde_json::from_str("\"weird\"").unwrap();
+        assert_eq!(o, SourceProvider::Other);
     }
 }

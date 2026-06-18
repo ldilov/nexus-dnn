@@ -72,7 +72,7 @@ export type DownloadState =
 
 export type BackendStatus = "enabled" | "experimental" | "disabled";
 
-export type SourceProvider = "huggingface" | "other";
+export type SourceProvider = "huggingface" | "civitai" | "direct_url" | "other";
 
 export interface BackendCapability {
   backend_id: string;
