@@ -171,6 +171,7 @@ pub async fn harness_with_extra(
         sink_root,
         reqwest::Client::new(),
         tokens.clone(),
+        TokenStore::new(None),
     ));
 
     let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
@@ -189,11 +190,13 @@ pub async fn harness_with_extra(
         backend_adapter_registry: None,
         spawner: None,
         huggingface: Some(hf.clone()),
+        civitai: None,
         capability_registry: Some(registry),
         download_job_store: Some(job_store.clone()),
         download_orchestrator: Some(orchestrator.clone()),
         install_map: Some(install_map.clone()),
         hf_token_store: Some(tokens.clone()),
+        civitai_token_store: None,
         backend_event_publisher: backend_event_bus.clone(),
         backend_event_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
@@ -312,6 +315,7 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         sink_root,
         reqwest::Client::new(),
         tokens.clone(),
+        TokenStore::new(None),
     ));
 
     let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
@@ -330,11 +334,13 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         backend_adapter_registry: None,
         spawner: None,
         huggingface: Some(hf.clone()),
+        civitai: None,
         capability_registry: Some(registry),
         download_job_store: Some(job_store.clone()),
         download_orchestrator: Some(orchestrator.clone()),
         install_map: Some(install_map.clone()),
         hf_token_store: Some(tokens.clone()),
+        civitai_token_store: None,
         backend_event_publisher: backend_event_bus.clone(),
         backend_event_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),

@@ -2031,6 +2031,7 @@ mod tests {
             sink_root,
             reqwest::Client::new(),
             nexus_models_store::downloads::TokenStore::new(None),
+            nexus_models_store::downloads::TokenStore::new(None),
         ));
         RealModelStoreClient::new(install_map, orchestrator, Some(hf), None, Some(store))
     }

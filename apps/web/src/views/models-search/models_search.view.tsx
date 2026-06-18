@@ -8,21 +8,21 @@ import {
 import { toast } from "sonner";
 import useSWR from "swr";
 import {
+  createDirectDownload,
   createDownload,
+  directTargetFromFamily,
   fetchBackends,
   fetchDownloadStatus,
   fetchSearch,
   isTerminalState,
   parseSearchParams,
   pauseDownload,
+  resolveUrl,
   resumeDownload,
   serializeSearchParams,
   type BackendCapability,
-  type CompatibilityStatus,
   type DownloadJob,
   type DownloadState,
-  type Format,
-  type Modality,
   type ModelFamily,
   type ParsedSearchParams,
   type SearchPage,
@@ -93,17 +93,15 @@ export function ModelsSearchView() {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState(loaderData.params.q);
-  const [repoFilter, setRepoFilter] = useState(loaderData.params.repo);
   const [activeJobs, setActiveJobs] = useState<Record<string, DownloadJob>>({});
   const [jobVariantMap, setJobVariantMap] = useState<Record<string, string>>({});
+  const [resolved, setResolved] = useState<ModelFamily | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<{ message: string } | null>(null);
 
   useEffect(() => {
     setQuery(loaderData.params.q);
   }, [loaderData.params.q]);
-
-  useEffect(() => {
-    setRepoFilter(loaderData.params.repo);
-  }, [loaderData.params.repo]);
 
   const mutateParams = useCallback(
     (patch: Partial<ParsedSearchParams>) => {
@@ -125,15 +123,6 @@ export function ModelsSearchView() {
     }, 280);
     return () => window.clearTimeout(handle);
   }, [query, loaderData.params.q, mutateParams]);
-
-  useEffect(() => {
-    const trimmed = repoFilter.trim();
-    if (trimmed === loaderData.params.repo) return undefined;
-    const handle = window.setTimeout(() => {
-      mutateParams({ repo: trimmed, page: 1 });
-    }, 280);
-    return () => window.clearTimeout(handle);
-  }, [repoFilter, loaderData.params.repo, mutateParams]);
 
   const activeJobKey = useMemo(() => {
     const ids = Object.values(activeJobs)
@@ -313,6 +302,24 @@ export function ModelsSearchView() {
 
   const startDownload = useCallback(
     async (family: ModelFamily, target: DownloadKind) => {
+      if (family.repository.source_provider !== "huggingface") {
+        const direct = directTargetFromFamily(family);
+        if (!direct) return;
+        try {
+          const job = await createDirectDownload(family.family_id, direct);
+          const canonical =
+            typeof job.state === "string" && typeof job.family_id === "string"
+              ? job
+              : await fetchDownloadStatus(job.job_id);
+          setActiveJobs((prev) => ({ ...prev, [canonical.job_id]: canonical }));
+          toast.success("Download queued");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Download failed";
+          toast.error(msg);
+        }
+        return;
+      }
+
       const body = {
         family_id: family.family_id,
         target:
@@ -389,33 +396,14 @@ export function ModelsSearchView() {
     );
   }, []);
 
-  const toggleInList = <T,>(list: T[], value: T): T[] =>
-    list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
-
   const handlers = useMemo(
     () => ({
       onQueryChange: (q: string) => setQuery(q),
-      onRepoChange: (r: string) => setRepoFilter(r),
-      onToggleFormat: (fmt: Format) =>
-        mutateParams({
-          formats: toggleInList(loaderData.params.formats, fmt),
-          page: 1,
-        }),
-      onToggleBackend: (id: string) =>
-        mutateParams({
-          backends: toggleInList(loaderData.params.backends, id),
-          page: 1,
-        }),
-      onToggleModality: (m: Modality) =>
-        mutateParams({
-          modalities: toggleInList(loaderData.params.modalities, m),
-          page: 1,
-        }),
-      onToggleCompat: (c: CompatibilityStatus) =>
-        mutateParams({
-          compat: toggleInList(loaderData.params.compat, c),
-          page: 1,
-        }),
+      onSourceChange: (source: ParsedSearchParams["source"]) => {
+        setResolved(null);
+        setResolveError(null);
+        mutateParams({ source, page: 1 });
+      },
       onToggleShowUnsupported: () =>
         mutateParams({
           showUnsupported: !loaderData.params.showUnsupported,
@@ -434,8 +422,23 @@ export function ModelsSearchView() {
       onClearInstalled: () => mutateParams({ installed: "any", page: 1 }),
       onClearAll: () => {
         setQuery("");
-        setRepoFilter("");
         navigate({ pathname: location.pathname, search: "" }, { replace: false });
+      },
+      onResolveUrl: async (url: string) => {
+        setResolving(true);
+        setResolveError(null);
+        setResolved(null);
+        try {
+          const family = await resolveUrl(url);
+          setResolved(family);
+        } catch (e) {
+          setResolveError({
+            message:
+              e instanceof Error ? e.message : "could not resolve URL",
+          });
+        } finally {
+          setResolving(false);
+        }
       },
       onSortChange: (sort: ParsedSearchParams["sort"]) =>
         mutateParams({ sort, page: 1 }),
@@ -472,12 +475,14 @@ export function ModelsSearchView() {
     <ModelsSearchUI
       params={loaderData.params}
       query={query}
-      repo={repoFilter}
       backends={loaderData.backends}
       page={loaderData.page}
       loading={navigation.state === "loading"}
       error={loaderData.error}
       degraded={loaderData.backendsDegraded}
+      resolved={resolved}
+      resolving={resolving}
+      resolveError={resolveError}
       jobStateByVariant={jobStateByVariant}
       jobIdByVariant={jobIdByVariant}
       jobByVariant={jobByVariant}

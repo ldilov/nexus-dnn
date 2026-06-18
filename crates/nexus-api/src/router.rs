@@ -476,10 +476,20 @@ pub fn build(state: AppState) -> Router {
             post(handlers::model_store::downloads::resume_download),
         )
         .route(
+            "/model-store/resolve-url",
+            post(handlers::model_store::resolve::resolve_url),
+        )
+        .route(
             "/model-store/settings/hf-token",
             get(handlers::model_store::settings::get_hf_token_status)
                 .put(handlers::model_store::settings::set_hf_token)
                 .delete(handlers::model_store::settings::clear_hf_token),
+        )
+        .route(
+            "/model-store/settings/civitai-token",
+            get(handlers::model_store::settings::get_civitai_token_status)
+                .put(handlers::model_store::settings::set_civitai_token)
+                .delete(handlers::model_store::settings::clear_civitai_token),
         )
         // Spec 054 G2 — host-owned, generic model-store revalidate sweep:
         // prunes install-map rows whose on-disk files vanished (self-heal).

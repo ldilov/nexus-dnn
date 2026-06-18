@@ -1,10 +1,7 @@
 import type {
   BackendCapability,
-  CompatibilityStatus,
   DownloadJob,
   DownloadState,
-  Format,
-  Modality,
   ModelFamily,
   ParsedSearchParams,
   SearchPage,
@@ -30,12 +27,14 @@ import * as s from "./models_search.css";
 export interface ModelsSearchUIProps {
   params: ParsedSearchParams;
   query: string;
-  repo: string;
   backends: BackendCapability[];
   page: SearchPage;
   loading: boolean;
   error: { code?: string; message: string } | null;
   degraded: boolean;
+  resolved: ModelFamily | null;
+  resolving: boolean;
+  resolveError: { message: string } | null;
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
   jobByVariant: Record<string, DownloadJob | undefined>;
@@ -47,11 +46,7 @@ export interface ModelsSearchUIProps {
   jobByArtifact: Record<string, DownloadJob | undefined>;
   identityByFamily: Record<string, ModelOnDiskIdentity | undefined>;
   onQueryChange: (q: string) => void;
-  onRepoChange: (repo: string) => void;
-  onToggleFormat: (fmt: Format) => void;
-  onToggleBackend: (id: string) => void;
-  onToggleModality: (m: Modality) => void;
-  onToggleCompat: (c: CompatibilityStatus) => void;
+  onSourceChange: (source: ParsedSearchParams["source"]) => void;
   onToggleShowUnsupported: () => void;
   onCycleInstalled: () => void;
   onClearInstalled: () => void;
@@ -64,6 +59,7 @@ export interface ModelsSearchUIProps {
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
   onAuthRequired: (family: ModelFamily) => void;
+  onResolveUrl: (url: string) => void;
   onRetry: () => void;
   onRevalidated: () => void;
 }
@@ -78,12 +74,13 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
   const {
     params,
     query,
-    repo,
-    backends,
     page,
     loading,
     error,
     degraded,
+    resolved,
+    resolving,
+    resolveError,
     jobStateByVariant,
     jobIdByVariant,
     jobByVariant,
@@ -95,11 +92,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     jobByArtifact,
     identityByFamily,
     onQueryChange,
-    onRepoChange,
-    onToggleFormat,
-    onToggleBackend,
-    onToggleModality,
-    onToggleCompat,
+    onSourceChange,
     onToggleShowUnsupported,
     onCycleInstalled,
     onClearInstalled,
@@ -112,12 +105,15 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     onPause,
     onResume,
     onAuthRequired,
+    onResolveUrl,
     onRetry,
     onRevalidated,
   } = props;
 
   const gridCls =
     params.view === "list" ? `${s.grid} ${s.gridList}` : s.grid;
+
+  const isFromUrl = params.source === "from_url";
 
   return (
     <div className={s.page}>
@@ -137,83 +133,124 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
 
       <FilterBar
         query={query}
-        repo={repo}
         params={params}
-        backends={backends}
         onQueryChange={onQueryChange}
-        onRepoChange={onRepoChange}
-        onToggleFormat={onToggleFormat}
-        onToggleBackend={onToggleBackend}
-        onToggleModality={onToggleModality}
-        onToggleCompat={onToggleCompat}
-        onToggleShowUnsupported={onToggleShowUnsupported}
+        onSourceChange={onSourceChange}
         onCycleInstalled={onCycleInstalled}
         onClearAll={onClearAll}
+        onResolveUrl={onResolveUrl}
+        resolving={resolving}
         degraded={degraded}
       />
 
-      <div className={s.sortRow}>
-        <SortMenu value={params.sort} onChange={onSortChange} />
-        <div
-          className={s.viewToggle}
-          role="radiogroup"
-          aria-label="Result view mode"
-        >
-          <button
-            type="button"
-            role="radio"
-            aria-checked={params.view === "grid"}
-            aria-label="Grid view"
-            className={
-              params.view === "grid"
-                ? `${s.viewToggleButton} ${s.viewToggleButtonActive}`
-                : s.viewToggleButton
-            }
-            onClick={() => onViewChange("grid")}
-          >
-            <span className="material-symbols-outlined" aria-hidden="true">
-              grid_view
-            </span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={params.view === "list"}
-            aria-label="List view"
-            className={
-              params.view === "list"
-                ? `${s.viewToggleButton} ${s.viewToggleButtonActive}`
-                : s.viewToggleButton
-            }
-            onClick={() => onViewChange("list")}
-          >
-            <span className="material-symbols-outlined" aria-hidden="true">
-              view_list
-            </span>
-          </button>
-        </div>
-      </div>
+      {!isFromUrl && (
+        <>
+          <div className={s.sortRow}>
+            <SortMenu value={params.sort} onChange={onSortChange} />
+            <div
+              className={s.viewToggle}
+              role="radiogroup"
+              aria-label="Result view mode"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={params.view === "grid"}
+                aria-label="Grid view"
+                className={
+                  params.view === "grid"
+                    ? `${s.viewToggleButton} ${s.viewToggleButtonActive}`
+                    : s.viewToggleButton
+                }
+                onClick={() => onViewChange("grid")}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  grid_view
+                </span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={params.view === "list"}
+                aria-label="List view"
+                className={
+                  params.view === "list"
+                    ? `${s.viewToggleButton} ${s.viewToggleButtonActive}`
+                    : s.viewToggleButton
+                }
+                onClick={() => onViewChange("list")}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  view_list
+                </span>
+              </button>
+            </div>
+          </div>
 
-      {error && <ErrorState error={error} onRetry={onRetry} />}
+          {error && <ErrorState error={error} onRetry={onRetry} />}
 
-      {!error && loading && <SkeletonGrid />}
+          {!error && loading && <SkeletonGrid />}
 
-      {!error && !loading && page.families.length === 0 && (
-        <EmptyState
-          showUnsupported={params.showUnsupported}
-          installedMode={params.installed}
-          onToggleShowUnsupported={onToggleShowUnsupported}
-          onClearInstalled={onClearInstalled}
-        />
+          {!error && !loading && page.families.length === 0 && (
+            <EmptyState
+              showUnsupported={params.showUnsupported}
+              installedMode={params.installed}
+              onToggleShowUnsupported={onToggleShowUnsupported}
+              onClearInstalled={onClearInstalled}
+            />
+          )}
+
+          {!error && !loading && page.families.length > 0 && (
+            <>
+              <div className={gridCls}>
+                {page.families.map((family) => (
+                  <ModelCard
+                    key={family.family_id}
+                    family={family}
+                    jobStateByVariant={jobStateByVariant}
+                    jobIdByVariant={jobIdByVariant}
+                    jobByVariant={jobByVariant}
+                    jobStateByFamily={jobStateByFamily}
+                    jobIdByFamily={jobIdByFamily}
+                    jobByFamily={jobByFamily}
+                    jobStateByArtifact={jobStateByArtifact}
+                    jobIdByArtifact={jobIdByArtifact}
+                    jobByArtifact={jobByArtifact}
+                    identity={identityByFamily[family.family_id]}
+                    onDownload={onDownload}
+                    onPause={onPause}
+                    onResume={onResume}
+                    onAuthRequired={onAuthRequired}
+                  />
+                ))}
+              </div>
+              <Paginator
+                page={page.page}
+                pageSize={page.page_size}
+                totalResults={page.total_results}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            </>
+          )}
+        </>
       )}
 
-      {!error && !loading && page.families.length > 0 && (
+      {isFromUrl && (
         <>
-          <div className={gridCls}>
-            {page.families.map((family) => (
+          {resolveError && (
+            <div className={s.bannerDegraded} role="alert">
+              <span className="material-symbols-outlined" aria-hidden="true">
+                error
+              </span>
+              {resolveError.message}
+            </div>
+          )}
+          {!resolveError && resolving && <SkeletonGrid />}
+          {!resolveError && !resolving && resolved && (
+            <div className={gridCls}>
               <ModelCard
-                key={family.family_id}
-                family={family}
+                family={resolved}
                 jobStateByVariant={jobStateByVariant}
                 jobIdByVariant={jobIdByVariant}
                 jobByVariant={jobByVariant}
@@ -223,21 +260,14 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
                 jobStateByArtifact={jobStateByArtifact}
                 jobIdByArtifact={jobIdByArtifact}
                 jobByArtifact={jobByArtifact}
-                identity={identityByFamily[family.family_id]}
+                identity={identityByFamily[resolved.family_id]}
                 onDownload={onDownload}
                 onPause={onPause}
                 onResume={onResume}
                 onAuthRequired={onAuthRequired}
               />
-            ))}
-          </div>
-          <Paginator
-            page={page.page}
-            pageSize={page.page_size}
-            totalResults={page.total_results}
-            onPageChange={onPageChange}
-            onPageSizeChange={onPageSizeChange}
-          />
+            </div>
+          )}
         </>
       )}
     </div>

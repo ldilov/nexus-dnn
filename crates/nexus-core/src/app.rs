@@ -299,6 +299,8 @@ impl NexusApp {
         let install_map = nexus_models_store::downloads::InstallMap::new(shared_pool);
         let hf_token_store =
             nexus_models_store::downloads::TokenStore::new(std::env::var("HF_TOKEN").ok());
+        let civitai_token_store =
+            nexus_models_store::downloads::TokenStore::new(std::env::var("CIVITAI_TOKEN").ok());
         let download_orchestrator =
             Arc::new(nexus_models_store::downloads::DownloadOrchestrator::new(
                 (*download_job_store).clone(),
@@ -306,6 +308,7 @@ impl NexusApp {
                 download_sink_root,
                 reqwest::Client::new(),
                 hf_token_store.clone(),
+                civitai_token_store.clone(),
             ));
         if let Err(e) = download_orchestrator.recover_startup_state().await {
             tracing::warn!(error = %e, "download orchestrator startup rehydration failed");
@@ -409,6 +412,10 @@ impl NexusApp {
             backend_adapter_registry,
             spawner,
             huggingface: Some(huggingface),
+            civitai: Some(Arc::new(nexus_civitai::CivitaiClient::new(
+                std::env::var("CIVITAI_TOKEN").ok(),
+            ))),
+            civitai_token_store: Some(civitai_token_store),
             capability_registry,
             download_job_store: Some(download_job_store),
             download_orchestrator: Some(download_orchestrator),

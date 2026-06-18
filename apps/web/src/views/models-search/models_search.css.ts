@@ -438,3 +438,8 @@ export const cardVariants = styleVariants({
     gridColumn: "1 / -1",
   },
 });
+
+export const sourceSelect = style([
+  chip,
+  { cursor: "pointer", paddingRight: "1.5rem" },
+]);

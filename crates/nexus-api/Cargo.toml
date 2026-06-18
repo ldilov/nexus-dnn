@@ -29,6 +29,7 @@ nexus-run-events = { path = "../nexus-run-events" }
 nexus-models-store = { path = "../nexus-models-store" }
 nexus-deployments = { path = "../nexus-deployments" }
 nexus-huggingface = { path = "../nexus-huggingface" }
+nexus-civitai = { path = "../nexus-civitai" }
 uuid = { workspace = true }
 chrono = { workspace = true }
 regex-lite = "0.1"

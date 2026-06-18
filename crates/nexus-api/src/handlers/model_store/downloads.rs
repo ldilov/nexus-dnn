@@ -29,11 +29,49 @@ pub enum DownloadTarget {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DirectDownloadTarget {
+    pub source_provider: String,
+    pub source_repo: String,
+    pub artifact_id: String,
+    pub filename: String,
+    pub role: DependencyRole,
+    pub download_url: String,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+}
+
+impl DirectDownloadTarget {
+    pub fn into_params(self, family_id: &str) -> CreateJobParams {
+        let target = JobTargetInput {
+            artifact_id: ArtifactId::from(self.artifact_id),
+            filename: self.filename,
+            role: self.role,
+            download_url: self.download_url,
+            expected_bytes: self.size_bytes,
+            sha256: self.sha256,
+        };
+        CreateJobParams::builder(
+            FamilyId::from(family_id.to_string()),
+            self.source_provider,
+            self.source_repo,
+            RequestedKind::Primary,
+        )
+        .targets(vec![target])
+        .build()
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreateDownloadRequest {
     pub family_id: String,
-    pub target: DownloadTarget,
+    #[serde(default)]
+    pub target: Option<DownloadTarget>,
     #[serde(default)]
     pub include_dependencies: bool,
+    #[serde(default)]
+    pub direct: Option<DirectDownloadTarget>,
 }
 
 #[derive(Debug, Serialize)]
@@ -142,7 +180,10 @@ fn requested_kind_as_str(k: RequestedKind) -> &'static str {
 }
 
 fn validate(req: &CreateDownloadRequest) -> Result<(), Response> {
-    let is_bundle = matches!(req.target, DownloadTarget::Bundle);
+    let Some(target) = &req.target else {
+        return Ok(());
+    };
+    let is_bundle = matches!(target, DownloadTarget::Bundle);
     if is_bundle && !req.include_dependencies {
         return Err(ApiResponse::<()>::err(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -233,9 +274,9 @@ fn variant_by_id<'a>(
 
 fn build_targets(
     family: &ModelFamily,
-    request: &CreateDownloadRequest,
+    target: &DownloadTarget,
 ) -> Result<Vec<JobTargetInput>, Response> {
-    match &request.target {
+    match target {
         DownloadTarget::Primary { artifact_id } => {
             let a = artifact_by_id(family, artifact_id).ok_or_else(|| {
                 ApiResponse::<()>::not_found(format!("artifact_id not found: {artifact_id}"))
@@ -327,17 +368,53 @@ pub async fn create_download(
         .into_response();
     };
 
+    if let Some(direct) = req.direct {
+        let params = direct.into_params(&req.family_id);
+        let job = match store.create(params).await {
+            Ok(j) => j,
+            Err(JobStoreError::Duplicate(existing)) => match store.get(&existing).await {
+                Ok(Some(persisted)) => {
+                    let dto = DownloadJobDto::from_persisted(persisted);
+                    let mut resp = ApiResponse::ok(dto).into_response();
+                    *resp.status_mut() = StatusCode::OK;
+                    return resp;
+                }
+                Ok(None) => {
+                    return ApiResponse::ok(serde_json::json!({
+                        "job_id": existing.to_string(),
+                        "existing": true,
+                    }))
+                    .into_response();
+                }
+                Err(e) => return ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
+            },
+            Err(e) => return ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
+        };
+        orchestrator.enqueue(job.job_id).await;
+        let dto = DownloadJobDto::from_persisted(job);
+        let mut resp = ApiResponse::ok(dto).into_response();
+        *resp.status_mut() = StatusCode::ACCEPTED;
+        return resp;
+    }
+
+    let Some(ref target) = req.target else {
+        return ApiResponse::<()>::bad_request(
+            "a download target or a direct target is required".into(),
+        )
+        .into_response();
+    };
+
     let family = match resolve_family(&state, &req.family_id).await {
         Ok(f) => f,
         Err(resp) => return resp,
     };
 
-    let targets = match build_targets(&family, &req) {
+    let targets = match build_targets(&family, target) {
         Ok(t) => t,
         Err(resp) => return resp,
     };
 
-    let kind = match &req.target {
+    let kind = match &target {
         DownloadTarget::Primary { .. } => RequestedKind::Primary,
         DownloadTarget::Variant { .. } => RequestedKind::Variant,
         DownloadTarget::Bundle => RequestedKind::Bundle,
@@ -504,4 +581,34 @@ pub async fn get_download_status(
 #[allow(dead_code)]
 fn _unused_artifact_id_compile_guard(id: ArtifactId) -> String {
     id.into_inner()
+}
+
+#[cfg(test)]
+mod direct_target_tests {
+    use super::*;
+
+    #[test]
+    fn parses_direct_download_request() {
+        let json = r#"{
+            "family_id": "direct_url:m.gguf",
+            "direct": {
+                "source_provider": "direct_url",
+                "source_repo": "m.gguf",
+                "artifact_id": "direct_url:m.gguf#0",
+                "filename": "m.gguf",
+                "role": "primary",
+                "download_url": "https://example.com/m.gguf",
+                "sha256": null,
+                "size_bytes": 10
+            }
+        }"#;
+        let req: CreateDownloadRequest = serde_json::from_str(json).unwrap();
+        let direct = req.direct.expect("direct present");
+        assert_eq!(direct.source_provider, "direct_url");
+        assert!(direct.sha256.is_none());
+        let params = direct.into_params(&req.family_id);
+        assert_eq!(params.targets.len(), 1);
+        assert_eq!(params.source_provider, "direct_url");
+        assert!(params.targets[0].sha256.is_none());
+    }
 }

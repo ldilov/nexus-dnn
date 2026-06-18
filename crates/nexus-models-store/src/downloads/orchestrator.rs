@@ -57,6 +57,7 @@ struct Inner {
     sink_root: PathBuf,
     http: reqwest::Client,
     tokens: TokenStore,
+    civitai_tokens: TokenStore,
     pause_signals: Mutex<HashMap<JobId, watch::Sender<bool>>>,
     cancel: CancellationToken,
 }
@@ -77,6 +78,7 @@ impl DownloadOrchestrator {
         sink_root: PathBuf,
         http: reqwest::Client,
         tokens: TokenStore,
+        civitai_tokens: TokenStore,
     ) -> Self {
         Self::with_cancel(
             store,
@@ -84,6 +86,7 @@ impl DownloadOrchestrator {
             sink_root,
             http,
             tokens,
+            civitai_tokens,
             CancellationToken::new(),
         )
     }
@@ -95,6 +98,7 @@ impl DownloadOrchestrator {
         sink_root: PathBuf,
         http: reqwest::Client,
         tokens: TokenStore,
+        civitai_tokens: TokenStore,
         cancel: CancellationToken,
     ) -> Self {
         let this = Self {
@@ -106,6 +110,7 @@ impl DownloadOrchestrator {
                 sink_root,
                 http,
                 tokens,
+                civitai_tokens,
                 pause_signals: Mutex::new(HashMap::new()),
                 cancel,
             }),
@@ -389,8 +394,10 @@ impl DownloadOrchestrator {
             headers.insert(RANGE, value);
         }
 
+        let hf_tok = self.inner.tokens.current().await;
+        let cv_tok = self.inner.civitai_tokens.current().await;
         let mut req = self.inner.http.get(&target.download_url).headers(headers);
-        if let Some(tok) = self.inner.tokens.current().await {
+        if let Some(tok) = token_for_url(&target.download_url, &hf_tok, &cv_tok) {
             req = req.bearer_auth(tok);
         }
 
@@ -548,6 +555,28 @@ impl DownloadOrchestrator {
         }
 
         Ok(computed_sha)
+    }
+}
+
+fn token_for_url(
+    url: &str,
+    hf_token: &Option<String>,
+    civitai_token: &Option<String>,
+) -> Option<String> {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    let host_with_port = after_scheme.split('/').next().unwrap_or("").to_ascii_lowercase();
+    let host = host_with_port
+        .find('@')
+        .map(|i| &host_with_port[i + 1..])
+        .unwrap_or(&host_with_port);
+    let host = host.find(':').map(|i| &host[..i]).unwrap_or(host);
+    let matches = |suffix: &str| host == suffix || host.ends_with(&format!(".{suffix}"));
+    if matches("huggingface.co") || matches("hf.co") {
+        hf_token.clone()
+    } else if matches("civitai.com") {
+        civitai_token.clone()
+    } else {
+        None
     }
 }
 
@@ -775,6 +804,7 @@ mod tests {
             sink_root,
             reqwest::Client::new(),
             TokenStore::new(None),
+            TokenStore::new(None),
         )
     }
 
@@ -932,5 +962,53 @@ mod tests {
     fn sha_matches_rejects_empty_expected() {
         assert!(!sha_matches("", ""));
         assert!(!sha_matches("sha256:", "abc"));
+    }
+}
+
+#[cfg(test)]
+mod token_select_tests {
+    use super::token_for_url;
+
+    #[test]
+    fn hf_token_only_for_huggingface_hosts() {
+        let hf = Some("HF".to_string());
+        let cv = Some("CV".to_string());
+        assert_eq!(
+            token_for_url("https://huggingface.co/x/y/resolve/main/m.gguf", &hf, &cv),
+            Some("HF".to_string())
+        );
+        assert_eq!(
+            token_for_url("https://cdn-lfs.huggingface.co/abc", &hf, &cv),
+            Some("HF".to_string())
+        );
+    }
+
+    #[test]
+    fn civitai_token_only_for_civitai_hosts() {
+        let hf = Some("HF".to_string());
+        let cv = Some("CV".to_string());
+        assert_eq!(
+            token_for_url("https://civitai.com/api/download/models/7", &hf, &cv),
+            Some("CV".to_string())
+        );
+    }
+
+    #[test]
+    fn no_token_for_arbitrary_hosts() {
+        let hf = Some("HF".to_string());
+        let cv = Some("CV".to_string());
+        assert_eq!(token_for_url("https://example.com/m.gguf", &hf, &cv), None);
+    }
+
+    #[test]
+    fn lookalike_hosts_get_no_token() {
+        let hf = Some("HF".to_string());
+        let cv = Some("CV".to_string());
+        assert_eq!(token_for_url("https://nothuggingface.co/m.gguf", &hf, &cv), None);
+        assert_eq!(
+            token_for_url("https://huggingface.co.evil.test/m.gguf", &hf, &cv),
+            None
+        );
+        assert_eq!(token_for_url("https://evilcivitai.com/m", &hf, &cv), None);
     }
 }
