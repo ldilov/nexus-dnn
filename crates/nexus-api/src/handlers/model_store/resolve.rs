@@ -37,14 +37,37 @@ fn modality_from_str(s: &str) -> Modality {
     }
 }
 
+/// Extract the bare host from an http(s) URL: strips the scheme, takes the
+/// authority up to the first `/`, drops any `userinfo@` prefix and `:port`
+/// suffix, and lowercases the result.
+fn host_of(url: &str) -> &str {
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    let host_port = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    host_port
+        .rsplit_once(':')
+        .map_or(host_port, |(host, _)| host)
+}
+
+/// `true` only when the URL's host is exactly `civitai.com` or a subdomain
+/// of it — never for look-alikes like `not-civitai.com`.
+fn is_civitai_host(url: &str) -> bool {
+    let host = host_of(url).to_ascii_lowercase();
+    host == "civitai.com" || host.ends_with(".civitai.com")
+}
+
 pub fn build_direct_family(url: &str, meta: &DirectHeadMeta) -> ModelFamily {
     let format = classify_format(&meta.filename);
     let family_id_str = format!("direct_url:{}", meta.filename);
-    let artifact_id_str = format!("{}#0", family_id_str);
 
-    let artifact_id = ArtifactId::from(artifact_id_str.clone());
-    let variant_id = VariantId::from(format!("{}@default", family_id_str));
-    let family_id = FamilyId::from(family_id_str.clone());
+    let artifact_id = ArtifactId::from(format!("{family_id_str}#0"));
+    let variant_id = VariantId::from(format!("{family_id_str}@default"));
+    let family_id = FamilyId::from(family_id_str);
 
     let artifact = Artifact {
         artifact_id: artifact_id.clone(),
@@ -99,12 +122,10 @@ pub fn build_civitai_family(r: &CivitaiResolved) -> Option<ModelFamily> {
     let format = classify_format(&file.name);
 
     let family_id_str = format!("civitai:{}/{}", r.model_id, r.version_id);
-    let artifact_id_str = format!("{}#{}", family_id_str, file.name);
-    let variant_id_str = format!("{}@default", family_id_str);
 
-    let artifact_id = ArtifactId::from(artifact_id_str);
-    let variant_id = VariantId::from(variant_id_str);
-    let family_id = FamilyId::from(family_id_str.clone());
+    let artifact_id = ArtifactId::from(format!("{}#{}", family_id_str, file.name));
+    let variant_id = VariantId::from(format!("{family_id_str}@default"));
+    let family_id = FamilyId::from(family_id_str);
 
     let artifact = Artifact {
         artifact_id: artifact_id.clone(),
@@ -166,7 +187,7 @@ pub async fn resolve_url(
         .into_response();
     }
 
-    if url.to_ascii_lowercase().contains("civitai.com") {
+    if is_civitai_host(&url) {
         let reference = match parse_civitai_url(&url) {
             Ok(r) => r,
             Err(e) => {
@@ -217,7 +238,12 @@ pub async fn resolve_url(
         };
     }
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder()
+        .user_agent(concat!("nexus-dnn/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::limited(3))
+        .build()
+        .expect("reqwest client builds");
     let head_resp = match http.head(&url).send().await {
         Ok(r) => r,
         Err(e) => {
@@ -264,7 +290,7 @@ fn extract_filename(url: &str, headers: &reqwest::header::HeaderMap) -> String {
 
     let path = url.split('?').next().unwrap_or(url);
     path.split('/')
-        .last()
+        .next_back()
         .filter(|s| !s.is_empty())
         .unwrap_or("download.bin")
         .to_owned()
@@ -313,5 +339,17 @@ mod tests {
             SourceProvider::Civitai
         );
         assert_eq!(family.artifacts[0].sha256, Some("ab".to_owned()));
+    }
+
+    #[test]
+    fn civitai_host_matches_exact_and_subdomain_only() {
+        assert!(is_civitai_host("https://civitai.com/models/4201"));
+        assert!(is_civitai_host("https://www.civitai.com/models/4201"));
+        assert!(is_civitai_host(
+            "https://user:pass@civitai.com:443/models/4201"
+        ));
+        assert!(!is_civitai_host("https://not-civitai.com/models/1"));
+        assert!(!is_civitai_host("https://civitai.com.evil.test/models/1"));
+        assert!(!is_civitai_host("https://example.com/?civitai.com"));
     }
 }
