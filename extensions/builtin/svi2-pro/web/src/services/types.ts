@@ -55,10 +55,7 @@ export interface RenderParams {
   models_dir?: string;
   dit_high_path?: string | null;
   dit_low_path?: string | null;
-  user_lora_high_path?: string | null;
-  user_lora_low_path?: string | null;
-  user_lora_high_weight?: number;
-  user_lora_low_weight?: number;
+  user_loras?: Array<{ path: string; weight: number }>;
 }
 
 export interface PresetSummary {

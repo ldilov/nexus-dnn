@@ -1,9 +1,114 @@
-import { type ReactElement } from "react";
+import { type ReactElement, useId } from "react";
 import useSWR from "swr";
 import { fetchInstalledLoras } from "../../../services/installed_loras";
 import { useRenderRequest } from "../../../store/render_request_store";
-import { LoraPicker } from "./lora_picker";
+import {
+  MAX_LORAS,
+  addLora,
+  removeLora,
+  setLoraPath,
+  setLoraWeight,
+} from "./lora_list";
 import * as styles from "./quick_controls.css";
+
+const NONE_VALUE = "__none__";
+
+function LoraRow({
+  rowIndex,
+  path,
+  weight,
+  options,
+  onPath,
+  onWeight,
+  onRemove,
+}: {
+  rowIndex: number;
+  path: string;
+  weight: number;
+  options: Awaited<ReturnType<typeof fetchInstalledLoras>>;
+  onPath: (v: string | null) => void;
+  onWeight: (n: number) => void;
+  onRemove: () => void;
+}): ReactElement {
+  const selectId = useId();
+  const weightId = useId();
+  const selected = path.length > 0 ? path : NONE_VALUE;
+
+  const handleSelect = (raw: string) => {
+    onPath(raw === NONE_VALUE ? null : raw);
+  };
+
+  return (
+    <div className={styles.group}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <label className={styles.groupLabel} htmlFor={selectId} style={{ flex: 1 }}>
+          LoRA {rowIndex + 1}
+        </label>
+        <button
+          type="button"
+          aria-label={`Remove LoRA ${rowIndex + 1}`}
+          onClick={onRemove}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "2px 4px",
+            lineHeight: 1,
+            color: "var(--color-text-muted, #888)",
+          }}
+        >
+          ×
+        </button>
+      </div>
+      <div className={styles.selectWrap}>
+        <select
+          id={selectId}
+          className={styles.select}
+          value={selected}
+          onChange={(e) => handleSelect(e.target.value)}
+        >
+          <option value={NONE_VALUE}>None</option>
+          {options.map((lora) => (
+            <option key={lora.artifactId} value={lora.installPath}>
+              {lora.filename}
+              {lora.familyId ? ` (${lora.familyId.replace(/^[^:]+:/, "")})` : ""}
+            </option>
+          ))}
+        </select>
+        <span className={styles.selectChevron} aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="100%" height="100%" fill="none" aria-hidden="true">
+            <title>open</title>
+            <path
+              d="M4 6l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </div>
+      {selected !== NONE_VALUE && (
+        <div className={styles.customRow}>
+          <label className={styles.groupLabel} htmlFor={weightId}>
+            weight
+          </label>
+          <input
+            id={weightId}
+            type="range"
+            min={0}
+            max={2}
+            step={0.05}
+            value={weight}
+            onChange={(e) => onWeight(parseFloat(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span className={styles.summary}>{weight.toFixed(2)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function LoraControls(): ReactElement {
   const { params, updateParam } = useRenderRequest();
@@ -11,7 +116,10 @@ export function LoraControls(): ReactElement {
     shouldRetryOnError: false,
   });
 
-  const loras = lorasQuery.data ?? [];
+  const installedLoras = lorasQuery.data ?? [];
+  const rows = params.user_loras ?? [];
+
+  const commit = (next: typeof rows) => updateParam("user_loras", next);
 
   return (
     <>
@@ -20,24 +128,37 @@ export function LoraControls(): ReactElement {
           Failed to load installed LoRAs
         </div>
       )}
-      <LoraPicker
-        label="LoRA — high noise"
-        pickerId="svi2-lora-high"
-        value={params.user_lora_high_path}
-        weight={params.user_lora_high_weight ?? 1.0}
-        options={loras}
-        onChange={(path) => updateParam("user_lora_high_path", path)}
-        onWeight={(n) => updateParam("user_lora_high_weight", n)}
-      />
-      <LoraPicker
-        label="LoRA — low noise"
-        pickerId="svi2-lora-low"
-        value={params.user_lora_low_path}
-        weight={params.user_lora_low_weight ?? 1.0}
-        options={loras}
-        onChange={(path) => updateParam("user_lora_low_path", path)}
-        onWeight={(n) => updateParam("user_lora_low_weight", n)}
-      />
+      <div className={styles.group}>
+        <span className={styles.groupLabel}>LoRAs (applied to both experts)</span>
+        {rows.map((row, i) => (
+          <LoraRow
+            key={i}
+            rowIndex={i}
+            path={row.path}
+            weight={row.weight}
+            options={installedLoras}
+            onPath={(v) => commit(setLoraPath(rows, i, v ?? ""))}
+            onWeight={(n) => commit(setLoraWeight(rows, i, n))}
+            onRemove={() => commit(removeLora(rows, i))}
+          />
+        ))}
+        <button
+          type="button"
+          onClick={() => commit(addLora(rows))}
+          disabled={rows.length >= MAX_LORAS}
+          className={styles.hint}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: rows.length >= MAX_LORAS ? "not-allowed" : "pointer",
+            padding: "4px 0",
+            textAlign: "left",
+            opacity: rows.length >= MAX_LORAS ? 0.45 : 1,
+          }}
+        >
+          + Add LoRA
+        </button>
+      </div>
     </>
   );
 }
