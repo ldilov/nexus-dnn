@@ -1,256 +1,133 @@
-import type {
-  BackendCapability,
-  CompatibilityStatus,
-  Format,
-  Modality,
-  ParsedSearchParams,
-} from "../../../services/model_store";
+import { useState } from "react";
+import type { ParsedSearchParams } from "../../../services/model_store";
 import * as s from "../models_search.css";
-
-const FORMAT_OPTIONS: readonly Format[] = [
-  "gguf",
-  "safetensors",
-  "pytorch_bin",
-  "pth",
-];
-
-const MODALITY_OPTIONS: readonly Modality[] = [
-  "llm",
-  "image",
-  "video",
-  "audio",
-  "upscaler",
-  "embedding",
-];
-
-const COMPAT_OPTIONS: readonly {
-  value: CompatibilityStatus;
-  label: string;
-}[] = [
-  { value: "compatible", label: "Ready" },
-  { value: "downloadable_but_not_runnable", label: "Download only" },
-  { value: "compatible_with_requirements", label: "Needs setup" },
-];
 
 interface FilterBarProps {
   query: string;
-  repo: string;
   params: ParsedSearchParams;
-  backends: BackendCapability[];
   onQueryChange: (q: string) => void;
-  onRepoChange: (repo: string) => void;
-  onToggleFormat: (fmt: Format) => void;
-  onToggleBackend: (id: string) => void;
-  onToggleModality: (m: Modality) => void;
-  onToggleCompat: (c: CompatibilityStatus) => void;
-  onToggleShowUnsupported: () => void;
+  onSourceChange: (source: ParsedSearchParams["source"]) => void;
   onCycleInstalled: () => void;
   onClearAll: () => void;
+  onResolveUrl: (url: string) => void;
+  resolving: boolean;
   degraded: boolean;
 }
 
 export function FilterBar({
   query,
-  repo,
   params,
-  backends,
   onQueryChange,
-  onRepoChange,
-  onToggleFormat,
-  onToggleBackend,
-  onToggleModality,
-  onToggleCompat,
-  onToggleShowUnsupported,
+  onSourceChange,
   onCycleInstalled,
   onClearAll,
+  onResolveUrl,
+  resolving,
   degraded,
 }: FilterBarProps) {
-  const hasActive =
-    params.formats.length > 0 ||
-    params.backends.length > 0 ||
-    params.modalities.length > 0 ||
-    params.compat.length > 0 ||
-    params.licenses.length > 0 ||
-    params.showUnsupported ||
-    params.installed !== "any" ||
-    params.q.trim().length > 0 ||
-    params.repo.trim().length > 0;
-
+  const [url, setUrl] = useState("");
+  const showClear = params.installed !== "any" || params.q.trim().length > 0;
+  const isFromUrl = params.source === "from_url";
   return (
     <div className={s.filterBar} role="search" aria-label="Model filters">
       <div className={s.filterRow}>
-        <label className={s.screenReaderOnly} htmlFor="models-search-q">
-          Search models
+        <label className={s.screenReaderOnly} htmlFor="models-source">
+          Source
         </label>
-        <input
-          id="models-search-q"
-          type="text"
-          className={s.queryInput}
-          placeholder="search neural registry..."
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-        />
-        <label className={s.screenReaderOnly} htmlFor="models-search-repo">
-          Filter by repository
-        </label>
-        <input
-          id="models-search-repo"
-          type="text"
-          className={s.queryInput}
-          placeholder="repo filter (owner/name)..."
-          value={repo}
-          onChange={(e) => onRepoChange(e.target.value)}
-        />
-        {hasActive && (
-          <button
-            type="button"
-            className={s.chip}
-            onClick={onClearAll}
-            aria-label="Clear all filters"
-          >
-            Clear all
-          </button>
-        )}
-      </div>
-
-      <div className={s.filterRow}>
-        <span className={s.filterLabel}>Format</span>
-        {FORMAT_OPTIONS.map((fmt) => {
-          const active = params.formats.includes(fmt);
-          const cls = active ? `${s.chip} ${s.chipActive}` : s.chip;
-          return (
-            <button
-              key={fmt}
-              type="button"
-              className={cls}
-              aria-pressed={active}
-              onClick={() => onToggleFormat(fmt)}
-            >
-              {fmt.replace("_", " ")}
-            </button>
-          );
-        })}
-
-        <span className={s.separator} aria-hidden="true" />
-
-        <span className={s.filterLabel}>Backend</span>
-        {backends.length === 0 && (
-          <span
-            className={`${s.chip} ${s.chipDisabled}`}
-            aria-disabled="true"
-          >
-            none available
-          </span>
-        )}
-        {backends.map((b) => {
-          const active = params.backends.includes(b.backend_id);
-          const cls = active ? `${s.chip} ${s.chipActive}` : s.chip;
-          const label =
-            b.status === "experimental"
-              ? `${b.display_name} · experimental`
-              : b.display_name;
-          return (
-            <button
-              key={b.backend_id}
-              type="button"
-              className={cls}
-              aria-pressed={active}
-              onClick={() => onToggleBackend(b.backend_id)}
-              disabled={b.status === "disabled"}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className={s.filterRow}>
-        <span className={s.filterLabel}>Modality</span>
-        {MODALITY_OPTIONS.map((m) => {
-          const active = params.modalities.includes(m);
-          const cls = active ? `${s.chip} ${s.chipActive}` : s.chip;
-          return (
-            <button
-              key={m}
-              type="button"
-              className={cls}
-              aria-pressed={active}
-              onClick={() => onToggleModality(m)}
-            >
-              {m}
-            </button>
-          );
-        })}
-
-        <span className={s.separator} aria-hidden="true" />
-
-        <span className={s.filterLabel}>Compat</span>
-        {COMPAT_OPTIONS.map(({ value, label }) => {
-          const active = params.compat.includes(value);
-          const cls = active ? `${s.chip} ${s.chipActive}` : s.chip;
-          return (
-            <button
-              key={value}
-              type="button"
-              className={cls}
-              aria-pressed={active}
-              onClick={() => onToggleCompat(value)}
-            >
-              {label}
-            </button>
-          );
-        })}
-
-        <span className={s.separator} aria-hidden="true" />
-
-        <button
-          type="button"
-          className={s.toggleSwitch}
-          role="switch"
-          aria-checked={params.showUnsupported}
-          onClick={onToggleShowUnsupported}
+        <select
+          id="models-source"
+          aria-label="Source"
+          className={s.sourceSelect}
+          value={params.source}
+          onChange={(e) =>
+            onSourceChange(e.target.value as ParsedSearchParams["source"])
+          }
         >
-          <span
-            className={`${s.toggleTrack} ${params.showUnsupported ? s.toggleTrackOn : ""}`}
-            aria-hidden="true"
-          >
-            <span
-              className={`${s.toggleThumb} ${params.showUnsupported ? s.toggleThumbOn : ""}`}
+          <option value="huggingface">Hugging Face</option>
+          <option value="from_url">From URL</option>
+        </select>
+        {!isFromUrl && (
+          <>
+            <label className={s.screenReaderOnly} htmlFor="models-search-q">
+              Search models
+            </label>
+            <input
+              id="models-search-q"
+              type="text"
+              className={s.queryInput}
+              placeholder="search neural registry..."
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
             />
-          </span>
-          Show unsupported
-        </button>
-
-        <span className={s.separator} aria-hidden="true" />
-
-        <button
-          type="button"
-          className={
-            params.installed === "installed"
-              ? `${s.chip} ${s.chipActive}`
-              : params.installed === "not_installed"
-                ? `${s.chip} ${s.chipActive}`
-                : s.chip
-          }
-          aria-pressed={params.installed !== "any"}
-          aria-label={
-            params.installed === "installed"
-              ? "Filter: downloaded only"
-              : params.installed === "not_installed"
-                ? "Filter: not downloaded"
-                : "Filter: downloaded (inactive)"
-          }
-          onClick={onCycleInstalled}
-        >
-          {params.installed === "installed"
-            ? "Downloaded"
-            : params.installed === "not_installed"
-              ? "Not downloaded"
-              : "Downloaded"}
-        </button>
+            <button
+              type="button"
+              className={
+                params.installed !== "any"
+                  ? `${s.chip} ${s.chipActive}`
+                  : s.chip
+              }
+              aria-pressed={params.installed !== "any"}
+              aria-label={
+                params.installed === "installed"
+                  ? "Filter: downloaded only"
+                  : params.installed === "not_installed"
+                    ? "Filter: not downloaded"
+                    : "Filter: downloaded (inactive)"
+              }
+              onClick={onCycleInstalled}
+            >
+              {params.installed === "not_installed"
+                ? "Not downloaded"
+                : "Downloaded"}
+            </button>
+            {showClear && (
+              <button
+                type="button"
+                className={s.chip}
+                onClick={onClearAll}
+                aria-label="Clear all filters"
+              >
+                Clear all
+              </button>
+            )}
+          </>
+        )}
+        {isFromUrl && (
+          <>
+            <label className={s.screenReaderOnly} htmlFor="models-url-input">
+              Model URL
+            </label>
+            <input
+              id="models-url-input"
+              type="text"
+              className={s.queryInput}
+              placeholder="paste a Hugging Face file URL, a civitai.com link, or a direct .gguf/.safetensors URL"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && url.trim()) {
+                  onResolveUrl(url.trim());
+                }
+              }}
+            />
+            <button
+              type="button"
+              className={
+                resolving || url.trim() === ""
+                  ? s.chip
+                  : `${s.chip} ${s.chipActive}`
+              }
+              disabled={resolving || url.trim() === ""}
+              onClick={() => {
+                if (url.trim()) onResolveUrl(url.trim());
+              }}
+            >
+              {resolving ? "Resolving…" : "Resolve"}
+            </button>
+          </>
+        )}
       </div>
-
-      {degraded && (
+      {!isFromUrl && degraded && (
         <div className={s.bannerDegraded} role="status">
           <span className="material-symbols-outlined" aria-hidden="true">
             warning
