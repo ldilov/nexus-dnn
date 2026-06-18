@@ -443,7 +443,7 @@ def _build_expert(
         if isinstance(lora_audit, dict) and lora_audit:
             lora_audit = {**lora_audit, "user": user_audit}
         else:
-            lora_audit = {"svi": lora_audit, "user": user_audit}
+            lora_audit = {"user": user_audit}
 
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
@@ -1262,13 +1262,21 @@ def _run_render(
         warnings: list[str] = []
         if params.get("user_lora_high_path"):
             high_user = (audit.get("high_lora") or {}).get("user") if isinstance(audit.get("high_lora"), dict) else None
-            if high_user is not None and high_user.get("wrapped_count", 0) == 0:
+            if high_user is None:
+                warnings.append(
+                    "user LoRA (high) was not applied — file not found at the given path"
+                )
+            elif high_user.get("wrapped_count", 0) == 0:
                 warnings.append(
                     "user LoRA (high) applied 0 modules — likely not a Wan2.2-compatible LoRA"
                 )
         if params.get("user_lora_low_path"):
             low_user = (audit.get("low_lora") or {}).get("user") if isinstance(audit.get("low_lora"), dict) else None
-            if low_user is not None and low_user.get("wrapped_count", 0) == 0:
+            if low_user is None:
+                warnings.append(
+                    "user LoRA (low) was not applied — file not found at the given path"
+                )
+            elif low_user.get("wrapped_count", 0) == 0:
                 warnings.append(
                     "user LoRA (low) applied 0 modules — likely not a Wan2.2-compatible LoRA"
                 )
