@@ -6,7 +6,7 @@ import svi2_video_worker.pipeline_svi2 as p
 def _track_build_expert(monkeypatch):
     calls: list[Path] = []
 
-    def fake(dit_path, lora_path, distill_lora_path=None):
+    def fake(dit_path, lora_path, distill_lora_path=None, user_loras=None):
         calls.append(dit_path)
         return p.ExpertModel(dit=object(), fp8_audit={}, lora_audit={})
 
