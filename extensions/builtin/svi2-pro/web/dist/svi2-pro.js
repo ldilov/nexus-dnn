@@ -25001,7 +25001,9 @@ function wO() {
 }
 const SO = "/api/v1/model-store/installed";
 function EO(e) {
-  return e.filter((a) => a.role === "lora" && a.install_path !== null && a.install_path.length > 0).map((a) => ({
+  return e.filter(
+    (a) => (a.role === "lora" || a.format === "safetensors") && a.install_path !== null && a.install_path.length > 0
+  ).map((a) => ({
     artifactId: a.artifact_id,
     familyId: a.family_id,
     filename: a.filename,

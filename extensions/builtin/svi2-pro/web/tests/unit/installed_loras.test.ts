@@ -2,19 +2,23 @@ import { describe, expect, it } from "vitest";
 import { filterLoras } from "../../src/services/installed_loras";
 
 describe("filterLoras", () => {
-  it("keeps only role=lora with an install_path", () => {
+  it("keeps any safetensors or role=lora with an install_path", () => {
     const out = filterLoras([
-      { role: "lora", install_path: "/m/x.safetensors", artifact_id: "a", family_id: "f", filename: "x.safetensors" },
-      { role: "primary", install_path: "/m/y.gguf", artifact_id: "b", family_id: "g", filename: "y.gguf" },
-      { role: "lora", install_path: null, artifact_id: "c", family_id: "h", filename: "z.safetensors" },
+      // safetensors but role=other (predates role tagging) → kept (relaxed)
+      { role: "other", format: "safetensors", install_path: "/m/x.safetensors", artifact_id: "a", family_id: "f", filename: "x.safetensors" },
+      // gguf, not a lora → dropped
+      { role: "primary", format: "gguf", install_path: "/m/y.gguf", artifact_id: "b", family_id: "g", filename: "y.gguf" },
+      // role=lora even though gguf → kept
+      { role: "lora", format: "gguf", install_path: "/m/g.gguf", artifact_id: "c", family_id: "h", filename: "g.gguf" },
+      // safetensors but no path → dropped
+      { role: "lora", format: "safetensors", install_path: null, artifact_id: "d", family_id: "i", filename: "z.safetensors" },
     ]);
-    expect(out).toHaveLength(1);
-    expect(out[0]?.installPath).toBe("/m/x.safetensors");
+    expect(out.map((o) => o.artifactId)).toEqual(["a", "c"]);
   });
 
   it("maps fields to camelCase InstalledLora", () => {
     const out = filterLoras([
-      { role: "lora", install_path: "/p/q.safetensors", artifact_id: "art1", family_id: "fam1", filename: "q.safetensors" },
+      { role: "lora", format: "safetensors", install_path: "/p/q.safetensors", artifact_id: "art1", family_id: "fam1", filename: "q.safetensors" },
     ]);
     expect(out[0]).toEqual({
       artifactId: "art1",
@@ -24,9 +28,9 @@ describe("filterLoras", () => {
     });
   });
 
-  it("returns empty array when no loras are present", () => {
+  it("drops non-safetensors that are not role=lora", () => {
     const out = filterLoras([
-      { role: "vae", install_path: "/v/v.safetensors", artifact_id: "v1", family_id: "f", filename: "v.safetensors" },
+      { role: "vae", format: "gguf", install_path: "/v/v.gguf", artifact_id: "v1", family_id: "f", filename: "v.gguf" },
     ]);
     expect(out).toHaveLength(0);
   });

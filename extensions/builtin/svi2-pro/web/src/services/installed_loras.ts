@@ -11,6 +11,7 @@ export interface InstalledLora {
 
 interface InstalledRow {
   role: string;
+  format: string;
   install_path: string | null;
   artifact_id: string;
   family_id: string;
@@ -22,9 +23,16 @@ interface Envelope<T> {
   data?: T;
 }
 
+// Show any usable safetensors (LoRAs aren't always role-tagged — e.g. installs
+// predating role capture), plus anything explicitly tagged role=lora.
 export function filterLoras(rows: InstalledRow[]): InstalledLora[] {
   return rows
-    .filter((r) => r.role === "lora" && r.install_path !== null && r.install_path.length > 0)
+    .filter(
+      (r) =>
+        (r.role === "lora" || r.format === "safetensors") &&
+        r.install_path !== null &&
+        r.install_path.length > 0,
+    )
     .map((r) => ({
       artifactId: r.artifact_id,
       familyId: r.family_id,
