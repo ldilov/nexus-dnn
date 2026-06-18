@@ -166,6 +166,15 @@ class FlowMatchScheduler:
         else:
             self.training = False
 
+    def sigma_pair(self, step_idx: int):
+        """Return (sigma, sigma_next) for the given step index.
+
+        sigma_next is 0.0 at the final step (flow-matching terminal).
+        """
+        sigma = self.sigmas[step_idx]
+        sigma_next = self.sigmas[step_idx + 1] if step_idx + 1 < len(self.sigmas) else 0.0
+        return float(sigma.item()), float(sigma_next.item() if hasattr(sigma_next, "item") else sigma_next)
+
     def step(self, model_output, timestep, sample, to_final=False, **kwargs):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.cpu()

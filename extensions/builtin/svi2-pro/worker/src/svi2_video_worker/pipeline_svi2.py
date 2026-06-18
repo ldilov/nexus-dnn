@@ -265,6 +265,9 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "dit_high_path": params.get("dit_high_path"),
         "dit_low_path": params.get("dit_low_path"),
         "fixed_sigmas": params.get("fixed_sigmas"),
+        "solver": str(params.get("solver", "euler")).lower()
+        if str(params.get("solver", "euler")).lower() in {"euler", "heun"}
+        else "euler",
         "seed_multiplier": int(params.get("seed_multiplier", 42)),
         "models_dir": params.get("models_dir"),
         "output_path": params.get("output_path", "out.mp4"),
@@ -705,6 +708,37 @@ def _build_image_conditioning(
     return y
 
 
+def _eval_dit(
+    dit: Any,
+    latent: Any,
+    ts: Any,
+    context_posi: Any,
+    context_nega: Any,
+    y: Any,
+    cfg_scale: float,
+    tea_slot_base: int,
+    tea_first: bool,
+    tea_last: bool,
+) -> Any:
+    """Single model forward pass with CFG combine. Returns velocity (noise_pred)."""
+    import torch
+
+    with torch.no_grad():
+        v_posi = dit(
+            x=latent, timestep=ts, context=context_posi, clip_feature=None, y=y,
+            tea_slot=tea_slot_base, tea_first=tea_first, tea_last=tea_last,
+        )
+        if cfg_scale != 1.0:
+            v_nega = dit(
+                x=latent, timestep=ts, context=context_nega, clip_feature=None, y=y,
+                tea_slot=tea_slot_base + 1, tea_first=tea_first, tea_last=tea_last,
+            )
+            v = v_nega + cfg_scale * (v_posi - v_nega)
+        else:
+            v = v_posi
+    return torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def _denoise_clip(
     models: RenderModels,
     latent: Any,
@@ -718,7 +752,9 @@ def _denoise_clip(
     move_to: Optional[Callable[[str], None]] = None,
     on_step: Optional[Callable[[int, int, float], None]] = None,
     cancel_event: Optional[threading.Event] = None,
+    solver: str = "euler",
 ) -> Any:
+    # Heun is 2nd-order: two model evals per step, ~2× render time vs Euler.
     import time
 
     import torch
@@ -730,6 +766,7 @@ def _denoise_clip(
     if move_to is not None:
         move_to("high")
 
+    use_heun = solver == "heun"
     num_steps = len(timesteps)
     for step_idx in range(num_steps):
         if cancel_event is not None and cancel_event.is_set():
@@ -748,29 +785,52 @@ def _denoise_clip(
         tea_first = step_idx == 0
         tea_last = step_idx == num_steps - 1
 
-        with torch.no_grad():
-            noise_pred_posi = dit(
-                x=latent, timestep=ts, context=context_posi, clip_feature=None, y=y,
-                tea_slot=0, tea_first=tea_first, tea_last=tea_last,
+        sigma, sigma_next = scheduler.sigma_pair(step_idx)
+        is_final_step = sigma_next == 0.0
+
+        if use_heun and not is_final_step:
+            # Heun (2nd-order trapezoidal): v1 at current latent/sigma,
+            # Euler-predict x_pred, v2 at x_pred/sigma_next (re-routing the
+            # expert by sigma_next in case it crosses the high/low boundary),
+            # then average the two velocities for the final update.
+            v1 = _eval_dit(
+                dit, latent, ts, context_posi, context_nega, y,
+                cfg_scale, tea_slot_base=0, tea_first=tea_first, tea_last=False,
             )
-            if cfg_scale != 1.0:
-                noise_pred_nega = dit(
-                    x=latent, timestep=ts, context=context_nega, clip_feature=None, y=y,
-                    tea_slot=1, tea_first=tea_first, tea_last=tea_last,
-                )
-                noise_pred = noise_pred_nega + cfg_scale * (noise_pred_posi - noise_pred_nega)
-            else:
-                noise_pred = noise_pred_posi
+            dt = sigma_next - sigma
+            x_pred = latent + v1 * dt
 
-        noise_pred = torch.nan_to_num(noise_pred, nan=0.0, posinf=0.0, neginf=0.0)
-        latent = scheduler.step(noise_pred, timestep, latent)
-        latent = torch.nan_to_num(latent, nan=0.0, posinf=0.0, neginf=0.0)
+            ts_next = timestep.new_tensor([sigma_next * scheduler.num_train_timesteps]).to(
+                dtype=latent.dtype, device=latent.device
+            )
+            tier2 = expert_selector.select(float(ts_next[0].item()))
+            dit2 = models.high.dit if tier2 == "high" else models.low.dit
+            if tier2 != active_tier and move_to is not None:
+                move_to(tier2)
 
-        if latent.is_cuda:
-            del noise_pred, noise_pred_posi
-            if cfg_scale != 1.0:
-                del noise_pred_nega
-            torch.cuda.empty_cache()
+            v2 = _eval_dit(
+                dit2, x_pred, ts_next, context_posi, context_nega, y,
+                cfg_scale, tea_slot_base=0, tea_first=False, tea_last=tea_last,
+            )
+            v_avg = 0.5 * (v1 + v2)
+            latent = latent + v_avg * dt
+            latent = torch.nan_to_num(latent, nan=0.0, posinf=0.0, neginf=0.0)
+
+            if latent.is_cuda:
+                del v1, v2, v_avg, x_pred
+                torch.cuda.empty_cache()
+        else:
+            noise_pred = _eval_dit(
+                dit, latent, ts, context_posi, context_nega, y,
+                cfg_scale, tea_slot_base=0, tea_first=tea_first, tea_last=tea_last,
+            )
+            latent = scheduler.step(noise_pred, timestep, latent)
+            latent = torch.nan_to_num(latent, nan=0.0, posinf=0.0, neginf=0.0)
+
+            if latent.is_cuda:
+                del noise_pred
+                torch.cuda.empty_cache()
+
         log_vram(f"clip step {step_idx} tier={active_tier}")
         if on_step is not None:
             on_step(step_idx + 1, num_steps, time.perf_counter() - step_started)
@@ -872,6 +932,7 @@ def _generate_t2v_clip0(
             move_to=move_to,
             on_step=on_step,
             cancel_event=cancel_event,
+            solver=params.get("solver", "euler"),
         )
 
         if device == "cuda":
@@ -1088,8 +1149,10 @@ def _run_render(
         models = RenderModels(high=high, low=low, vae=vae, text_encoder=None, audit=audit)
         log_vram("stage3 done: experts loaded")
 
+        solver: str = params.get("solver", "euler")
         teacache_thresh: float = params["teacache_thresh"]
-        teacache_on = teacache_thresh > 0.0
+        teacache_disabled_by_solver = solver == "heun" and teacache_thresh > 0.0
+        teacache_on = teacache_thresh > 0.0 and not teacache_disabled_by_solver
         models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
         models.low.dit.configure_tea_cache(teacache_on, teacache_thresh)
 
@@ -1231,6 +1294,7 @@ def _run_render(
                     move_to=_move_to,
                     on_step=_on_step,
                     cancel_event=cancel_event,
+                    solver=solver,
                 )
 
                 # Cap colour/exposure drift down the continuation chain: match each
@@ -1326,6 +1390,8 @@ def _run_render(
             )
             log_vram(f"interpolated {fps}->{interpolate_fps}fps via {interp_engine}")
 
+        _rpt_models_dir = _models_dir_from(params)
+        _rpt_dit_high, _rpt_dit_low = resolve_dit_paths(params, _rpt_models_dir)
         report_data = {
             "output_path": str(video_path),
             "base_output_path": str(base_path),
@@ -1347,6 +1413,11 @@ def _run_render(
             "peak_vram_bytes": peak_allocated(),
             "model_audit": {**audit, **t2v_audit} if t2v_audit else audit,
             "stitch_mode": params["stitch_mode"],
+            "base_model_high": str(_rpt_dit_high),
+            "base_model_low": str(_rpt_dit_low),
+            "base_model_override": bool(params.get("dit_high_path") or params.get("dit_low_path")),
+            "solver": solver,
+            "teacache_disabled_by_solver": teacache_disabled_by_solver,
             "pixel_re_encode": pixel_re_encode,
             "resolution_warning": resolution_warning,
         }
