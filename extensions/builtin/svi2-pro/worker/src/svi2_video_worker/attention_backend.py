@@ -215,6 +215,8 @@ def _is_usable(spec: BackendSpec, q_dtype: torch.dtype) -> Optional[str]:
         return f"{spec.name} not installed"
     if _SM < spec.min_arch:
         return f"{spec.name} requires sm_{spec.min_arch[0]}{spec.min_arch[1]} (got sm_{_SM[0]}{_SM[1]})"
+    if spec.name in ("sage3_fp4", "flash3_fp4") and (12, 0) <= _SM < (13, 0):
+        return f"{spec.name} unstable on consumer Blackwell (sm_{_SM[0]}{_SM[1]}) — use flash2 or sdpa"
     if spec.needs_triton and not TRITON_AVAILABLE:
         return f"{spec.name} requires triton"
     if spec.bf16_only and q_dtype != torch.bfloat16:

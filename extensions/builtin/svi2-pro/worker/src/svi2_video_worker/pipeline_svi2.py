@@ -77,11 +77,16 @@ _TEACACHE_MULTIPLIER_THRESH: dict[float, float] = {
 }
 
 
+def _teacache_multiplier(params: dict[str, Any]) -> float:
+    raw_mult = params.get("teacache_multiplier")
+    return 1.0 if raw_mult is None else float(raw_mult)
+
+
 def _resolve_teacache_thresh(params: dict[str, Any]) -> float:
     raw = params.get("teacache_thresh")
     if raw is not None:
         return max(0.0, float(raw))
-    mult = float(params.get("teacache_multiplier", 1.0))
+    mult = _teacache_multiplier(params)
     keys = list(_TEACACHE_MULTIPLIER_THRESH)
     nearest = min(keys, key=lambda k: abs(k - mult))
     return _TEACACHE_MULTIPLIER_THRESH[nearest]
@@ -219,7 +224,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "rife_model": params.get("rife_model"),
         "rife_weights": params.get("rife_weights"),
         "blocks_to_swap": int(params.get("blocks_to_swap", 40)),
-        "teacache_multiplier": float(params.get("teacache_multiplier", 1.0)),
+        "teacache_multiplier": _teacache_multiplier(params),
         "teacache_thresh": _resolve_teacache_thresh(params),
         "motion_scale_t": float(params.get("motion_scale_t", 1.0)),
         "motion_scale_h": float(params.get("motion_scale_h", 1.0)),

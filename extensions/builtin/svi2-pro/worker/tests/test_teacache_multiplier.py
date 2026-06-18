@@ -17,6 +17,16 @@ def test_multiplier_1x_gives_zero_thresh():
     assert _resolve_teacache_thresh({}) == 0.0
 
 
+def test_multiplier_null_resolves_off():
+    assert _resolve_teacache_thresh({"teacache_multiplier": None}) == 0.0
+
+
+def test_validate_render_params_null_multiplier_does_not_raise():
+    p = validate_render_params(_base(teacache_multiplier=None))
+    assert p["teacache_multiplier"] == pytest.approx(1.0)
+    assert p["teacache_thresh"] == pytest.approx(0.0)
+
+
 def test_multiplier_1x_explicit_gives_zero_thresh():
     assert _resolve_teacache_thresh({"teacache_multiplier": 1.0}) == 0.0
 

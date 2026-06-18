@@ -60,7 +60,7 @@ def _set_available(spec, value):
 
 def test_sage3_requires_bf16(monkeypatch):
     spec = ab._REGISTRY["sage3_fp4"]
-    monkeypatch.setattr(ab, "_SM", (12, 0))
+    monkeypatch.setattr(ab, "_SM", (13, 0))  # datacenter Blackwell, past the consumer gate
     monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
     restore = _set_available(spec, True)
     try:
@@ -198,3 +198,82 @@ def test_set_attention_override_empty_string_treated_as_none(monkeypatch):
     monkeypatch.setattr(ab, "_ATTENTION_OVERRIDE", None)
     set_attention_override("")
     assert ab._ATTENTION_OVERRIDE is None
+
+
+def test_sage3_fp4_gated_on_consumer_blackwell(monkeypatch):
+    spec = ab._REGISTRY["sage3_fp4"]
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    restore = _set_available(spec, True)
+    try:
+        reason = ab._is_usable(spec, torch.bfloat16)
+        assert reason is not None and "consumer Blackwell" in reason
+    finally:
+        restore()
+
+
+def test_flash3_fp4_gated_on_consumer_blackwell(monkeypatch):
+    spec = ab._REGISTRY["flash3_fp4"]
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    restore = _set_available(spec, True)
+    try:
+        reason = ab._is_usable(spec, torch.bfloat16)
+        assert reason is not None and "consumer Blackwell" in reason
+    finally:
+        restore()
+
+
+def test_stable_backends_unaffected_on_consumer_blackwell(monkeypatch):
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    restores = [
+        _set_available(ab._REGISTRY[name], True)
+        for name in ("flash2", "sage2")
+    ]
+    try:
+        assert ab._is_usable(ab._REGISTRY["sdpa"], torch.bfloat16) is None
+        assert ab._is_usable(ab._REGISTRY["flash2"], torch.bfloat16) is None
+        assert ab._is_usable(ab._REGISTRY["sage2"], torch.bfloat16) is None
+    finally:
+        for restore in restores:
+            restore()
+
+
+def test_capabilities_marks_sage3_unsupported_on_consumer_blackwell(monkeypatch):
+    spec = ab._REGISTRY["sage3_fp4"]
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    restore = _set_available(spec, True)
+    try:
+        caps = attention_capabilities()
+        sage3 = next(b for b in caps["backends"] if b["id"] == "sage3_fp4")
+        assert sage3["supported"] is False
+        assert "consumer Blackwell" in sage3["reason"]
+    finally:
+        restore()
+
+
+def test_resolve_sage3_falls_back_to_sdpa_on_consumer_blackwell(monkeypatch):
+    spec = ab._REGISTRY["sage3_fp4"]
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    monkeypatch.delenv("SVI2_ATTENTION_STRICT", raising=False)
+    restore = _set_available(spec, True)
+    try:
+        resolved, reason = ab._resolve("sage3_fp4", _fake_q(dtype=torch.bfloat16))
+        assert resolved.name == "sdpa"
+        assert "consumer Blackwell" in reason
+    finally:
+        restore()
+
+
+def test_datacenter_blackwell_not_gated(monkeypatch):
+    spec = ab._REGISTRY["sage3_fp4"]
+    monkeypatch.setattr(ab, "_SM", (10, 0))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    restore = _set_available(spec, True)
+    try:
+        reason = ab._is_usable(spec, torch.bfloat16)
+        assert reason is None or "consumer Blackwell" not in reason
+    finally:
+        restore()
