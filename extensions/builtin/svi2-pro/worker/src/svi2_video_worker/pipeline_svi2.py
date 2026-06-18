@@ -77,6 +77,14 @@ _TEACACHE_MULTIPLIER_THRESH: dict[float, float] = {
 }
 
 
+def _clamp01_2(v: object) -> float:
+    try:
+        f = float(v) if v is not None else 1.0
+    except (TypeError, ValueError):
+        f = 1.0
+    return max(0.0, min(2.0, f))
+
+
 def _teacache_multiplier(params: dict[str, Any]) -> float:
     raw_mult = params.get("teacache_multiplier")
     return 1.0 if raw_mult is None else float(raw_mult)
@@ -236,6 +244,10 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "adain_factor": float(params.get("adain_factor", 0.0)),
         "distill_lora_high": params.get("distill_lora_high"),
         "distill_lora_low": params.get("distill_lora_low"),
+        "user_lora_high_path": params.get("user_lora_high_path") or None,
+        "user_lora_low_path": params.get("user_lora_low_path") or None,
+        "user_lora_high_weight": _clamp01_2(params.get("user_lora_high_weight")),
+        "user_lora_low_weight": _clamp01_2(params.get("user_lora_low_weight")),
         "dit_high_path": params.get("dit_high_path"),
         "dit_low_path": params.get("dit_low_path"),
         "fixed_sigmas": params.get("fixed_sigmas"),
@@ -393,7 +405,11 @@ def _wan_model_builder(config: dict[str, Any]) -> Any:
 
 
 def _build_expert(
-    dit_path: Path, lora_path: Optional[Path], distill_lora_path: Optional[Path] = None
+    dit_path: Path,
+    lora_path: Optional[Path],
+    distill_lora_path: Optional[Path] = None,
+    user_lora_path: Optional[Path] = None,
+    user_lora_weight: float = 1.0,
 ) -> ExpertModel:
     from .wan22 import WanModel
     from .fp8_loader import load_expert_meta
@@ -418,6 +434,16 @@ def _build_expert(
         dpairs = load_lora_pairs(distill_lora_path)
         distill_audit = wrap_module_with_lora(dit, dpairs)
         lora_audit = {"svi": lora_audit, "distill": distill_audit}
+
+    if user_lora_path is not None and user_lora_path.exists():
+        upairs = load_lora_pairs(user_lora_path)
+        if user_lora_weight != 1.0:
+            upairs = {k: (a, b, s * user_lora_weight) for k, (a, b, s) in upairs.items()}
+        user_audit = wrap_module_with_lora(dit, upairs)
+        if isinstance(lora_audit, dict) and lora_audit:
+            lora_audit = {**lora_audit, "user": user_audit}
+        else:
+            lora_audit = {"svi": lora_audit, "user": user_audit}
 
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
@@ -481,8 +507,22 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     _require(dit_high, "Wan2.2 high-noise DiT (fp8)", models_dir)
     _require(dit_low, "Wan2.2 low-noise DiT (fp8)", models_dir)
 
-    high = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
-    low = _build_expert(dit_low, _resolve(models_dir, "svi-lora-low"), distill_low)
+    uh = params.get("user_lora_high_path")
+    ul = params.get("user_lora_low_path")
+    high = _build_expert(
+        dit_high,
+        _resolve(models_dir, "svi-lora-high"),
+        distill_high,
+        Path(uh) if uh else None,
+        params.get("user_lora_high_weight", 1.0),
+    )
+    low = _build_expert(
+        dit_low,
+        _resolve(models_dir, "svi-lora-low"),
+        distill_low,
+        Path(ul) if ul else None,
+        params.get("user_lora_low_weight", 1.0),
+    )
     return high, low
 
 
@@ -1219,9 +1259,26 @@ def _run_render(
             "pixel_re_encode": pixel_re_encode,
             "resolution_warning": resolution_warning,
         }
+        warnings: list[str] = []
+        if params.get("user_lora_high_path"):
+            high_user = (audit.get("high_lora") or {}).get("user") if isinstance(audit.get("high_lora"), dict) else None
+            if high_user is not None and high_user.get("wrapped_count", 0) == 0:
+                warnings.append(
+                    "user LoRA (high) applied 0 modules — likely not a Wan2.2-compatible LoRA"
+                )
+        if params.get("user_lora_low_path"):
+            low_user = (audit.get("low_lora") or {}).get("user") if isinstance(audit.get("low_lora"), dict) else None
+            if low_user is not None and low_user.get("wrapped_count", 0) == 0:
+                warnings.append(
+                    "user LoRA (low) applied 0 modules — likely not a Wan2.2-compatible LoRA"
+                )
+
         write_render_report(output_path.parent, report_data)
 
-        return {"status": "ok", "output_path": str(video_path)}
+        result: dict[str, Any] = {"status": "ok", "output_path": str(video_path)}
+        if warnings:
+            result["warnings"] = warnings
+        return result
     finally:
         set_attention_override(None)
 
