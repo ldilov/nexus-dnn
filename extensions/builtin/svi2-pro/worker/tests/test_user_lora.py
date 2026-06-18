@@ -2,60 +2,60 @@ import pytest
 from svi2_video_worker.pipeline_svi2 import validate_render_params
 
 
-def test_user_lora_params_normalized_and_clamped():
+def test_user_loras_normalized_clamped_capped():
     p = validate_render_params({
         "ref_image_path": "x.png",
         "prompts": ["a"],
-        "user_lora_high_path": "/m/a.safetensors",
-        "user_lora_low_path": "/m/b.safetensors",
-        "user_lora_high_weight": 5.0,
-        "user_lora_low_weight": -1.0,
+        "user_loras": [
+            {"path": "/m/a.safetensors", "weight": 5.0},
+            {"path": "/m/b.safetensors", "weight": -1.0},
+            {"path": "", "weight": 1.0},
+            {"path": "/m/c.safetensors"},
+            {"path": "/m/d.safetensors", "weight": 1.0},
+            {"path": "/m/e.safetensors", "weight": 1.0},
+        ],
     })
-    assert p["user_lora_high_path"] == "/m/a.safetensors"
-    assert p["user_lora_low_path"] == "/m/b.safetensors"
-    assert p["user_lora_high_weight"] == 2.0
-    assert p["user_lora_low_weight"] == 0.0
+    out = p["user_loras"]
+    assert [e["path"] for e in out] == [
+        "/m/a.safetensors",
+        "/m/b.safetensors",
+        "/m/c.safetensors",
+        "/m/d.safetensors",
+    ]
+    assert out[0]["weight"] == 2.0
+    assert out[1]["weight"] == 0.0
+    assert out[2]["weight"] == 1.0
 
 
-def test_user_lora_defaults_none():
-    p = validate_render_params({"ref_image_path": "x.png", "prompts": ["a"]})
-    assert p["user_lora_high_path"] is None
-    assert p["user_lora_low_path"] is None
-    assert p["user_lora_high_weight"] == 1.0
-    assert p["user_lora_low_weight"] == 1.0
+def test_user_loras_defaults_empty():
+    assert validate_render_params({"ref_image_path": "x.png", "prompts": ["a"]})["user_loras"] == []
 
 
-def test_user_lora_empty_string_normalizes_to_none():
+def test_user_loras_non_list_treated_as_empty():
+    p = validate_render_params({"ref_image_path": "x.png", "prompts": ["a"], "user_loras": "bad"})
+    assert p["user_loras"] == []
+
+
+def test_user_loras_non_dict_entries_skipped():
     p = validate_render_params({
         "ref_image_path": "x.png",
         "prompts": ["a"],
-        "user_lora_high_path": "",
-        "user_lora_low_path": "",
+        "user_loras": [
+            "/m/a.safetensors",
+            {"path": "/m/b.safetensors", "weight": 0.5},
+        ],
     })
-    assert p["user_lora_high_path"] is None
-    assert p["user_lora_low_path"] is None
+    assert [e["path"] for e in p["user_loras"]] == ["/m/b.safetensors"]
+    assert p["user_loras"][0]["weight"] == 0.5
 
 
-def test_user_lora_weight_midrange():
+def test_user_loras_whitespace_path_skipped():
     p = validate_render_params({
         "ref_image_path": "x.png",
         "prompts": ["a"],
-        "user_lora_high_weight": 1.5,
-        "user_lora_low_weight": 0.75,
+        "user_loras": [{"path": "   ", "weight": 1.0}],
     })
-    assert p["user_lora_high_weight"] == 1.5
-    assert p["user_lora_low_weight"] == 0.75
-
-
-def test_user_lora_weight_non_numeric_defaults_to_one():
-    p = validate_render_params({
-        "ref_image_path": "x.png",
-        "prompts": ["a"],
-        "user_lora_high_weight": "bad",
-        "user_lora_low_weight": None,
-    })
-    assert p["user_lora_high_weight"] == 1.0
-    assert p["user_lora_low_weight"] == 1.0
+    assert p["user_loras"] == []
 
 
 def test_user_lora_apply_and_mismatch_warning(tmp_path):
