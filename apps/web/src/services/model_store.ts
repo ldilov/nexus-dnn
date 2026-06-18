@@ -37,6 +37,7 @@ export type Modality =
   | "audio"
   | "upscaler"
   | "embedding"
+  | "lora"
   | "other";
 
 export type DependencyRole =
@@ -239,6 +240,7 @@ const VALID_MODALITIES: ReadonlySet<Modality> = new Set([
   "audio",
   "upscaler",
   "embedding",
+  "lora",
   "other",
 ]);
 

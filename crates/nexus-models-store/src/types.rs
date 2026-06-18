@@ -62,6 +62,7 @@ pub enum Modality {
     Audio,
     Upscaler,
     Embedding,
+    Lora,
     #[default]
     #[serde(other)]
     Other,
