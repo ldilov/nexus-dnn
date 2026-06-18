@@ -10,7 +10,7 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use nexus_models_store::downloads::{InstallMap, InstalledArtifactRecord};
 use nexus_models_store::ids::{ArtifactId, FamilyId, JobId};
-use nexus_models_store::types::Format;
+use nexus_models_store::types::{DependencyRole, Format};
 use tower::ServiceExt;
 
 mod common;
@@ -31,6 +31,7 @@ async fn seed_row(
         family_id: FamilyId::from(family),
         variant_id: None,
         format: Format::Gguf,
+        role: DependencyRole::Primary,
         source_provider: "huggingface".into(),
         source_repo: "owner/repo".into(),
         source_revision: Some("main".into()),

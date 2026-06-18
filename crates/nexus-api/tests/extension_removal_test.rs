@@ -32,7 +32,7 @@ use nexus_backend_runtimes::generic::leases::LeaseManager;
 use nexus_extension::manifest::BackendRuntimeContribution;
 use nexus_models_store::downloads::{InstallMap, InstalledArtifactRecord};
 use nexus_models_store::ids::{ArtifactId, FamilyId, JobId};
-use nexus_models_store::types::Format;
+use nexus_models_store::types::{DependencyRole, Format};
 
 use common::{StubHf, harness_with};
 
@@ -56,6 +56,7 @@ async fn seed_model(
         family_id: FamilyId::from(family),
         variant_id: None,
         format: Format::Gguf,
+        role: DependencyRole::Primary,
         source_provider: "huggingface".into(),
         source_repo: "owner/repo".into(),
         source_revision: Some("main".into()),
