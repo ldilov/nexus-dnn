@@ -83,15 +83,18 @@ def test_sage3_arch_gated_below_blackwell(monkeypatch):
 
 def test_unavailable_backend_falls_back_non_strict(monkeypatch):
     spec = ab._REGISTRY["sage2"]
+    flash2 = ab._REGISTRY["flash2"]
     monkeypatch.setattr(ab, "_SM", (12, 0))
     monkeypatch.delenv("SVI2_ATTENTION_STRICT", raising=False)
-    restore = _set_available(spec, False)
+    restore_sage = _set_available(spec, False)
+    restore_flash = _set_available(flash2, False)
     try:
         resolved, reason = ab._resolve("sage2", _fake_q(dtype=torch.bfloat16))
         assert resolved.name == "sdpa"
         assert "fallback" in reason
     finally:
-        restore()
+        restore_sage()
+        restore_flash()
 
 
 def test_strict_mode_raises_on_unavailable(monkeypatch):
@@ -125,11 +128,24 @@ def test_auto_chain_prefers_flash_then_sdpa(monkeypatch):
         restore()
 
 
-def test_unknown_backend_non_strict_sdpa(monkeypatch):
+def test_unknown_backend_non_strict_auto_fallback(monkeypatch):
+    flash2 = ab._REGISTRY["flash2"]
     monkeypatch.delenv("SVI2_ATTENTION_STRICT", raising=False)
-    spec, reason = ab._resolve("nonsense", _fake_q())
-    assert spec.name == "sdpa"
-    assert "unknown" in reason
+    restore = _set_available(flash2, True)
+    try:
+        spec, reason = ab._resolve("nonsense", _fake_q())
+        assert spec.name == "flash2"
+        assert "unknown" in reason
+    finally:
+        restore()
+
+    restore = _set_available(flash2, False)
+    try:
+        spec, reason = ab._resolve("nonsense", _fake_q())
+        assert spec.name == "sdpa"
+        assert "unknown" in reason
+    finally:
+        restore()
 
 
 _EXPECTED_ORDER = ("sdpa", "flash2", "flash3_fp4", "sage2", "sage3_fp4")
@@ -253,18 +269,31 @@ def test_capabilities_marks_sage3_unsupported_on_consumer_blackwell(monkeypatch)
         restore()
 
 
-def test_resolve_sage3_falls_back_to_sdpa_on_consumer_blackwell(monkeypatch):
+def test_resolve_sage3_falls_back_to_flash2_on_consumer_blackwell(monkeypatch):
     spec = ab._REGISTRY["sage3_fp4"]
+    flash2 = ab._REGISTRY["flash2"]
     monkeypatch.setattr(ab, "_SM", (12, 1))
     monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
     monkeypatch.delenv("SVI2_ATTENTION_STRICT", raising=False)
-    restore = _set_available(spec, True)
+    restore_sage3 = _set_available(spec, True)
+    restore_flash = _set_available(flash2, True)
+    try:
+        resolved, reason = ab._resolve("sage3_fp4", _fake_q(dtype=torch.bfloat16))
+        assert resolved.name == "flash2"
+        assert "consumer Blackwell" in reason
+    finally:
+        restore_sage3()
+        restore_flash()
+
+    restore_sage3 = _set_available(spec, True)
+    restore_flash = _set_available(flash2, False)
     try:
         resolved, reason = ab._resolve("sage3_fp4", _fake_q(dtype=torch.bfloat16))
         assert resolved.name == "sdpa"
         assert "consumer Blackwell" in reason
     finally:
-        restore()
+        restore_sage3()
+        restore_flash()
 
 
 def test_datacenter_blackwell_not_gated(monkeypatch):
@@ -277,3 +306,56 @@ def test_datacenter_blackwell_not_gated(monkeypatch):
         assert reason is None or "consumer Blackwell" not in reason
     finally:
         restore()
+
+
+def test_auto_fallback_returns_flash2_when_available(monkeypatch):
+    flash2 = ab._REGISTRY["flash2"]
+    restore = _set_available(flash2, True)
+    try:
+        result = ab._auto_fallback(_fake_q())
+        assert result.name == "flash2"
+    finally:
+        restore()
+
+
+def test_auto_fallback_returns_sdpa_when_flash2_unavailable(monkeypatch):
+    flash2 = ab._REGISTRY["flash2"]
+    restore = _set_available(flash2, False)
+    try:
+        result = ab._auto_fallback(_fake_q())
+        assert result.name == "sdpa"
+    finally:
+        restore()
+
+
+def test_unusable_backend_falls_back_to_flash2_not_sdpa(monkeypatch):
+    spec = ab._REGISTRY["sage3_fp4"]
+    flash2 = ab._REGISTRY["flash2"]
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    monkeypatch.delenv("SVI2_ATTENTION_STRICT", raising=False)
+    restore_sage3 = _set_available(spec, True)
+    restore_flash = _set_available(flash2, True)
+    try:
+        resolved, reason = ab._resolve("sage3_fp4", _fake_q(dtype=torch.bfloat16))
+        assert resolved.name == "flash2"
+        assert "fallback" in reason
+    finally:
+        restore_sage3()
+        restore_flash()
+
+
+def test_strict_mode_still_raises_after_fallback_change(monkeypatch):
+    spec = ab._REGISTRY["sage3_fp4"]
+    flash2 = ab._REGISTRY["flash2"]
+    monkeypatch.setattr(ab, "_SM", (12, 1))
+    monkeypatch.setattr(ab, "TRITON_AVAILABLE", True)
+    monkeypatch.setenv("SVI2_ATTENTION_STRICT", "1")
+    restore_sage3 = _set_available(spec, True)
+    restore_flash = _set_available(flash2, True)
+    try:
+        with pytest.raises(RuntimeError):
+            ab._resolve("sage3_fp4", _fake_q(dtype=torch.bfloat16))
+    finally:
+        restore_sage3()
+        restore_flash()

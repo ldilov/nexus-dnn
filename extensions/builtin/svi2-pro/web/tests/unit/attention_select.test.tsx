@@ -203,7 +203,7 @@ describe("AttentionSelect — capabilities resolved (200)", () => {
     expect(flash3.disabled).toBe(true);
     expect(flash3.title).toBe("flash3_fp4 requires sm_90 (got sm_120)");
 
-    expect(screen.getByText(/will fall\s+back to sdpa at render time/i)).toBeDefined();
+    expect(screen.getByText(/will fall\s+back to flash2 at render time/i)).toBeDefined();
   });
 });
 

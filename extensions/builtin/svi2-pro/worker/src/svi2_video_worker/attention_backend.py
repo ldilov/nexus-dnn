@@ -288,29 +288,33 @@ def _log_once(selected: str, requested: str, q: torch.Tensor, reason: str = "") 
     )
 
 
+def _auto_fallback(q: torch.Tensor) -> BackendSpec:
+    for name in _AUTO_CHAIN:
+        spec = _REGISTRY[name]
+        if _is_usable(spec, q.dtype) is None:
+            return spec
+    return _REGISTRY["sdpa"]
+
+
 def _resolve(requested: str, q: torch.Tensor) -> tuple[BackendSpec, str]:
     if not q.is_cuda:
         return _REGISTRY["sdpa"], "cpu tensor"
 
     if requested == "auto":
-        for name in _AUTO_CHAIN:
-            spec = _REGISTRY[name]
-            if _is_usable(spec, q.dtype) is None:
-                return spec, "auto"
-        return _REGISTRY["sdpa"], "auto fallback"
+        return _auto_fallback(q), "auto"
 
     spec = _REGISTRY.get(requested)
     if spec is None:
         if _strict():
             raise RuntimeError(f"[attn] unknown backend '{requested}'")
-        return _REGISTRY["sdpa"], f"unknown '{requested}'"
+        return _auto_fallback(q), f"unknown '{requested}'"
 
     why = _is_usable(spec, q.dtype)
     if why is None:
         return spec, ""
     if _strict():
         raise RuntimeError(f"[attn] backend '{requested}' unavailable: {why}")
-    return _REGISTRY["sdpa"], f"fallback: {why}"
+    return _auto_fallback(q), f"fallback: {why}"
 
 
 def scaled_attention(

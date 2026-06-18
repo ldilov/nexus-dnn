@@ -86,7 +86,7 @@ export function AttentionSelect(): ReactElement {
       {selectedUnsupported && (
         <span className={styles.hint}>
           {selectedCap.reason ?? "This backend is not supported on the current GPU"} — will fall
-          back to sdpa at render time.
+          back to flash2 at render time.
         </span>
       )}
       {!capsUnavailable && selected === "sage3_fp4" && !selectedUnsupported && (
