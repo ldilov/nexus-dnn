@@ -22625,6 +22625,18 @@ const Bw = [
     help: "High→low expert switch. Wan2.2 i2v = 0.9. Rarely changed."
   },
   {
+    key: "solver",
+    label: "Solver",
+    tier: "quality",
+    control: "select",
+    default: "euler",
+    options: [
+      { value: "euler", label: "Euler (standard)" },
+      { value: "heun", label: "Heun (2nd-order, ~2× slower)" }
+    ],
+    help: "Euler = standard flow step (fast). Heun = 2nd-order, ~2× render time, slightly cleaner motion. Heun disables TeaCache."
+  },
+  {
     key: "seed_multiplier",
     label: "Seed multiplier",
     tier: "quality",
