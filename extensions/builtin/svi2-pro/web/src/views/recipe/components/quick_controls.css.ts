@@ -258,6 +258,12 @@ export const hint = style({
   lineHeight: 1.5,
 });
 
+export const loadError = style({
+  fontSize: "11.5px",
+  color: vars.color.danger,
+  lineHeight: 1.5,
+});
+
 export const customRow = style({
   display: "flex",
   alignItems: "center",

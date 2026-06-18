@@ -3,6 +3,7 @@ import useSWR from "swr";
 import { fetchInstalledLoras } from "../../../services/installed_loras";
 import { useRenderRequest } from "../../../store/render_request_store";
 import { LoraPicker } from "./lora_picker";
+import * as styles from "./quick_controls.css";
 
 export function LoraControls(): ReactElement {
   const { params, updateParam } = useRenderRequest();
@@ -14,6 +15,11 @@ export function LoraControls(): ReactElement {
 
   return (
     <>
+      {lorasQuery.error && (
+        <div className={styles.loadError} role="alert">
+          Failed to load installed LoRAs
+        </div>
+      )}
       <LoraPicker
         label="LoRA — high noise"
         pickerId="svi2-lora-high"

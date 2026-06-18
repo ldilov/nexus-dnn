@@ -24900,9 +24900,9 @@ async function sO() {
   const a = await e.json();
   return "installed" in a ? a : a.data && "installed" in a.data ? a.data : { family_ids: [], installed: [], truncated: !1 };
 }
-var pi = "_1czy96m0", Va = "_1czy96m1", Lc = "_1czy96m2", Ym = "_1czy96m3", Gm = "_1czy96m4", Jw = "_1czy96m5", Ww = "_1czy96m6", eS = "_1czy96m7", tS = "_1czy96m8", Xm = "_1czy96m9", uO = "_1czy96ma", cO = "_1czy96mb", fO = "_1czy96mc", dO = "_1czy96md", hO = "_1czy96me", mO = "_1czy96mf", pO = "_1czy96mg", gO = "_1czy96mh", yO = "_1czy96mi", vO = "_1czy96mk _1czy96mj", bO = "_1czy96ml _1czy96mj", Fm = "_1czy96mm", Zm = "_1czy96mn", Pm = "_1czy96mo", Qi = "_1czy96mp", nS = "_1czy96mq";
+var pi = "_1czy96m0", Va = "_1czy96m1", Lc = "_1czy96m2", Ym = "_1czy96m3", Gm = "_1czy96m4", Jw = "_1czy96m5", Ww = "_1czy96m6", eS = "_1czy96m7", tS = "_1czy96m8", Xm = "_1czy96m9", uO = "_1czy96ma", cO = "_1czy96mb", fO = "_1czy96mc", dO = "_1czy96md", hO = "_1czy96me", mO = "_1czy96mf", pO = "_1czy96mg", gO = "_1czy96mh", yO = "_1czy96mi", vO = "_1czy96mk _1czy96mj", bO = "_1czy96ml _1czy96mj", Fm = "_1czy96mm", Zm = "_1czy96mn", Pm = "_1czy96mo", Qi = "_1czy96mp", xO = "_1czy96mq", nS = "_1czy96mr";
 const Kb = "__bundled__";
-function xO() {
+function wO() {
   const { params: e, settings: a, updateParam: r, setSettings: l } = Wt(), s = Wo("svi2/installed-models", sO), u = _.useMemo(
     () => lO(s.data?.installed ?? []),
     [s.data]
@@ -24953,8 +24953,8 @@ function xO() {
     !p && u.length === 0 && /* @__PURE__ */ b.jsx("span", { className: Qi, children: "No substitutable Wan2.2-I2V high/low pairs installed via Model Foundry yet." })
   ] });
 }
-const wO = "/api/v1/model-store/installed";
-function SO(e) {
+const SO = "/api/v1/model-store/installed";
+function _O(e) {
   return e.filter((a) => a.role === "lora" && a.install_path !== null && a.install_path.length > 0).map((a) => ({
     artifactId: a.artifact_id,
     familyId: a.family_id,
@@ -24962,14 +24962,14 @@ function SO(e) {
     installPath: a.install_path
   }));
 }
-async function _O() {
-  const e = await fetch(wO, {
+async function EO() {
+  const e = await fetch(SO, {
     headers: { accept: "application/json" }
   });
   if (!e.ok)
     throw new Error(`model-store installed: HTTP ${e.status}`);
   const a = await e.json(), r = "installed" in a ? a : a.data ?? { installed: [] };
-  return SO(r.installed);
+  return _O(r.installed);
 }
 const Bu = "__none__";
 function Jb({
@@ -25036,11 +25036,12 @@ function Jb({
     ] })
   ] });
 }
-function EO() {
-  const { params: e, updateParam: a } = Wt(), l = Wo("svi2/installed-loras", _O, {
+function NO() {
+  const { params: e, updateParam: a } = Wt(), r = Wo("svi2/installed-loras", EO, {
     shouldRetryOnError: !1
-  }).data ?? [];
+  }), l = r.data ?? [];
   return /* @__PURE__ */ b.jsxs(b.Fragment, { children: [
+    r.error && /* @__PURE__ */ b.jsx("div", { className: xO, role: "alert", children: "Failed to load installed LoRAs" }),
     /* @__PURE__ */ b.jsx(
       Jb,
       {
@@ -25067,7 +25068,7 @@ function EO() {
     )
   ] });
 }
-const Hc = "custom", NO = [
+const Hc = "custom", CO = [
   {
     presetId: "svi-canonical",
     label: "Native",
@@ -25092,7 +25093,7 @@ const Hc = "custom", NO = [
 ];
 function Qm(e) {
   const a = new Map(e.map((l) => [l.id, l])), r = [];
-  for (const l of NO) {
+  for (const l of CO) {
     const s = a.get(l.presetId), u = s?.params.width, c = s?.params.height;
     !u || !c || r.push({
       id: l.presetId,
@@ -25112,21 +25113,21 @@ function Km(e, a) {
   );
   return r ? r.id : Hc;
 }
-var CO = "_14qe5430", RO = "_14qe5431", TO = "_14qe5432", MO = "_14qe5433", DO = "_14qe5434", AO = "_14qe5435", zO = "_14qe5436", OO = "_14qe5437", jO = "_14qe5438", LO = "_14qe543a _14qe5439", HO = "_14qe543b _14qe5439", kO = "_14qe543c _14qe5439";
-const BO = {
-  ok: RO,
-  neutral: TO,
-  warn: MO
-}, UO = {
-  ok: AO,
-  neutral: zO,
-  warn: OO
+var RO = "_14qe5430", TO = "_14qe5431", MO = "_14qe5432", DO = "_14qe5433", AO = "_14qe5434", zO = "_14qe5435", OO = "_14qe5436", jO = "_14qe5437", LO = "_14qe5438", HO = "_14qe543a _14qe5439", kO = "_14qe543b _14qe5439", BO = "_14qe543c _14qe5439";
+const UO = {
+  ok: TO,
+  neutral: MO,
+  warn: DO
 }, VO = {
-  ok: LO,
-  neutral: HO,
-  warn: kO
+  ok: zO,
+  neutral: OO,
+  warn: jO
+}, qO = {
+  ok: HO,
+  neutral: kO,
+  warn: BO
 };
-function qO(e, a) {
+function $O(e, a) {
   return e === 0 ? {
     tone: "ok",
     text: "In distribution — identity-lock nominal at the native 480p budget.",
@@ -25145,7 +25146,7 @@ function qO(e, a) {
     tag: "custom"
   };
 }
-function $O({ tone: e }) {
+function IO({ tone: e }) {
   return e === "ok" ? /* @__PURE__ */ b.jsxs("svg", { viewBox: "0 0 20 20", width: "100%", height: "100%", fill: "none", "aria-hidden": "true", children: [
     /* @__PURE__ */ b.jsx("title", { children: "in distribution" }),
     /* @__PURE__ */ b.jsx(
@@ -25187,37 +25188,37 @@ function $O({ tone: e }) {
     /* @__PURE__ */ b.jsx("circle", { cx: "10", cy: "6.2", r: "0.9", fill: "currentColor" })
   ] });
 }
-function IO({
+function YO({
   presets: e,
   warningText: a
 }) {
   const { params: r } = Wt(), l = _.useMemo(() => Qm(e), [e]);
   if (l.length === 0) return null;
-  const s = Km(r, l), u = s === Hc ? null : l.find((d) => d.id === s)?.stepsDown ?? null, c = qO(u, a);
+  const s = Km(r, l), u = s === Hc ? null : l.find((d) => d.id === s)?.stepsDown ?? null, c = $O(u, a);
   return /* @__PURE__ */ b.jsxs(
     "output",
     {
-      className: [CO, BO[c.tone]].join(" "),
+      className: [RO, UO[c.tone]].join(" "),
       "aria-live": "polite",
       children: [
-        /* @__PURE__ */ b.jsx("span", { className: [DO, UO[c.tone]].join(" "), "aria-hidden": "true", children: /* @__PURE__ */ b.jsx($O, { tone: c.tone }) }),
-        /* @__PURE__ */ b.jsx("span", { className: jO, children: c.text }),
-        /* @__PURE__ */ b.jsx("span", { className: VO[c.tone], children: c.tag })
+        /* @__PURE__ */ b.jsx("span", { className: [AO, VO[c.tone]].join(" "), "aria-hidden": "true", children: /* @__PURE__ */ b.jsx(IO, { tone: c.tone }) }),
+        /* @__PURE__ */ b.jsx("span", { className: LO, children: c.text }),
+        /* @__PURE__ */ b.jsx("span", { className: qO[c.tone], children: c.tag })
       ]
     }
   );
 }
-var YO = "_5d10lv0";
+var GO = "_5d10lv0";
 const Ao = [
   { value: "image_to_video", label: "Image-to-Video" },
   { value: "text_to_video", label: "Text-to-Video" }
-], GO = "In Text-to-Video, the prompt sets content and motion — appearance is locked to the synthesized seed and won't restyle mid-take.", XO = /* @__PURE__ */ new Set(["ArrowRight", "ArrowDown"]), FO = /* @__PURE__ */ new Set(["ArrowLeft", "ArrowUp"]);
-function ZO(e) {
+], XO = "In Text-to-Video, the prompt sets content and motion — appearance is locked to the synthesized seed and won't restyle mid-take.", FO = /* @__PURE__ */ new Set(["ArrowRight", "ArrowDown"]), ZO = /* @__PURE__ */ new Set(["ArrowLeft", "ArrowUp"]);
+function PO(e) {
   return [Gm, e ? Jw : ""].filter(Boolean).join(" ");
 }
-function PO({ value: e, onChange: a }) {
+function QO({ value: e, onChange: a }) {
   const r = _.useId(), l = (s) => {
-    const u = XO.has(s.key), c = FO.has(s.key);
+    const u = FO.has(s.key), c = ZO.has(s.key);
     if (!u && !c) return;
     s.preventDefault();
     const d = Ao.findIndex((y) => y.value === e), m = Ao[(d + (u ? 1 : -1) + Ao.length) % Ao.length];
@@ -25241,7 +25242,7 @@ function PO({ value: e, onChange: a }) {
               role: "radio",
               "aria-checked": u,
               tabIndex: u ? 0 : -1,
-              className: ZO(u),
+              className: PO(u),
               onClick: () => a(s.value),
               children: s.label
             },
@@ -25250,53 +25251,53 @@ function PO({ value: e, onChange: a }) {
         })
       }
     ) }),
-    e === "text_to_video" && /* @__PURE__ */ b.jsx("p", { className: YO, "aria-live": "polite", children: GO })
+    e === "text_to_video" && /* @__PURE__ */ b.jsx("p", { className: GO, "aria-live": "polite", children: XO })
   ] });
 }
-var QO = "dck790", KO = "dck791", JO = "dck792";
+var KO = "dck790", JO = "dck791", WO = "dck792";
 function hc({ title: e, detail: a, action: r, className: l }) {
-  const s = [QO, l].filter(Boolean).join(" ");
+  const s = [KO, l].filter(Boolean).join(" ");
   return /* @__PURE__ */ b.jsxs("div", { className: s, children: [
-    /* @__PURE__ */ b.jsx("span", { className: KO, children: e }),
-    a && /* @__PURE__ */ b.jsx("span", { className: JO, children: a }),
+    /* @__PURE__ */ b.jsx("span", { className: JO, children: e }),
+    a && /* @__PURE__ */ b.jsx("span", { className: WO, children: a }),
     r
   ] });
 }
-var WO = "_1880igs0", ej = "_1880igs1", tj = "_1880igs2", nj = "_1880igs3", aj = "_1880igs4", ij = "_1880igs5", rj = "_1880igs6";
-const lj = {
+var ej = "_1880igs0", tj = "_1880igs1", nj = "_1880igs2", aj = "_1880igs3", ij = "_1880igs4", rj = "_1880igs5", lj = "_1880igs6";
+const oj = {
   queued: "neutral",
   running: "accent",
   succeeded: "success",
   failed: "warning",
   cancelled: "neutral"
 };
-function oj({ jobs: e, onOpen: a }) {
+function sj({ jobs: e, onOpen: a }) {
   return e.length === 0 ? /* @__PURE__ */ b.jsx(
     hc,
     {
       title: "No renders yet",
       detail: "Completed renders appear here with their preset, parameters and status."
     }
-  ) : /* @__PURE__ */ b.jsx("div", { className: WO, children: e.map((r) => /* @__PURE__ */ b.jsxs("button", { type: "button", className: ej, onClick: () => a(r), children: [
-    /* @__PURE__ */ b.jsxs("span", { className: tj, children: [
-      /* @__PURE__ */ b.jsx("span", { className: nj, children: r.presetId ?? "custom" }),
-      /* @__PURE__ */ b.jsx("span", { className: aj, children: sj(r) })
+  ) : /* @__PURE__ */ b.jsx("div", { className: ej, children: e.map((r) => /* @__PURE__ */ b.jsxs("button", { type: "button", className: tj, onClick: () => a(r), children: [
+    /* @__PURE__ */ b.jsxs("span", { className: nj, children: [
+      /* @__PURE__ */ b.jsx("span", { className: aj, children: r.presetId ?? "custom" }),
+      /* @__PURE__ */ b.jsx("span", { className: ij, children: uj(r) })
     ] }),
-    /* @__PURE__ */ b.jsxs("span", { className: ij, children: [
-      /* @__PURE__ */ b.jsx("time", { className: rj, dateTime: r.createdAt, title: uj(r.createdAt), children: cj(r.createdAt) }),
-      /* @__PURE__ */ b.jsx(An, { tone: lj[r.status], children: r.status })
+    /* @__PURE__ */ b.jsxs("span", { className: rj, children: [
+      /* @__PURE__ */ b.jsx("time", { className: lj, dateTime: r.createdAt, title: cj(r.createdAt), children: fj(r.createdAt) }),
+      /* @__PURE__ */ b.jsx(An, { tone: oj[r.status], children: r.status })
     ] })
   ] }, r.id)) });
 }
-function sj(e) {
+function uj(e) {
   const a = e.params, r = [];
   return a.width && a.height && r.push(`${a.width}×${a.height}`), a.num_clips && r.push(`${a.num_clips} clips`), a.num_inference_steps && r.push(`${a.num_inference_steps} steps`), r.join(" · ") || "—";
 }
-function uj(e) {
+function cj(e) {
   const a = new Date(e);
   return Number.isNaN(a.getTime()) ? e : a.toLocaleString();
 }
-function cj(e) {
+function fj(e) {
   const a = new Date(e), r = a.getTime();
   if (Number.isNaN(r)) return "";
   const l = Date.now() - r;
@@ -25309,14 +25310,14 @@ function cj(e) {
   const c = Math.floor(u / 24);
   return c < 7 ? `${c}d ago` : a.toLocaleDateString();
 }
-function fj() {
+function dj() {
   const { presetId: e, params: a } = Wt();
-  return jc(e, a) ? /* @__PURE__ */ b.jsx(hj, {}) : /* @__PURE__ */ b.jsx(dj, {});
+  return jc(e, a) ? /* @__PURE__ */ b.jsx(mj, {}) : /* @__PURE__ */ b.jsx(hj, {});
 }
 function aS(e) {
   return [Gm, e ? Jw : ""].filter(Boolean).join(" ");
 }
-function dj() {
+function hj() {
   const { params: e, updateParam: a } = Wt(), r = Ar(e), l = q5(e.num_clips ?? 1, r), [s, u] = _.useState(
     () => Number(qh(e.num_clips ?? 1, r).toFixed(1))
   ), c = (d) => {
@@ -25373,7 +25374,7 @@ function dj() {
     /* @__PURE__ */ b.jsx("output", { className: Xm, "aria-live": "polite", children: $5(e) })
   ] });
 }
-function hj() {
+function mj() {
   const { params: e, updateParam: a } = Wt(), r = Ar(e), l = U5(r.fps), [s, u] = _.useState(() => Number(qw(e).toFixed(1))), c = B5.filter((p) => p <= l), d = (p) => {
     const m = Math.min(l, Math.max(1, p));
     e.num_clips !== 1 && a("num_clips", 1), a("frames_per_clip", Db(m, r.fps));
@@ -25436,15 +25437,15 @@ function hj() {
     /* @__PURE__ */ b.jsx("output", { className: Xm, "aria-live": "polite", children: V5(e) })
   ] });
 }
-var mj = "_17owg2e0", pj = "_17owg2e1", gj = "_17owg2e2", Uu = "_17owg2e3", Vu = "_17owg2e4", yj = "_17owg2e5", vj = "_17owg2e6", bj = "_17owg2e7", xj = "_17owg2e8";
+var pj = "_17owg2e0", gj = "_17owg2e1", yj = "_17owg2e2", Uu = "_17owg2e3", Vu = "_17owg2e4", vj = "_17owg2e5", bj = "_17owg2e6", xj = "_17owg2e7", wj = "_17owg2e8";
 function xh() {
-  return /* @__PURE__ */ b.jsx("span", { className: yj, "aria-hidden": "true" });
+  return /* @__PURE__ */ b.jsx("span", { className: vj, "aria-hidden": "true" });
 }
-function wj({ presets: e }) {
-  const { presetId: a, params: r } = Wt(), l = _.useMemo(() => Qm(e), [e]), s = Ar(r), u = jc(a, r), c = u ? 1 : r.num_clips ?? 1, d = u ? s.framesPerClip : Vw(c, s), p = s.fps > 0 ? d / s.fps : 0, m = r.interpolate_fps ?? 0, y = m > 0 ? m : s.fps, g = m > 0 && s.fps > 0 ? Math.round(d * (m / s.fps)) : d, v = typeof r.upscale_factor == "number" ? r.upscale_factor : 0, x = v > 0 ? v : 1, S = (r.width ?? 0) * x, C = (r.height ?? 0) * x, R = Km(r, l), N = R === Hc || (l.find((E) => E.id === R)?.stepsDown ?? 0) >= 2, z = [bj, N ? xj : ""].filter(Boolean).join(" ");
-  return /* @__PURE__ */ b.jsxs("div", { className: mj, children: [
-    /* @__PURE__ */ b.jsx("span", { className: pj, children: "Output" }),
-    /* @__PURE__ */ b.jsxs("div", { className: gj, children: [
+function Sj({ presets: e }) {
+  const { presetId: a, params: r } = Wt(), l = _.useMemo(() => Qm(e), [e]), s = Ar(r), u = jc(a, r), c = u ? 1 : r.num_clips ?? 1, d = u ? s.framesPerClip : Vw(c, s), p = s.fps > 0 ? d / s.fps : 0, m = r.interpolate_fps ?? 0, y = m > 0 ? m : s.fps, g = m > 0 && s.fps > 0 ? Math.round(d * (m / s.fps)) : d, v = typeof r.upscale_factor == "number" ? r.upscale_factor : 0, x = v > 0 ? v : 1, S = (r.width ?? 0) * x, C = (r.height ?? 0) * x, R = Km(r, l), N = R === Hc || (l.find((E) => E.id === R)?.stepsDown ?? 0) >= 2, z = [xj, N ? wj : ""].filter(Boolean).join(" ");
+  return /* @__PURE__ */ b.jsxs("div", { className: pj, children: [
+    /* @__PURE__ */ b.jsx("span", { className: gj, children: "Output" }),
+    /* @__PURE__ */ b.jsxs("div", { className: yj, children: [
       /* @__PURE__ */ b.jsxs("span", { children: [
         /* @__PURE__ */ b.jsx("span", { className: Uu, children: g }),
         " ",
@@ -25470,18 +25471,18 @@ function wj({ presets: e }) {
         /* @__PURE__ */ b.jsx("span", { className: Vu, children: "s" })
       ] })
     ] }),
-    /* @__PURE__ */ b.jsxs("span", { className: vj, children: [
+    /* @__PURE__ */ b.jsxs("span", { className: bj, children: [
       /* @__PURE__ */ b.jsx("span", { className: z, "aria-hidden": "true" }),
       N ? "off-distribution" : "ready"
     ] })
   ] });
 }
-var Sj = "dgx4n20", _j = "dgx4n21", Ej = "dgx4n22", Nj = "dgx4n23", Cj = "dgx4n24", Rj = "dgx4n25", Tj = "dgx4n26", Mj = "dgx4n27", Dj = "dgx4n28", Aj = "dgx4n29", zj = "dgx4n2a", Oj = "dgx4n2b", Wb = "dgx4n2c", jj = "dgx4n2d", Lj = "dgx4n2e";
-function Hj(e) {
+var _j = "dgx4n20", Ej = "dgx4n21", Nj = "dgx4n22", Cj = "dgx4n23", Rj = "dgx4n24", Tj = "dgx4n25", Mj = "dgx4n26", Dj = "dgx4n27", Aj = "dgx4n28", zj = "dgx4n29", Oj = "dgx4n2a", jj = "dgx4n2b", Wb = "dgx4n2c", Lj = "dgx4n2d", Hj = "dgx4n2e";
+function kj(e) {
   const a = e.trim();
   return (a.split(/(?<=[.!?])\s/)[0] ?? a).replace(/[.!?]+$/, "");
 }
-function kj({
+function Bj({
   presets: e,
   selectedId: a,
   onSelect: r
@@ -25529,13 +25530,13 @@ function kj({
     0,
     c.findIndex((v) => v.id === a)
   ), g = u.legacy.length;
-  return /* @__PURE__ */ b.jsxs("div", { className: zj, children: [
-    /* @__PURE__ */ b.jsx("div", { className: Sj, role: "radiogroup", "aria-label": "Render presets", children: c.map((v, x) => {
+  return /* @__PURE__ */ b.jsxs("div", { className: Oj, children: [
+    /* @__PURE__ */ b.jsx("div", { className: _j, role: "radiogroup", "aria-label": "Render presets", children: c.map((v, x) => {
       const S = F5(v), C = v.id === a, R = v.id === Jo, N = [
-        _j,
-        v.legacy ? "" : Ej,
-        R ? Nj : "",
-        C ? Cj : ""
+        Ej,
+        v.legacy ? "" : Nj,
+        R ? Cj : "",
+        C ? Rj : ""
       ].filter(Boolean).join(" ");
       return /* @__PURE__ */ b.jsxs(
         "button",
@@ -25552,10 +25553,10 @@ function kj({
           onClick: () => r(v),
           onKeyDown: (z) => m(z, x),
           children: [
-            /* @__PURE__ */ b.jsxs("div", { className: Tj, children: [
-              /* @__PURE__ */ b.jsx("span", { className: Mj, children: v.label }),
+            /* @__PURE__ */ b.jsxs("div", { className: Mj, children: [
+              /* @__PURE__ */ b.jsx("span", { className: Dj, children: v.label }),
               R && /* @__PURE__ */ b.jsx(An, { tone: "accent", children: "Default" }),
-              /* @__PURE__ */ b.jsx("span", { className: Rj, "aria-hidden": "true", children: /* @__PURE__ */ b.jsxs("svg", { viewBox: "0 0 20 20", width: "100%", height: "100%", fill: "none", children: [
+              /* @__PURE__ */ b.jsx("span", { className: Tj, "aria-hidden": "true", children: /* @__PURE__ */ b.jsxs("svg", { viewBox: "0 0 20 20", width: "100%", height: "100%", fill: "none", children: [
                 /* @__PURE__ */ b.jsx("title", { children: "selected" }),
                 /* @__PURE__ */ b.jsx("circle", { cx: "10", cy: "10", r: "8.25", stroke: "currentColor", strokeWidth: "1.5" }),
                 /* @__PURE__ */ b.jsx(
@@ -25570,8 +25571,8 @@ function kj({
                 )
               ] }) })
             ] }),
-            /* @__PURE__ */ b.jsx("span", { className: Dj, children: Hj(v.description) }),
-            /* @__PURE__ */ b.jsxs("div", { className: Aj, children: [
+            /* @__PURE__ */ b.jsx("span", { className: Aj, children: kj(v.description) }),
+            /* @__PURE__ */ b.jsxs("div", { className: zj, children: [
               /* @__PURE__ */ b.jsx(An, { tone: "neutral", children: S.resolution }),
               /* @__PURE__ */ b.jsx(An, { tone: "neutral", children: S.duration }),
               /* @__PURE__ */ b.jsx(An, { tone: S.isLowVram ? "success" : "neutral", children: S.vram }),
@@ -25583,17 +25584,17 @@ function kj({
         v.id
       );
     }) }),
-    g > 0 && /* @__PURE__ */ b.jsxs("div", { className: Oj, children: [
+    g > 0 && /* @__PURE__ */ b.jsxs("div", { className: jj, children: [
       /* @__PURE__ */ b.jsx("span", { className: Wb, "aria-hidden": "true" }),
       /* @__PURE__ */ b.jsxs(
         "button",
         {
           type: "button",
-          className: jj,
+          className: Lj,
           "aria-expanded": l,
           onClick: () => s((v) => !v),
           children: [
-            /* @__PURE__ */ b.jsx("span", { className: Lj, "aria-hidden": "true" }),
+            /* @__PURE__ */ b.jsx("span", { className: Hj, "aria-hidden": "true" }),
             l ? "Hide legacy presets" : `Show legacy presets (${g})`
           ]
         }
@@ -25602,8 +25603,8 @@ function kj({
     ] })
   ] });
 }
-var Bj = "_1ntn2zv0", Uj = "_1ntn2zv1", Vj = "_1ntn2zv2", qj = "_1ntn2zv3", $j = "_1ntn2zv4", Ij = "_1ntn2zv5", e1 = "_1ntn2zv6", Yj = "_1ntn2zv7", Gj = "_1ntn2zv8", Xj = "_1ntn2zv9", Fj = "_1ntn2zva";
-function Zj({ error: e, textareaId: a }) {
+var Uj = "_1ntn2zv0", Vj = "_1ntn2zv1", qj = "_1ntn2zv2", $j = "_1ntn2zv3", Ij = "_1ntn2zv4", Yj = "_1ntn2zv5", e1 = "_1ntn2zv6", Gj = "_1ntn2zv7", Xj = "_1ntn2zv8", Fj = "_1ntn2zv9", Zj = "_1ntn2zva";
+function Pj({ error: e, textareaId: a }) {
   const { params: r, setPrompts: l } = Wt(), [s, u] = _.useState(!1), c = r.prompts ?? [""], d = _.useMemo(
     () => Math.max(1, r.num_clips ?? c.length ?? 1),
     [r.num_clips, c.length]
@@ -25622,8 +25623,8 @@ function Zj({ error: e, textareaId: a }) {
       l(Array.from({ length: S }, (C, R) => c[R] ?? x));
     }
   };
-  return /* @__PURE__ */ b.jsxs("div", { className: Bj, children: [
-    /* @__PURE__ */ b.jsx("div", { className: Uj, children: /* @__PURE__ */ b.jsxs("span", { className: Vj, children: [
+  return /* @__PURE__ */ b.jsxs("div", { className: Uj, children: [
+    /* @__PURE__ */ b.jsx("div", { className: Vj, children: /* @__PURE__ */ b.jsxs("span", { className: qj, children: [
       /* @__PURE__ */ b.jsx(
         "button",
         {
@@ -25631,17 +25632,17 @@ function Zj({ error: e, textareaId: a }) {
           role: "switch",
           "aria-checked": s,
           "aria-label": "per-clip prompts",
-          className: qj,
+          className: $j,
           onClick: () => g(!s),
-          children: /* @__PURE__ */ b.jsx("span", { className: $j, "aria-hidden": "true" })
+          children: /* @__PURE__ */ b.jsx("span", { className: Ij, "aria-hidden": "true" })
         }
       ),
       "Per-clip prompts"
     ] }) }),
     s ? Array.from({ length: d }, (v, x) => (
       // biome-ignore lint/suspicious/noArrayIndexKey: clip position is the stable identity
-      /* @__PURE__ */ b.jsxs("div", { className: Yj, children: [
-        /* @__PURE__ */ b.jsxs("span", { className: Gj, children: [
+      /* @__PURE__ */ b.jsxs("div", { className: Gj, children: [
+        /* @__PURE__ */ b.jsxs("span", { className: Xj, children: [
           "Clip ",
           x + 1
         ] }),
@@ -25669,7 +25670,7 @@ function Zj({ error: e, textareaId: a }) {
         onChange: (v) => m(v.target.value)
       }
     ),
-    p > 0 && /* @__PURE__ */ b.jsxs("output", { className: Ij, children: [
+    p > 0 && /* @__PURE__ */ b.jsxs("output", { className: Yj, children: [
       p,
       " per-clip prompt",
       p > 1 ? "s" : "",
@@ -25679,15 +25680,15 @@ function Zj({ error: e, textareaId: a }) {
       p > 1 ? " them" : " it",
       " again — they are not discarded."
     ] }),
-    /* @__PURE__ */ b.jsx("p", { className: Xj, children: "Use a single prompt for a coherent long take. To change appearance, edit the anchor keyframe (edit-then-animate) — appearance verbs in the prompt fight the anchor and cause drift." }),
-    e && /* @__PURE__ */ b.jsx("span", { role: "alert", className: Fj, children: e })
+    /* @__PURE__ */ b.jsx("p", { className: Fj, children: "Use a single prompt for a coherent long take. To change appearance, edit the anchor keyframe (edit-then-animate) — appearance verbs in the prompt fight the anchor and cause drift." }),
+    e && /* @__PURE__ */ b.jsx("span", { role: "alert", className: Zj, children: e })
   ] });
 }
-var Pj = "_1itrxk30", Qj = "_1itrxk31", Kj = "_1itrxk32", Jj = "_1itrxk33", Wj = "_1itrxk34", e6 = "_1itrxk35", t6 = "_1itrxk36", n6 = "_1itrxk37";
-function a6() {
+var Qj = "_1itrxk30", Kj = "_1itrxk31", Jj = "_1itrxk32", Wj = "_1itrxk33", e6 = "_1itrxk34", t6 = "_1itrxk35", n6 = "_1itrxk36", a6 = "_1itrxk37";
+function i6() {
   const { qwenEdit: e, setQwenEdit: a } = Wt();
-  return /* @__PURE__ */ b.jsxs("div", { className: Pj, children: [
-    /* @__PURE__ */ b.jsxs("div", { className: Qj, children: [
+  return /* @__PURE__ */ b.jsxs("div", { className: Qj, children: [
+    /* @__PURE__ */ b.jsxs("div", { className: Kj, children: [
       /* @__PURE__ */ b.jsx(
         "button",
         {
@@ -25695,20 +25696,20 @@ function a6() {
           role: "switch",
           "aria-checked": e.enabled,
           "aria-label": "enable anchor edit",
-          className: t6,
+          className: n6,
           onClick: () => a({ enabled: !e.enabled }),
-          children: /* @__PURE__ */ b.jsx("span", { className: n6, "aria-hidden": "true" })
+          children: /* @__PURE__ */ b.jsx("span", { className: a6, "aria-hidden": "true" })
         }
       ),
-      /* @__PURE__ */ b.jsxs("span", { className: Kj, children: [
-        /* @__PURE__ */ b.jsx("span", { className: Jj, children: "Transform anchor (edit-then-animate)" }),
-        /* @__PURE__ */ b.jsx("span", { className: Wj, children: "Edit the reference keyframe with Qwen-Image-Edit before animating. Coherent transformation without per-frame flicker." })
+      /* @__PURE__ */ b.jsxs("span", { className: Jj, children: [
+        /* @__PURE__ */ b.jsx("span", { className: Wj, children: "Transform anchor (edit-then-animate)" }),
+        /* @__PURE__ */ b.jsx("span", { className: e6, children: "Edit the reference keyframe with Qwen-Image-Edit before animating. Coherent transformation without per-frame flicker." })
       ] })
     ] }),
     e.enabled && /* @__PURE__ */ b.jsx(
       "textarea",
       {
-        className: e6,
+        className: t6,
         "aria-label": "anchor edit prompt",
         placeholder: "Edit instruction — keep face geometry/pose/framing; change only appearance.",
         value: e.prompt,
@@ -25717,8 +25718,8 @@ function a6() {
     )
   ] });
 }
-var i6 = "ob7g5b0", r6 = "ob7g5b1", l6 = "ob7g5b3", o6 = "ob7g5b4", s6 = "ob7g5b5", u6 = "ob7g5b6", c6 = "ob7g5b7", f6 = "ob7g5b8", d6 = "ob7g5b9", h6 = "ob7g5ba";
-function m6({
+var r6 = "ob7g5b0", l6 = "ob7g5b1", o6 = "ob7g5b3", s6 = "ob7g5b4", u6 = "ob7g5b5", c6 = "ob7g5b6", f6 = "ob7g5b7", d6 = "ob7g5b8", h6 = "ob7g5b9", m6 = "ob7g5ba";
+function p6({
   src: e,
   poster: a,
   fpsLabel: r,
@@ -25741,18 +25742,18 @@ function m6({
       S("error"), R(k), v?.(new Error(k));
     },
     [v]
-  ), E = [i6, p].filter(Boolean).join(" ");
-  return e ? x === "error" ? /* @__PURE__ */ b.jsx("div", { className: E, role: "alert", "aria-label": d ?? "video playback error", children: /* @__PURE__ */ b.jsxs("div", { className: c6, children: [
-    /* @__PURE__ */ b.jsx("div", { className: f6, children: "Could not play video" }),
-    /* @__PURE__ */ b.jsx("div", { className: d6, children: C ?? "unknown error" }),
-    /* @__PURE__ */ b.jsx("a", { className: h6, href: e, download: !0, target: "_blank", rel: "noreferrer", children: "Download file" })
+  ), E = [r6, p].filter(Boolean).join(" ");
+  return e ? x === "error" ? /* @__PURE__ */ b.jsx("div", { className: E, role: "alert", "aria-label": d ?? "video playback error", children: /* @__PURE__ */ b.jsxs("div", { className: f6, children: [
+    /* @__PURE__ */ b.jsx("div", { className: d6, children: "Could not play video" }),
+    /* @__PURE__ */ b.jsx("div", { className: h6, children: C ?? "unknown error" }),
+    /* @__PURE__ */ b.jsx("a", { className: m6, href: e, download: !0, target: "_blank", rel: "noreferrer", children: "Download file" })
   ] }) }) : /* @__PURE__ */ b.jsxs("div", { className: E, children: [
-    x === "loading" && /* @__PURE__ */ b.jsx("div", { className: l6, "aria-hidden": "true", children: /* @__PURE__ */ b.jsx("div", { className: o6 }) }),
-    r && /* @__PURE__ */ b.jsx("span", { className: s6, children: r }),
+    x === "loading" && /* @__PURE__ */ b.jsx("div", { className: o6, "aria-hidden": "true", children: /* @__PURE__ */ b.jsx("div", { className: s6 }) }),
+    r && /* @__PURE__ */ b.jsx("span", { className: u6, children: r }),
     /* @__PURE__ */ b.jsx(
       "video",
       {
-        className: r6,
+        className: l6,
         src: e,
         poster: a,
         controls: l,
@@ -25767,7 +25768,7 @@ function m6({
         children: /* @__PURE__ */ b.jsx("track", { kind: "captions" })
       }
     )
-  ] }) : /* @__PURE__ */ b.jsx("div", { className: E, "aria-label": d ?? "no video", children: /* @__PURE__ */ b.jsx("div", { className: u6, children: m ?? "No video to display yet." }) });
+  ] }) : /* @__PURE__ */ b.jsx("div", { className: E, "aria-label": d ?? "no video", children: /* @__PURE__ */ b.jsx("div", { className: c6, children: m ?? "No video to display yet." }) });
 }
 const si = {
   DRIVER_TOO_OLD: -32100,
@@ -25817,18 +25818,18 @@ const si = {
     hint: "The live progress stream dropped. The render may still be running — check History for the final result."
   }
 };
-function p6(e, a) {
+function g6(e, a) {
   return e !== null && t1[e] ? t1[e] : {
     title: "Render error",
     hint: a ?? "An unknown error occurred during the render."
   };
 }
-function g6(e) {
+function y6(e) {
   return e ? `${xc}/media?path=${encodeURIComponent(e)}` : null;
 }
-var qu = "_1ojc56g0", y6 = "_1ojc56g1", v6 = "_1ojc56g2", b6 = "_1ojc56g3", x6 = "_1ojc56g4", w6 = "_1ojc56g5", S6 = "_1ojc56g6", _6 = "_1ojc56g7", E6 = "_1ojc56g8", $u = "_1ojc56g9", N6 = "_1ojc56ga", C6 = "_1ojc56gb", R6 = "_1ojc56gc", T6 = "_1ojc56gd", M6 = "_1ojc56ge", D6 = "_1ojc56gf", A6 = "_1ojc56gg", z6 = "_1ojc56gh", O6 = "_51y2ql0", j6 = "_51y2ql1", L6 = "_51y2ql2", H6 = "_51y2ql3", k6 = "_51y2ql4", wh = "_51y2ql5", B6 = "_51y2ql6", U6 = "_51y2ql7 _51y2ql6", V6 = "_51y2ql8 _51y2ql6", q6 = "_51y2ql9", $6 = "_51y2qla", I6 = "_51y2qlb", Y6 = "_51y2qlc", G6 = "_51y2qld", X6 = "_51y2qle";
-const vn = 60, aa = 62, bn = 46, F6 = 180, Vo = 75, Wu = 45, Z6 = [0, 0.25, 0.5, 0.75, 1];
-function P6(e) {
+var qu = "_1ojc56g0", v6 = "_1ojc56g1", b6 = "_1ojc56g2", x6 = "_1ojc56g3", w6 = "_1ojc56g4", S6 = "_1ojc56g5", _6 = "_1ojc56g6", E6 = "_1ojc56g7", N6 = "_1ojc56g8", $u = "_1ojc56g9", C6 = "_1ojc56ga", R6 = "_1ojc56gb", T6 = "_1ojc56gc", M6 = "_1ojc56gd", D6 = "_1ojc56ge", A6 = "_1ojc56gf", z6 = "_1ojc56gg", O6 = "_1ojc56gh", j6 = "_51y2ql0", L6 = "_51y2ql1", H6 = "_51y2ql2", k6 = "_51y2ql3", B6 = "_51y2ql4", wh = "_51y2ql5", U6 = "_51y2ql6", V6 = "_51y2ql7 _51y2ql6", q6 = "_51y2ql8 _51y2ql6", $6 = "_51y2ql9", I6 = "_51y2qla", Y6 = "_51y2qlb", G6 = "_51y2qlc", X6 = "_51y2qld", F6 = "_51y2qle";
+const vn = 60, aa = 62, bn = 46, Z6 = 180, Vo = 75, Wu = 45, P6 = [0, 0.25, 0.5, 0.75, 1];
+function Q6(e) {
   const a = Math.PI * (1 - e), r = Math.cos(a), l = Math.sin(a);
   return {
     x1: vn + r * (bn - 9),
@@ -25837,19 +25838,19 @@ function P6(e) {
     y2: aa - l * (bn - 14)
   };
 }
-function Q6(e) {
+function K6(e) {
   const a = Vo - Wu, r = (Vo - e) / a;
   return Math.min(1, Math.max(0.02, r));
 }
-function K6(e) {
-  return e >= 0.55 ? B6 : e >= 0.25 ? U6 : V6;
+function J6(e) {
+  return e >= 0.55 ? U6 : e >= 0.25 ? V6 : q6;
 }
-function J6({ secondsPerStep: e }) {
-  const a = e !== null && e > 0, r = a ? Q6(e) : 0, l = F6 * r, s = a ? e.toFixed(1) : "—", u = a ? 1 / e : null, c = u === null ? "—" : u >= 1 ? u.toFixed(2) : u.toFixed(3);
+function W6({ secondsPerStep: e }) {
+  const a = e !== null && e > 0, r = a ? K6(e) : 0, l = Z6 * r, s = a ? e.toFixed(1) : "—", u = a ? 1 / e : null, c = u === null ? "—" : u >= 1 ? u.toFixed(2) : u.toFixed(3);
   return /* @__PURE__ */ b.jsxs(
     "div",
     {
-      className: O6,
+      className: j6,
       role: "meter",
       "aria-label": "render speed",
       "aria-valuemin": Wu,
@@ -25857,24 +25858,24 @@ function J6({ secondsPerStep: e }) {
       "aria-valuenow": a ? Number(e.toFixed(1)) : void 0,
       "aria-valuetext": a ? `${s} seconds per step` : "no data yet",
       children: [
-        /* @__PURE__ */ b.jsx("span", { className: j6, children: "Speed" }),
-        /* @__PURE__ */ b.jsxs("svg", { className: L6, viewBox: "0 0 120 78", "aria-hidden": "true", children: [
+        /* @__PURE__ */ b.jsx("span", { className: L6, children: "Speed" }),
+        /* @__PURE__ */ b.jsxs("svg", { className: H6, viewBox: "0 0 120 78", "aria-hidden": "true", children: [
           /* @__PURE__ */ b.jsx("title", { children: "speedometer" }),
           /* @__PURE__ */ b.jsx(
             "path",
             {
-              className: H6,
+              className: k6,
               d: `M ${vn - bn} ${aa} A ${bn} ${bn} 0 0 1 ${vn + bn} ${aa}`,
               strokeWidth: 8,
               pathLength: 100
             }
           ),
-          Z6.map((d) => {
-            const p = P6(d);
+          P6.map((d) => {
+            const p = Q6(d);
             return /* @__PURE__ */ b.jsx(
               "line",
               {
-                className: k6,
+                className: B6,
                 strokeWidth: 1.4,
                 x1: p.x1,
                 y1: p.y1,
@@ -25890,7 +25891,7 @@ function J6({ secondsPerStep: e }) {
           a && /* @__PURE__ */ b.jsx(
             "path",
             {
-              className: K6(r),
+              className: J6(r),
               d: `M ${vn - bn} ${aa} A ${bn} ${bn} 0 0 1 ${vn + bn} ${aa}`,
               strokeWidth: 8,
               pathLength: 100,
@@ -25900,7 +25901,7 @@ function J6({ secondsPerStep: e }) {
           /* @__PURE__ */ b.jsx(
             "g",
             {
-              className: q6,
+              className: $6,
               style: {
                 transform: `rotate(${a ? l : 0}deg)`,
                 transformOrigin: `${vn}px ${aa}px`
@@ -25908,7 +25909,7 @@ function J6({ secondsPerStep: e }) {
               children: /* @__PURE__ */ b.jsx(
                 "line",
                 {
-                  className: $6,
+                  className: I6,
                   strokeWidth: 2.4,
                   x1: vn,
                   y1: aa,
@@ -25918,11 +25919,11 @@ function J6({ secondsPerStep: e }) {
               )
             }
           ),
-          /* @__PURE__ */ b.jsx("circle", { className: I6, cx: vn, cy: aa, r: 3.6 }),
-          /* @__PURE__ */ b.jsx("text", { className: Y6, x: vn, y: 44, fontSize: 15, textAnchor: "middle", children: s }),
-          /* @__PURE__ */ b.jsx("text", { className: G6, x: vn, y: 55, fontSize: 7.5, textAnchor: "middle", children: "s/it" })
+          /* @__PURE__ */ b.jsx("circle", { className: Y6, cx: vn, cy: aa, r: 3.6 }),
+          /* @__PURE__ */ b.jsx("text", { className: G6, x: vn, y: 44, fontSize: 15, textAnchor: "middle", children: s }),
+          /* @__PURE__ */ b.jsx("text", { className: X6, x: vn, y: 55, fontSize: 7.5, textAnchor: "middle", children: "s/it" })
         ] }),
-        /* @__PURE__ */ b.jsxs("span", { className: X6, children: [
+        /* @__PURE__ */ b.jsxs("span", { className: F6, children: [
           c,
           " it/s"
         ] })
@@ -25930,7 +25931,7 @@ function J6({ secondsPerStep: e }) {
     }
   );
 }
-function W6({ state: e, onCancel: a, onReset: r }) {
+function eL({ state: e, onCancel: a, onReset: r }) {
   const [l, s] = _.useState(!1);
   _.useEffect(() => {
     e.phase !== "running" && s(!1);
@@ -25947,11 +25948,11 @@ function W6({ state: e, onCancel: a, onReset: r }) {
       }
     );
   if (e.phase === "error") {
-    const m = p6(e.errorCode, e.errorMessage);
+    const m = g6(e.errorCode, e.errorMessage);
     return /* @__PURE__ */ b.jsxs("div", { className: qu, children: [
-      /* @__PURE__ */ b.jsxs("div", { className: D6, role: "alert", children: [
-        /* @__PURE__ */ b.jsx("span", { className: A6, children: m.title }),
-        /* @__PURE__ */ b.jsx("span", { className: z6, children: m.hint })
+      /* @__PURE__ */ b.jsxs("div", { className: A6, role: "alert", children: [
+        /* @__PURE__ */ b.jsx("span", { className: z6, children: m.title }),
+        /* @__PURE__ */ b.jsx("span", { className: O6, children: m.hint })
       ] }),
       /* @__PURE__ */ b.jsx("div", { className: $u, children: /* @__PURE__ */ b.jsx(Ha, { variant: "secondary", onClick: r, children: "Dismiss" }) })
     ] });
@@ -25965,23 +25966,23 @@ function W6({ state: e, onCancel: a, onReset: r }) {
   if (e.phase === "done")
     return /* @__PURE__ */ b.jsxs("output", { className: qu, children: [
       /* @__PURE__ */ b.jsx(
-        m6,
+        p6,
         {
-          src: g6(e.outputPath),
+          src: y6(e.outputPath),
           fpsLabel: d ? `${d} fps` : void 0,
           ariaLabel: "rendered output"
         }
       ),
-      /* @__PURE__ */ b.jsx(aL, { state: e }),
+      /* @__PURE__ */ b.jsx(iL, { state: e }),
       /* @__PURE__ */ b.jsx("div", { className: $u, children: /* @__PURE__ */ b.jsx(Ha, { variant: "secondary", onClick: r, children: "New render" }) })
     ] });
   const p = Math.round(e.overallFraction * 100);
   return /* @__PURE__ */ b.jsxs("div", { className: qu, children: [
-    /* @__PURE__ */ b.jsx("output", { className: y6, "aria-live": "polite", children: nL(e) }),
+    /* @__PURE__ */ b.jsx("output", { className: v6, "aria-live": "polite", children: aL(e) }),
     /* @__PURE__ */ b.jsx(
       "div",
       {
-        className: _6,
+        className: E6,
         role: "progressbar",
         "aria-label": "overall progress",
         "aria-valuemin": 0,
@@ -25990,16 +25991,16 @@ function W6({ state: e, onCancel: a, onReset: r }) {
         children: /* @__PURE__ */ b.jsx(
           "div",
           {
-            className: E6,
+            className: N6,
             style: { transform: `scaleX(${Math.max(0.02, e.overallFraction)})` }
           }
         )
       }
     ),
-    e.stalled && /* @__PURE__ */ b.jsx("output", { className: M6, children: "Still working… no progress for a while — the connection may be lost. The render may still be running; check History if it does not resume." }),
-    /* @__PURE__ */ b.jsxs("div", { className: v6, "aria-live": "polite", children: [
-      /* @__PURE__ */ b.jsx(J6, { secondsPerStep: e.secondsPerStep }),
-      /* @__PURE__ */ b.jsxs("div", { className: b6, children: [
+    e.stalled && /* @__PURE__ */ b.jsx("output", { className: D6, children: "Still working… no progress for a while — the connection may be lost. The render may still be running; check History if it does not resume." }),
+    /* @__PURE__ */ b.jsxs("div", { className: b6, "aria-live": "polite", children: [
+      /* @__PURE__ */ b.jsx(W6, { secondsPerStep: e.secondsPerStep }),
+      /* @__PURE__ */ b.jsxs("div", { className: x6, children: [
         /* @__PURE__ */ b.jsx(zo, { label: "Overall", value: `${p}%` }),
         /* @__PURE__ */ b.jsx(
           zo,
@@ -26015,7 +26016,7 @@ function W6({ state: e, onCancel: a, onReset: r }) {
             value: e.totalSteps ? `${e.step} / ${e.totalSteps}` : "—"
           }
         ),
-        /* @__PURE__ */ b.jsx(zo, { label: "ETA", value: eL(D5(e)) }),
+        /* @__PURE__ */ b.jsx(zo, { label: "ETA", value: tL(D5(e)) }),
         /* @__PURE__ */ b.jsx(
           zo,
           {
@@ -26028,12 +26029,12 @@ function W6({ state: e, onCancel: a, onReset: r }) {
     /* @__PURE__ */ b.jsx("div", { className: $u, children: /* @__PURE__ */ b.jsx(Ha, { variant: "danger", onClick: u, loading: l, disabled: l, children: l ? "Cancelling…" : "Cancel render" }) })
   ] });
 }
-function eL(e) {
+function tL(e) {
   if (e === null) return "—";
   const a = Math.max(0, Math.round(e)), r = Math.floor(a / 3600), l = Math.floor(a % 3600 / 60), s = a % 60;
   return r > 0 ? `${r}h ${String(l).padStart(2, "0")}m` : l > 0 ? `${l}m ${String(s).padStart(2, "0")}s` : `${s}s`;
 }
-const tL = {
+const nL = {
   loading_text_encoder: "Loading text encoder (UMT5-xxl)…",
   encoding_prompts: "Encoding prompts…",
   encoding_anchors: "Encoding anchor keyframes…",
@@ -26043,27 +26044,27 @@ const tL = {
   upscaling: "RTX upscaling (Maxine VSR)…",
   interpolating: "Interpolating to target fps (RIFE)…"
 };
-function nL(e) {
+function aL(e) {
   if (!e.stage) return "Starting worker…";
-  const a = tL[e.stage] ?? e.stage;
+  const a = nL[e.stage] ?? e.stage;
   return e.stage === "denoising" && e.numClips > 0 ? `${a} — clip ${e.clipIndex + 1} of ${e.numClips}` : a;
 }
 function zo({ label: e, value: a }) {
-  return /* @__PURE__ */ b.jsxs("div", { className: x6, children: [
-    /* @__PURE__ */ b.jsx("span", { className: w6, children: e }),
-    /* @__PURE__ */ b.jsx("span", { className: S6, children: a })
+  return /* @__PURE__ */ b.jsxs("div", { className: w6, children: [
+    /* @__PURE__ */ b.jsx("span", { className: S6, children: e }),
+    /* @__PURE__ */ b.jsx("span", { className: _6, children: a })
   ] });
 }
-function aL({ state: e }) {
+function iL({ state: e }) {
   const a = e.renderReport;
   if (!a) return null;
   const r = [];
-  return typeof a.frames == "number" && r.push(["Frames", String(a.frames)]), typeof a.duration_seconds == "number" && r.push(["Duration", `${a.duration_seconds.toFixed(1)}s`]), e.vramPeakGib !== null && r.push(["VRAM peak", `${e.vramPeakGib.toFixed(1)} GiB`]), typeof a.sha256 == "string" && r.push(["sha256", `${a.sha256.slice(0, 16)}…`]), e.outputPath && r.push(["Output", e.outputPath]), r.length === 0 ? null : /* @__PURE__ */ b.jsx("div", { className: N6, children: r.map(([l, s]) => /* @__PURE__ */ b.jsxs("div", { className: C6, children: [
-    /* @__PURE__ */ b.jsx("span", { className: R6, children: l }),
-    /* @__PURE__ */ b.jsx("span", { className: T6, children: s })
+  return typeof a.frames == "number" && r.push(["Frames", String(a.frames)]), typeof a.duration_seconds == "number" && r.push(["Duration", `${a.duration_seconds.toFixed(1)}s`]), e.vramPeakGib !== null && r.push(["VRAM peak", `${e.vramPeakGib.toFixed(1)} GiB`]), typeof a.sha256 == "string" && r.push(["sha256", `${a.sha256.slice(0, 16)}…`]), e.outputPath && r.push(["Output", e.outputPath]), r.length === 0 ? null : /* @__PURE__ */ b.jsx("div", { className: C6, children: r.map(([l, s]) => /* @__PURE__ */ b.jsxs("div", { className: R6, children: [
+    /* @__PURE__ */ b.jsx("span", { className: T6, children: l }),
+    /* @__PURE__ */ b.jsx("span", { className: M6, children: s })
   ] }, l)) });
 }
-function iL() {
+function rL() {
   return /* @__PURE__ */ b.jsxs("svg", { viewBox: "0 0 20 20", width: "100%", height: "100%", fill: "none", "aria-hidden": "true", children: [
     /* @__PURE__ */ b.jsx("title", { children: "selected" }),
     /* @__PURE__ */ b.jsx("circle", { cx: "10", cy: "10", r: "8.25", stroke: "currentColor", strokeWidth: "1.5" }),
@@ -26079,7 +26080,7 @@ function iL() {
     )
   ] });
 }
-function rL({ presets: e }) {
+function lL({ presets: e }) {
   const { params: a, updateParam: r } = Wt(), l = _.useMemo(() => Qm(e), [e]);
   if (l.length === 0) return null;
   const s = Km(a, l);
@@ -26104,7 +26105,7 @@ function rL({ presets: e }) {
                 "×",
                 u.height
               ] }),
-              /* @__PURE__ */ b.jsx("span", { className: p, children: /* @__PURE__ */ b.jsx(iL, {}) })
+              /* @__PURE__ */ b.jsx("span", { className: p, children: /* @__PURE__ */ b.jsx(rL, {}) })
             ] }),
             /* @__PURE__ */ b.jsx("span", { className: gO, children: u.label }),
             /* @__PURE__ */ b.jsx("span", { className: yO, children: u.sub }),
@@ -26128,18 +26129,18 @@ function rL({ presets: e }) {
     ] }) })
   ] });
 }
-var lL = "_1x63kpu0";
-const oL = "Random each render";
-function sL(e) {
+var oL = "_1x63kpu0";
+const sL = "Random each render";
+function uL(e) {
   const a = e.trim();
   if (a.length === 0) return;
   const r = Number(a);
   if (!(!Number.isFinite(r) || r < 0))
     return Math.trunc(r);
 }
-function uL() {
+function cL() {
   const { params: e, updateParam: a } = Wt(), r = _.useId(), l = e.seed, s = (u) => {
-    a("seed", sL(u.target.value));
+    a("seed", uL(u.target.value));
   };
   return /* @__PURE__ */ b.jsxs("div", { className: pi, children: [
     /* @__PURE__ */ b.jsx("span", { className: Va, id: r, children: "Seed" }),
@@ -26149,11 +26150,11 @@ function uL() {
         {
           type: "number",
           inputMode: "numeric",
-          className: lL,
+          className: oL,
           "aria-labelledby": r,
           min: 0,
           step: 1,
-          placeholder: oL,
+          placeholder: sL,
           value: l ?? "",
           onChange: s
         }
@@ -26162,8 +26163,8 @@ function uL() {
     ] })
   ] });
 }
-var cL = "_1hbttwg0", fL = "_1hbttwg1", dL = "_1hbttwg2", hL = "_1hbttwg3", iS = "_1hbttwg4", mL = "_1hbttwg5", pL = "_1hbttwg7 _1hbttwg6", gL = "_1hbttwg8 _1hbttwg6", n1 = "_1hbttwg9", yL = "_1hbttwga", vL = "_1hbttwgb", bL = "_1hbttwgc", xL = "_1hbttwgd";
-function wL({
+var fL = "_1hbttwg0", dL = "_1hbttwg1", hL = "_1hbttwg2", mL = "_1hbttwg3", iS = "_1hbttwg4", pL = "_1hbttwg5", gL = "_1hbttwg7 _1hbttwg6", yL = "_1hbttwg8 _1hbttwg6", n1 = "_1hbttwg9", vL = "_1hbttwga", bL = "_1hbttwgb", xL = "_1hbttwgc", wL = "_1hbttwgd";
+function SL({
   spec: e,
   value: a,
   error: r,
@@ -26172,21 +26173,21 @@ function wL({
   disabledReason: u
 }) {
   const c = _.useId(), d = `${c}-help`, p = r ? `${c}-error` : d;
-  return /* @__PURE__ */ b.jsxs("div", { className: cL, title: s ? u : void 0, children: [
-    /* @__PURE__ */ b.jsxs("div", { className: fL, children: [
-      /* @__PURE__ */ b.jsx("label", { className: dL, htmlFor: c, children: e.label }),
-      e.control === "slider" && /* @__PURE__ */ b.jsx("span", { className: hL, children: _L(a, e.step) })
+  return /* @__PURE__ */ b.jsxs("div", { className: fL, title: s ? u : void 0, children: [
+    /* @__PURE__ */ b.jsxs("div", { className: dL, children: [
+      /* @__PURE__ */ b.jsx("label", { className: hL, htmlFor: c, children: e.label }),
+      e.control === "slider" && /* @__PURE__ */ b.jsx("span", { className: mL, children: EL(a, e.step) })
     ] }),
-    SL(e, a, l, c, p, r !== void 0, s),
+    _L(e, a, l, c, p, r !== void 0, s),
     /* @__PURE__ */ b.jsx("span", { id: d, className: iS, children: s && u ? u : e.help }),
-    r && /* @__PURE__ */ b.jsx("span", { id: `${c}-error`, role: "alert", className: mL, children: r })
+    r && /* @__PURE__ */ b.jsx("span", { id: `${c}-error`, role: "alert", className: pL, children: r })
   ] });
 }
-function SL(e, a, r, l, s, u, c) {
+function _L(e, a, r, l, s, u, c) {
   switch (e.control) {
     case "toggle": {
       const d = !!a;
-      return /* @__PURE__ */ b.jsxs("div", { className: vL, children: [
+      return /* @__PURE__ */ b.jsxs("div", { className: bL, children: [
         /* @__PURE__ */ b.jsx(
           "button",
           {
@@ -26196,9 +26197,9 @@ function SL(e, a, r, l, s, u, c) {
             "aria-checked": d,
             "aria-describedby": s,
             disabled: c,
-            className: bL,
+            className: xL,
             onClick: () => r(!d),
-            children: /* @__PURE__ */ b.jsx("span", { className: xL, "aria-hidden": "true" })
+            children: /* @__PURE__ */ b.jsx("span", { className: wL, "aria-hidden": "true" })
           }
         ),
         /* @__PURE__ */ b.jsx("span", { className: iS, children: d ? "On" : "Off" })
@@ -26212,7 +26213,7 @@ function SL(e, a, r, l, s, u, c) {
           "aria-describedby": s,
           "aria-invalid": u || void 0,
           disabled: c,
-          className: [gL, u ? n1 : ""].filter(Boolean).join(" "),
+          className: [yL, u ? n1 : ""].filter(Boolean).join(" "),
           value: String(a ?? e.default ?? ""),
           onChange: (d) => r(e.numeric ? Number(d.target.value) : d.target.value),
           children: e.options?.map((d) => /* @__PURE__ */ b.jsx("option", { value: d.value, children: d.label }, d.value))
@@ -26228,7 +26229,7 @@ function SL(e, a, r, l, s, u, c) {
           "aria-describedby": s,
           "aria-invalid": u || void 0,
           disabled: c,
-          className: yL,
+          className: vL,
           style: g,
           min: e.min,
           max: e.max,
@@ -26248,7 +26249,7 @@ function SL(e, a, r, l, s, u, c) {
           "aria-describedby": s,
           "aria-invalid": u || void 0,
           disabled: c,
-          className: [pL, u ? n1 : ""].filter(Boolean).join(" "),
+          className: [gL, u ? n1 : ""].filter(Boolean).join(" "),
           min: e.min,
           max: e.max,
           step: e.step,
@@ -26261,11 +26262,11 @@ function SL(e, a, r, l, s, u, c) {
 function a1(e, a) {
   return typeof e == "number" && Number.isFinite(e) ? e : typeof a.default == "number" ? a.default : a.min ?? 0;
 }
-function _L(e, a) {
+function EL(e, a) {
   return typeof e != "number" ? "—" : a === void 0 || a >= 1 ? Number.isInteger(e) ? String(e) : e.toFixed(2) : e.toFixed(a >= 0.1 ? 1 : 2);
 }
-var EL = "_1f0q5gf0", NL = "_1f0q5gf1", CL = "_1f0q5gf2", RL = "_1f0q5gf3", TL = "_1f0q5gf4", ML = "_1f0q5gf5", DL = "_1f0q5gf6", AL = "_1f0q5gf7", zL = "_1f0q5gf8", OL = "_1f0q5gf9", jL = "_1f0q5gfa", LL = "_1f0q5gfb", HL = "_1f0q5gfc";
-function kL({
+var NL = "_1f0q5gf0", CL = "_1f0q5gf1", RL = "_1f0q5gf2", TL = "_1f0q5gf3", ML = "_1f0q5gf4", DL = "_1f0q5gf5", AL = "_1f0q5gf6", zL = "_1f0q5gf7", OL = "_1f0q5gf8", jL = "_1f0q5gf9", LL = "_1f0q5gfa", HL = "_1f0q5gfb", kL = "_1f0q5gfc";
+function BL({
   title: e,
   description: a,
   badge: r,
@@ -26275,13 +26276,13 @@ function kL({
   className: c,
   children: d
 }) {
-  const p = _.useId(), [m, y] = _.useState(u ? s : !1), g = [EL, c].filter(Boolean).join(" "), v = [CL, m ? RL : ""].filter(Boolean).join(" "), x = !u || !m;
+  const p = _.useId(), [m, y] = _.useState(u ? s : !1), g = [NL, c].filter(Boolean).join(" "), v = [RL, m ? TL : ""].filter(Boolean).join(" "), x = !u || !m;
   return /* @__PURE__ */ b.jsxs("section", { className: g, children: [
     /* @__PURE__ */ b.jsxs(
       "button",
       {
         type: "button",
-        className: NL,
+        className: CL,
         "aria-expanded": x,
         "aria-controls": p,
         disabled: !u,
@@ -26300,12 +26301,12 @@ function kL({
               }
             )
           ] }) }),
-          /* @__PURE__ */ b.jsxs("span", { className: TL, children: [
-            /* @__PURE__ */ b.jsx("span", { className: ML, children: e }),
-            a && /* @__PURE__ */ b.jsx("span", { className: DL, children: a })
+          /* @__PURE__ */ b.jsxs("span", { className: ML, children: [
+            /* @__PURE__ */ b.jsx("span", { className: DL, children: e }),
+            a && /* @__PURE__ */ b.jsx("span", { className: AL, children: a })
           ] }),
-          (l || r) && /* @__PURE__ */ b.jsxs("span", { className: AL, children: [
-            l && /* @__PURE__ */ b.jsx("span", { className: zL, children: l }),
+          (l || r) && /* @__PURE__ */ b.jsxs("span", { className: zL, children: [
+            l && /* @__PURE__ */ b.jsx("span", { className: OL, children: l }),
             r
           ] })
         ]
@@ -26315,14 +26316,14 @@ function kL({
       "div",
       {
         id: p,
-        className: [OL, x ? jL : ""].filter(Boolean).join(" "),
+        className: [jL, x ? LL : ""].filter(Boolean).join(" "),
         inert: !x || void 0,
-        children: /* @__PURE__ */ b.jsx("div", { className: LL, children: /* @__PURE__ */ b.jsx("div", { className: HL, children: d }) })
+        children: /* @__PURE__ */ b.jsx("div", { className: HL, children: /* @__PURE__ */ b.jsx("div", { className: kL, children: d }) })
       }
     )
   ] });
 }
-const BL = {
+const UL = {
   rife: "RIFE (auto)",
   rife_torch: "RIFE torch",
   rife_ncnn: "RIFE ncnn",
@@ -26331,18 +26332,18 @@ const BL = {
 function i1(e) {
   return (Math.round(e * 10) / 10).toFixed(1);
 }
-function UL(e) {
+function VL(e) {
   return Oc.find((a) => a.key === e)?.default;
 }
 function hl(e, a) {
   const r = e[a];
   if (typeof r == "number" && Number.isFinite(r)) return r;
-  const l = UL(a);
+  const l = VL(a);
   return typeof l == "number" ? l : 0;
 }
-function VL(e, a) {
+function qL(e, a) {
   if (e === "core") {
-    const r = hl(a, "fps"), l = hl(a, "interpolate_fps"), s = l > 0 ? l : r, u = typeof a.interpolate_method == "string" ? a.interpolate_method : "rife", c = BL[u] ?? u, d = hl(a, "upscale_factor"), p = `${r} → ${s} fps · ${c}`;
+    const r = hl(a, "fps"), l = hl(a, "interpolate_fps"), s = l > 0 ? l : r, u = typeof a.interpolate_method == "string" ? a.interpolate_method : "rife", c = UL[u] ?? u, d = hl(a, "upscale_factor"), p = `${r} → ${s} fps · ${c}`;
     return d > 0 ? `${p} · ${d}× VSR` : p;
   }
   if (e === "quality") {
@@ -26351,14 +26352,14 @@ function VL(e, a) {
   }
   return null;
 }
-async function qL() {
+async function $L() {
   return Ji("/capabilities/attention");
 }
 const r1 = Object.fromEntries(
   pm.map((e) => [e.value, e.label])
 );
-function $L() {
-  const { params: e, settings: a, updateParam: r, setSettings: l } = Wt(), s = Wo("svi2/attention-capabilities", qL, {
+function IL() {
+  const { params: e, settings: a, updateParam: r, setSettings: l } = Wt(), s = Wo("svi2/attention-capabilities", $L, {
     shouldRetryOnError: !1
   }), u = e.attention ?? a.attentionBackend ?? "flash2", c = _.useCallback(
     (v) => {
@@ -26416,7 +26417,7 @@ function $L() {
     !p && u === "sage3_fp4" && !g && /* @__PURE__ */ b.jsx("span", { className: Qi, children: "FP4 — may show artifacts on some GPUs." })
   ] });
 }
-function IL() {
+function YL() {
   const { params: e, updateParam: a } = Wt(), r = (e.blocks_to_swap ?? 0) > 0, l = !r && (e.use_torch_compile ?? !1);
   return /* @__PURE__ */ b.jsxs("div", { className: pi, children: [
     /* @__PURE__ */ b.jsx("label", { className: Va, htmlFor: "svi2-torch-compile", children: "torch.compile (experimental)" }),
@@ -26433,30 +26434,30 @@ function IL() {
     r && /* @__PURE__ */ b.jsx("span", { className: Qi, children: "Set Blocks to swap = 0 to enable." })
   ] });
 }
-var YL = "kn07ek0", GL = "kn07ek1";
-const XL = {
+var GL = "kn07ek0", XL = "kn07ek1";
+const FL = {
   num_clips: "Locked to 1 in FLF2V morph — the end keyframe pins the clip, no chaining.",
   frames_per_clip: "Driven by the Length control in FLF2V morph (fps × seconds, snapped to 4n+1)."
 };
-function FL({ issues: e }) {
+function ZL({ issues: e }) {
   const { presetId: a, params: r, updateParam: l } = Wt(), s = jc(a, r), u = (c) => e.find((d) => d.field === c && d.severity === "error")?.message;
-  return /* @__PURE__ */ b.jsx("div", { className: YL, children: Bw.map((c) => {
+  return /* @__PURE__ */ b.jsx("div", { className: GL, children: Bw.map((c) => {
     const d = z5(c.id);
     return d.length === 0 ? null : /* @__PURE__ */ b.jsx(
-      kL,
+      BL,
       {
         title: c.title,
         description: c.description,
         defaultCollapsed: c.defaultCollapsed,
-        summary: VL(c.id, r),
+        summary: qL(c.id, r),
         badge: c.defaultCollapsed ? /* @__PURE__ */ b.jsx(An, { tone: "neutral", children: "advanced" }) : void 0,
-        children: /* @__PURE__ */ b.jsxs("div", { className: GL, children: [
-          c.id === "perf" && /* @__PURE__ */ b.jsx($L, {}),
+        children: /* @__PURE__ */ b.jsxs("div", { className: XL, children: [
           c.id === "perf" && /* @__PURE__ */ b.jsx(IL, {}),
+          c.id === "perf" && /* @__PURE__ */ b.jsx(YL, {}),
           d.map((p) => {
-            const m = s ? XL[p.key] : void 0;
+            const m = s ? FL[p.key] : void 0;
             return /* @__PURE__ */ b.jsx(
-              wL,
+              SL,
               {
                 spec: p,
                 value: r[p.key],
@@ -26474,9 +26475,9 @@ function FL({ issues: e }) {
     );
   }) });
 }
-var ZL = "_1w9jfpf0", PL = "_1w9jfpf1", QL = "_1w9jfpf2", KL = "_1w9jfpf3", JL = "_1w9jfpf4", WL = "_1w9jfpf5";
+var PL = "_1w9jfpf0", QL = "_1w9jfpf1", KL = "_1w9jfpf2", JL = "_1w9jfpf3", WL = "_1w9jfpf4", e8 = "_1w9jfpf5";
 const Wh = "svi2-anchor-panel", rS = "svi2-prompt-input";
-function e8() {
+function t8() {
   const {
     presetId: e,
     presetApplied: a,
@@ -26487,7 +26488,7 @@ function e8() {
     resetRender: c,
     showJobResult: d
   } = Wt(), { issues: p, blocked: m, busy: y, submit: g, cancel: v, focusRequest: x } = Iw();
-  n8(x);
+  a8(x);
   const S = Wo("svi2/presets", Q1), C = Wo("svi2/history", () => Q5(25)), R = S.data?.presets ?? [];
   _.useEffect(() => {
     if (a || R.length === 0) return;
@@ -26502,14 +26503,14 @@ function e8() {
     },
     [d]
   );
-  return /* @__PURE__ */ b.jsxs("div", { className: ZL, children: [
-    /* @__PURE__ */ b.jsxs("div", { className: PL, children: [
+  return /* @__PURE__ */ b.jsxs("div", { className: PL, children: [
+    /* @__PURE__ */ b.jsxs("div", { className: QL, children: [
       /* @__PURE__ */ b.jsx(
         Oa,
         {
           title: "Preset",
           description: "Starting points for a render. Every field stays nudgeable after you apply one.",
-          children: /* @__PURE__ */ b.jsx(kj, { presets: R, selectedId: e, onSelect: s })
+          children: /* @__PURE__ */ b.jsx(Bj, { presets: R, selectedId: e, onSelect: s })
         }
       ),
       /* @__PURE__ */ b.jsxs(
@@ -26518,8 +26519,8 @@ function e8() {
           title: "Mode",
           description: "Image-to-Video anchors identity to a reference. Text-to-Video synthesizes the seed from the prompt.",
           children: [
-            /* @__PURE__ */ b.jsx(PO, { value: z, onChange: u }),
-            z === "text_to_video" && /* @__PURE__ */ b.jsx(uL, {})
+            /* @__PURE__ */ b.jsx(QO, { value: z, onChange: u }),
+            z === "text_to_video" && /* @__PURE__ */ b.jsx(cL, {})
           ]
         }
       ),
@@ -26539,13 +26540,13 @@ function e8() {
           )
         }
       ) }),
-      /* @__PURE__ */ b.jsx(Oa, { title: "Prompt", description: "One prompt for a coherent take, or per-clip when needed.", children: /* @__PURE__ */ b.jsx(Zj, { error: V, textareaId: rS }) }),
-      /* @__PURE__ */ b.jsx(Oa, { title: "Transform", description: "Edit the anchor before animating it.", children: /* @__PURE__ */ b.jsx(a6, {}) }),
+      /* @__PURE__ */ b.jsx(Oa, { title: "Prompt", description: "One prompt for a coherent take, or per-clip when needed.", children: /* @__PURE__ */ b.jsx(Pj, { error: V, textareaId: rS }) }),
+      /* @__PURE__ */ b.jsx(Oa, { title: "Transform", description: "Edit the anchor before animating it.", children: /* @__PURE__ */ b.jsx(i6, {}) }),
       /* @__PURE__ */ b.jsxs(
         Oa,
         {
           title: /* @__PURE__ */ b.jsxs(b.Fragment, { children: [
-            /* @__PURE__ */ b.jsx("span", { className: JL, children: "Inference · Parameters" }),
+            /* @__PURE__ */ b.jsx("span", { className: WL, children: "Inference · Parameters" }),
             "Parameters"
           ] }),
           description: "Grouped by tier. Advanced tiers stay collapsed.",
@@ -26563,28 +26564,28 @@ function e8() {
             }
           ),
           children: [
-            /* @__PURE__ */ b.jsx(IO, { presets: R, warningText: D }),
-            /* @__PURE__ */ b.jsxs("div", { className: WL, children: [
-              /* @__PURE__ */ b.jsx(fj, {}),
-              /* @__PURE__ */ b.jsx(rL, { presets: R }),
-              /* @__PURE__ */ b.jsx(xO, {}),
-              /* @__PURE__ */ b.jsx(EO, {})
+            /* @__PURE__ */ b.jsx(YO, { presets: R, warningText: D }),
+            /* @__PURE__ */ b.jsxs("div", { className: e8, children: [
+              /* @__PURE__ */ b.jsx(dj, {}),
+              /* @__PURE__ */ b.jsx(lL, { presets: R }),
+              /* @__PURE__ */ b.jsx(wO, {}),
+              /* @__PURE__ */ b.jsx(NO, {})
             ] }),
-            /* @__PURE__ */ b.jsx(FL, { issues: p }),
-            /* @__PURE__ */ b.jsx(wj, { presets: R })
+            /* @__PURE__ */ b.jsx(ZL, { issues: p }),
+            /* @__PURE__ */ b.jsx(Sj, { presets: R })
           ]
         }
       )
     ] }),
-    /* @__PURE__ */ b.jsxs("div", { className: QL, children: [
+    /* @__PURE__ */ b.jsxs("div", { className: KL, children: [
       /* @__PURE__ */ b.jsxs(
         Oa,
         {
           title: "Render",
           description: y ? "Render in progress." : "Live progress and output.",
           children: [
-            /* @__PURE__ */ b.jsx(W6, { state: l, onCancel: v, onReset: c }),
-            !y && /* @__PURE__ */ b.jsx("div", { className: KL, children: /* @__PURE__ */ b.jsx(
+            /* @__PURE__ */ b.jsx(eL, { state: l, onCancel: v, onReset: c }),
+            !y && /* @__PURE__ */ b.jsx("div", { className: JL, children: /* @__PURE__ */ b.jsx(
               Ha,
               {
                 variant: "primary",
@@ -26597,25 +26598,25 @@ function e8() {
           ]
         }
       ),
-      /* @__PURE__ */ b.jsx(Oa, { title: "History", description: "Past renders for this deployment.", children: /* @__PURE__ */ b.jsx(oj, { jobs: N, onOpen: I }) })
+      /* @__PURE__ */ b.jsx(Oa, { title: "History", description: "Past renders for this deployment.", children: /* @__PURE__ */ b.jsx(sj, { jobs: N, onOpen: I }) })
     ] })
   ] });
 }
-const t8 = {
+const n8 = {
   ref_image_path: Wh,
   last_image_path: Wh,
   prompts: rS
 };
-function n8(e) {
+function a8(e) {
   _.useEffect(() => {
     if (!e || typeof document > "u") return;
-    const a = t8[e.field];
+    const a = n8[e.field];
     if (a) {
       const l = document.getElementById(a);
       l1(l);
       return;
     }
-    a8(e.field);
+    i8(e.field);
     const r = window.requestAnimationFrame(() => {
       const l = document.querySelector('[aria-invalid="true"]');
       l1(l);
@@ -26623,7 +26624,7 @@ function n8(e) {
     return () => window.cancelAnimationFrame(r);
   }, [e]);
 }
-function a8(e) {
+function i8(e) {
   const a = Oc.find((s) => s.key === e);
   if (!a) return;
   const r = Bw.find((s) => s.id === a.tier);
@@ -26642,14 +26643,14 @@ function l1(e) {
   const a = e.tagName === "INPUT" || e.tagName === "TEXTAREA" || e.tagName === "SELECT" ? e : e.querySelector("input, textarea, select, button");
   e.scrollIntoView({ behavior: "smooth", block: "center" }), a?.focus({ preventScroll: !0 });
 }
-var i8 = "_1smvon90", gr = "_1smvon91", yr = "_1smvon92", vr = "_1smvon93", Iu = "_1smvon94", Sh = "_1smvon95 _1smvon94", r8 = "_1smvon96", l8 = "_1smvon97";
-const o8 = [
+var r8 = "_1smvon90", gr = "_1smvon91", yr = "_1smvon92", vr = "_1smvon93", Iu = "_1smvon94", Sh = "_1smvon95 _1smvon94", l8 = "_1smvon96", o8 = "_1smvon97";
+const s8 = [
   { value: "rife", label: "RIFE (auto)" },
   { value: "rife_torch", label: "RIFE torch" },
   { value: "rife_ncnn", label: "RIFE ncnn" },
   { value: "ffmpeg", label: "ffmpeg minterpolate" }
 ];
-function s8() {
+function u8() {
   const { settings: e, setSettings: a } = Wt(), [r, l] = _.useState(e), [s, u] = _.useState(!1), c = _.useMemo(
     () => Object.keys(r).some(
       (m) => r[m] !== e[m]
@@ -26674,7 +26675,7 @@ function s8() {
       title: "Defaults",
       description: "Applied as the starting values for new renders. Environment levers tune the backend.",
       children: [
-        /* @__PURE__ */ b.jsxs("div", { className: i8, children: [
+        /* @__PURE__ */ b.jsxs("div", { className: r8, children: [
           /* @__PURE__ */ b.jsxs("label", { className: gr, children: [
             /* @__PURE__ */ b.jsx("span", { className: yr, children: "Models directory" }),
             /* @__PURE__ */ b.jsx(
@@ -26750,7 +26751,7 @@ function s8() {
                 className: Sh,
                 value: r.interpolateMethod,
                 onChange: (m) => d("interpolateMethod", m.target.value),
-                children: o8.map((m) => /* @__PURE__ */ b.jsx("option", { value: m.value, children: m.label }, m.value))
+                children: s8.map((m) => /* @__PURE__ */ b.jsx("option", { value: m.value, children: m.label }, m.value))
               }
             ),
             /* @__PURE__ */ b.jsx("span", { className: vr, children: "rife → ffmpeg fallback by default." })
@@ -26771,7 +26772,7 @@ function s8() {
             /* @__PURE__ */ b.jsx("span", { className: vr, children: "0 = off. 48 from 16 = ×3 smooth playback." })
           ] })
         ] }),
-        /* @__PURE__ */ b.jsxs("div", { className: r8, children: [
+        /* @__PURE__ */ b.jsxs("div", { className: l8, children: [
           /* @__PURE__ */ b.jsx(Ha, { loading: s, disabled: !c, onClick: () => void p(), children: "Save settings" }),
           /* @__PURE__ */ b.jsx(
             Ha,
@@ -26782,37 +26783,37 @@ function s8() {
               children: "Discard changes"
             }
           ),
-          c && /* @__PURE__ */ b.jsx("output", { className: l8, children: "Unsaved changes" })
+          c && /* @__PURE__ */ b.jsx("output", { className: o8, children: "Unsaved changes" })
         ] })
       ]
     }
   );
 }
-var u8 = "_1ugwva20", c8 = "_1ugwva21", f8 = "_1ugwva22", d8 = "_1ugwva23", h8 = "_1ugwva24", m8 = "_1ugwva25";
-function p8() {
-  const e = K2(), a = g8(e.catalog?.presets ?? []);
+var c8 = "_1ugwva20", f8 = "_1ugwva21", d8 = "_1ugwva22", h8 = "_1ugwva23", m8 = "_1ugwva24", p8 = "_1ugwva25";
+function g8() {
+  const e = K2(), a = y8(e.catalog?.presets ?? []);
   return /* @__PURE__ */ b.jsxs(i3, { initialSettings: e.settings, initialPreset: a, children: [
-    /* @__PURE__ */ b.jsxs("div", { className: u8, children: [
-      /* @__PURE__ */ b.jsx("header", { className: c8, children: /* @__PURE__ */ b.jsxs("div", { className: f8, children: [
-        /* @__PURE__ */ b.jsx("h1", { className: d8, children: "SVI 2.0 Pro" }),
-        /* @__PURE__ */ b.jsx("p", { className: h8, children: "Long, identity-locked image-to-video from a single anchor image. Chain 4n+1-frame clips with the error-recycling SVI LoRA for coherent long takes." })
+    /* @__PURE__ */ b.jsxs("div", { className: c8, children: [
+      /* @__PURE__ */ b.jsx("header", { className: f8, children: /* @__PURE__ */ b.jsxs("div", { className: d8, children: [
+        /* @__PURE__ */ b.jsx("h1", { className: h8, children: "SVI 2.0 Pro" }),
+        /* @__PURE__ */ b.jsx("p", { className: m8, children: "Long, identity-locked image-to-video from a single anchor image. Chain 4n+1-frame clips with the error-recycling SVI LoRA for coherent long takes." })
       ] }) }),
-      /* @__PURE__ */ b.jsx("main", { className: m8, children: /* @__PURE__ */ b.jsx(cN, {}) })
+      /* @__PURE__ */ b.jsx("main", { className: p8, children: /* @__PURE__ */ b.jsx(cN, {}) })
     ] }),
     /* @__PURE__ */ b.jsx(A3, { position: "bottom-right", theme: "dark", richColors: !0 })
   ] });
 }
-function g8(e) {
+function y8(e) {
   return e.find((a) => a.id === Jo) ?? e[0] ?? null;
 }
-async function y8() {
+async function v8() {
   const [e, a] = await Promise.all([
     Q1().catch(() => null),
     FN().catch(() => P1)
   ]);
   return { catalog: e, settings: a };
 }
-function v8() {
+function b8() {
   return [
     {
       path: "/",
@@ -26820,28 +26821,28 @@ function v8() {
     },
     {
       path: "/:deploymentId",
-      loader: y8,
-      Component: p8,
+      loader: v8,
+      Component: g8,
       children: [
         {
           index: !0,
-          loader: ({ params: e }) => Zy(`/${b8(e, "deploymentId")}/recipe`)
+          loader: ({ params: e }) => Zy(`/${x8(e, "deploymentId")}/recipe`)
         },
-        { path: "recipe", Component: e8 },
+        { path: "recipe", Component: t8 },
         { path: "dag", Component: uz },
-        { path: "settings", Component: s8 }
+        { path: "settings", Component: u8 }
       ]
     }
   ];
 }
-function b8(e, a) {
+function x8(e, a) {
   const r = e[a];
   if (!r)
     throw new Response(`Missing path parameter: ${a}`, { status: 400 });
   return r;
 }
-const o1 = "ext-actions-request", x8 = "ext-actions-declare", w8 = "ext-action-state", s1 = "ext-action-invoke", u1 = "svi2-pro:navigate", c1 = "svi2-pro.render";
-function S8(e, a) {
+const o1 = "ext-actions-request", w8 = "ext-actions-declare", S8 = "ext-action-state", s1 = "ext-action-invoke", u1 = "svi2-pro:navigate", c1 = "svi2-pro.render";
+function _8(e, a) {
   let r = !1, l = !1;
   const s = () => ({
     id: c1,
@@ -26854,11 +26855,11 @@ function S8(e, a) {
     primary: s()
   }), c = () => {
     e.dispatchEvent(
-      new CustomEvent(x8, { detail: { actions: u() }, bubbles: !1 })
+      new CustomEvent(w8, { detail: { actions: u() }, bubbles: !1 })
     );
   }, d = () => {
     e.dispatchEvent(
-      new CustomEvent(w8, { detail: { action: s() }, bubbles: !1 })
+      new CustomEvent(S8, { detail: { action: s() }, bubbles: !1 })
     );
   }, p = () => c(), m = (g) => {
     g.detail?.id === c1 && z3();
@@ -26871,18 +26872,18 @@ function S8(e, a) {
     }
   };
 }
-const em = "svi2-pro-app", _8 = "ext-event", f1 = "svi2-pro-stylesheet", d1 = ["accent", "density", "card"];
-function E8(e) {
+const em = "svi2-pro-app", E8 = "ext-event", f1 = "svi2-pro-stylesheet", d1 = ["accent", "density", "card"];
+function N8(e) {
   if (!(typeof document > "u" || !document.body))
     return document.body.dataset[e];
 }
-function N8() {
+function C8() {
   if (typeof document > "u" || document.getElementById(f1)) return;
   const e = new URL("./svi2-pro.css", import.meta.url).href, a = document.createElement("link");
   a.id = f1, a.rel = "stylesheet", a.href = e, document.head.appendChild(a);
 }
-N8();
-class C8 extends HTMLElement {
+C8();
+class R8 extends HTMLElement {
   root = null;
   ctx = null;
   observer = null;
@@ -26905,7 +26906,7 @@ class C8 extends HTMLElement {
   }
   refreshActionBridge() {
     const a = this.getAttribute("deployment-id");
-    a && a !== this.actionBridgeDeploymentId ? (this.actionBridge?.dispose(), this.actionBridge = S8(this), this.actionBridgeDeploymentId = a) : !a && this.actionBridge && (this.actionBridge.dispose(), this.actionBridge = null, this.actionBridgeDeploymentId = null);
+    a && a !== this.actionBridgeDeploymentId ? (this.actionBridge?.dispose(), this.actionBridge = _8(this), this.actionBridgeDeploymentId = a) : !a && this.actionBridge && (this.actionBridge.dispose(), this.actionBridge = null, this.actionBridgeDeploymentId = null);
   }
   installNavigateListener() {
     if (this.navigateListener) return;
@@ -26917,7 +26918,7 @@ class C8 extends HTMLElement {
   }
   syncTweaksFromBody() {
     for (const a of d1) {
-      const r = E8(a);
+      const r = N8(a);
       r === void 0 ? delete this.dataset[a] : this.dataset[a] !== r && (this.dataset[a] = r);
     }
   }
@@ -26937,7 +26938,7 @@ class C8 extends HTMLElement {
     if (!this.root || !this.isConnected) return;
     const a = this.resolveInitialEntry();
     if (this.router && this.paintedEntry === a) return;
-    const r = rN(v8(), { initialEntries: [a] });
+    const r = rN(b8(), { initialEntries: [a] });
     this.router = r, this.paintedEntry = a, this.root.render(
       /* @__PURE__ */ b.jsx(_.StrictMode, { children: /* @__PURE__ */ b.jsx(oN, { router: r }) })
     );
@@ -26950,7 +26951,7 @@ class C8 extends HTMLElement {
   }
   emitHostEvent(a, r) {
     this.dispatchEvent(
-      new CustomEvent(_8, {
+      new CustomEvent(E8, {
         detail: { topic: a, payload: r },
         bubbles: !0,
         composed: !0
@@ -26958,11 +26959,11 @@ class C8 extends HTMLElement {
     );
   }
 }
-function R8() {
-  typeof customElements > "u" || customElements.get(em) || customElements.define(em, C8);
+function T8() {
+  typeof customElements > "u" || customElements.get(em) || customElements.define(em, R8);
 }
-typeof customElements < "u" && !customElements.get(em) && R8();
+typeof customElements < "u" && !customElements.get(em) && T8();
 export {
-  R8 as register
+  T8 as register
 };
 //# sourceMappingURL=svi2-pro.js.map
