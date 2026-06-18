@@ -5,6 +5,8 @@ export interface ErrorEnvelope {
 }
 
 export type GenerationMode = "image_to_video" | "text_to_video";
+export type SviLoraTier = "high" | "low" | "off";
+export type TorchCompileMode = "default" | "reduce-overhead" | "max-autotune";
 export type InterpolateMethod = "rife" | "rife_torch" | "rife_ncnn" | "ffmpeg";
 export type StitchMode = "trim" | "crossfade";
 export type UpscaleQuality =
@@ -57,6 +59,8 @@ export interface RenderParams {
   teacache_multiplier?: number;
   solver?: "euler" | "heun";
   use_torch_compile?: boolean;
+  torch_compile_mode?: TorchCompileMode;
+  svi_lora_tier?: SviLoraTier;
   attention?: string;
   seed?: number;
   seed_multiplier?: number;
@@ -124,6 +128,7 @@ export interface ExtensionSettings {
   baseModelFamilyId?: string;
   ditHighPath?: string;
   ditLowPath?: string;
+  sviLoraTier?: SviLoraTier;
 }
 
 export interface InstalledModelArtifact {

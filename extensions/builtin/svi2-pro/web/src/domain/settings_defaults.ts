@@ -14,6 +14,18 @@ export const FP8_COMPUTE_OPTIONS = [
   { value: "fp8", label: "fp8" },
 ] as const;
 
+export const SVI_LORA_TIER_OPTIONS = [
+  { value: "high", label: "High-noise SVI LoRA" },
+  { value: "low", label: "Low-noise SVI LoRA" },
+  { value: "off", label: "No SVI LoRA" },
+] as const;
+
+export const TORCH_COMPILE_MODE_OPTIONS = [
+  { value: "default", label: "Default (inductor)" },
+  { value: "reduce-overhead", label: "Reduce-overhead (CUDA graphs)" },
+  { value: "max-autotune", label: "Max-autotune (slow first build)" },
+] as const;
+
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   modelsDir: "",
   attentionBackend: "flash2",
@@ -25,6 +37,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   baseModelFamilyId: "",
   ditHighPath: "",
   ditLowPath: "",
+  sviLoraTier: "high",
 };
 
 export const BUNDLED_BASE_MODEL_LABEL = "Wan2.2-I2V-A14B fp8 (Kijai, bundled)";

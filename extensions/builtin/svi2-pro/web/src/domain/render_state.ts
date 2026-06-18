@@ -17,6 +17,7 @@ export interface RenderState {
   phase: RenderPhase;
   jobId: string | null;
   stage: string | null;
+  stageDetail: string | null;
   overallFraction: number;
   clipIndex: number;
   numClips: number;
@@ -58,6 +59,7 @@ export function initialRenderState(): RenderState {
     phase: "idle",
     jobId: null,
     stage: null,
+    stageDetail: null,
     overallFraction: 0,
     clipIndex: 0,
     numClips: 0,
@@ -107,6 +109,7 @@ export function reduceRenderFrame(
         ...state,
         overallFraction: clamp(frame.params.fraction),
         stage: frame.params.stage ?? state.stage,
+        stageDetail: frame.params.detail ?? state.stageDetail,
       };
     case "svi2.video.clip.started":
       return {

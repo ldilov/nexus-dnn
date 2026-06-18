@@ -12,7 +12,7 @@ export const RENDER_METHODS = {
 
 export interface ProgressFrame {
   method: "svi2.video.progress";
-  params: { fraction: number; stage?: string };
+  params: { fraction: number; stage?: string; detail?: string };
 }
 
 export interface ClipStartedFrame {

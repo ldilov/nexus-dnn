@@ -16,6 +16,9 @@ export function defaultParamsFromSettings(settings: ExtensionSettings): RenderPa
     ref_image_path: "",
     prompts: [""],
     last_image_path: null,
+    upscale_factor: 0,
+    upscale_model: "auto",
+    upscale_quality: "HIGH",
     blocks_to_swap: settings.blocksToSwap,
     attention: settings.attentionBackend,
     interpolate_method: settings.interpolateMethod,
@@ -24,6 +27,8 @@ export function defaultParamsFromSettings(settings: ExtensionSettings): RenderPa
     output_path: settings.outputDir ? `${settings.outputDir}/svi2_out.mp4` : undefined,
     dit_high_path: settings.ditHighPath || undefined,
     dit_low_path: settings.ditLowPath || undefined,
+    svi_lora_tier: settings.sviLoraTier ?? "high",
+    torch_compile_mode: "default",
   } as RenderParams;
 }
 

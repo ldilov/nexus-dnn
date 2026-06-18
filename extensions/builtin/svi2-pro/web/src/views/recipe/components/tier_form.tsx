@@ -9,6 +9,7 @@ import { useRenderRequest } from "../../../store/render_request_store";
 import type { RenderParams } from "../../../services/types";
 import { AttentionSelect } from "./attention_select";
 import { TorchCompileToggle } from "./torch_compile_toggle";
+import { UpscaleControls } from "./upscale_controls";
 import * as styles from "./tier_form.css";
 
 interface TierFormProps {
@@ -60,6 +61,7 @@ export function TierForm({ issues }: TierFormProps): ReactElement {
                   />
                 );
               })}
+              {tier.id === "core" && <UpscaleControls />}
             </div>
           </TierFieldGroup>
         );

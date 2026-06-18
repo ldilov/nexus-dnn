@@ -156,7 +156,7 @@ const STAGE_LABELS: Record<string, string> = {
   loading_text_encoder: "Loading text encoder (UMT5-xxl)…",
   encoding_prompts: "Encoding prompts…",
   encoding_anchors: "Encoding anchor keyframes…",
-  loading_experts: "Loading Wan2.2 diffusion experts (~28 GiB)…",
+  loading_experts: "Loading diffusion experts…",
   denoising: "Denoising",
   stitching: "Assembling frames (overlap trim)…",
   upscaling: "RTX upscaling (Maxine VSR)…",
@@ -165,11 +165,52 @@ const STAGE_LABELS: Record<string, string> = {
 
 function stageLabel(state: RenderState): string {
   if (!state.stage) return "Starting worker…";
+  if (state.stage === "loading_experts" && state.stageDetail) return state.stageDetail;
   const base = STAGE_LABELS[state.stage] ?? state.stage;
   if (state.stage === "denoising" && state.numClips > 0) {
     return `${base} — clip ${state.clipIndex + 1} of ${state.numClips}`;
   }
   return base;
+}
+
+function baseModelReadout(report: NonNullable<RenderState["renderReport"]>): string | null {
+  const high = report.base_model_high;
+  const low = report.base_model_low;
+  if (typeof high !== "string") return null;
+  const custom = report.base_model_override === true;
+  const tag = custom ? "custom" : "bundled";
+  const highName = basenameOf(high);
+  if (typeof low === "string" && low !== high) {
+    return `${highName} + ${basenameOf(low)} (${tag})`;
+  }
+  const tier = report.svi_lora_tier;
+  const sviNote = custom && typeof tier === "string" ? `, SVI ${tier}` : "";
+  return `${highName} (${tag}${sviNote})`;
+}
+
+function compileReadout(report: NonNullable<RenderState["renderReport"]>): string | null {
+  const c = report.torch_compile;
+  if (!c || typeof c !== "object") return null;
+  const a = c as Record<string, unknown>;
+  if (a.requested !== true) return null;
+  if (a.blocked_by_block_swap === true) return "skipped — block-swap on";
+  if (typeof a.error === "string") return "failed → eager";
+  if (a.engaged !== true) return "not engaged";
+  const mode = typeof a.mode === "string" ? a.mode : "default";
+  const dyn = (a.dynamo as Record<string, unknown> | undefined) ?? {};
+  const graphs = typeof dyn.unique_graphs === "number" ? dyn.unique_graphs : null;
+  const calls = typeof dyn.calls_captured === "number" ? dyn.calls_captured : null;
+  const breaks = typeof dyn.graph_breaks === "number" ? dyn.graph_breaks : null;
+  if (graphs !== null && calls !== null) {
+    const brk = breaks ? `, ${breaks} breaks` : "";
+    return `${mode} — ${graphs} graphs / ${calls} calls${brk}`;
+  }
+  return `${mode} — engaged`;
+}
+
+function basenameOf(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
 }
 
 function Stat({ label, value }: { label: string; value: string }): ReactElement {
@@ -185,6 +226,10 @@ function RenderReportView({ state }: { state: RenderState }): ReactElement | nul
   const report = state.renderReport;
   if (!report) return null;
   const entries: Array<[string, string]> = [];
+  const baseModel = baseModelReadout(report);
+  if (baseModel) entries.push(["Base model", baseModel]);
+  const compile = compileReadout(report);
+  if (compile) entries.push(["torch.compile", compile]);
   if (typeof report.frames === "number") entries.push(["Frames", String(report.frames)]);
   if (typeof report.duration_seconds === "number")
     entries.push(["Duration", `${report.duration_seconds.toFixed(1)}s`]);

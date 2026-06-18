@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -261,6 +262,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "adain_factor": float(params.get("adain_factor", 0.0)),
         "distill_lora_high": params.get("distill_lora_high"),
         "distill_lora_low": params.get("distill_lora_low"),
+        "svi_lora_tier": _validate_svi_lora_tier(params),
+        "torch_compile_mode": _validate_torch_compile_mode(params),
         "user_loras": _normalize_user_loras(params.get("user_loras")),
         "dit_high_path": params.get("dit_high_path"),
         "dit_low_path": params.get("dit_low_path"),
@@ -315,6 +318,29 @@ def _validate_upscale_model(params: dict[str, Any]) -> str:
             f"upscale_model must be one of {UPSCALE_MODELS}; got {model}"
         )
     return model
+
+
+# Which SVI2 LoRA wraps a SINGLE-FILE base model (the shared high+low expert).
+# The bundled high/low pair always gets its matching per-tier LoRA; this only
+# routes the lone-checkpoint case (e.g. a "low" community finetune). "off" skips.
+SVI_LORA_TIERS = ("high", "low", "off")
+DEFAULT_SVI_LORA_TIER = "high"
+
+
+def _validate_svi_lora_tier(params: dict[str, Any]) -> str:
+    tier = str(params.get("svi_lora_tier", DEFAULT_SVI_LORA_TIER)).lower()
+    return tier if tier in SVI_LORA_TIERS else DEFAULT_SVI_LORA_TIER
+
+
+# torch.compile inductor mode. "reduce-overhead" enables CUDA graphs (lowest
+# per-step overhead, more VRAM); "max-autotune" tunes kernels (slow first build).
+TORCH_COMPILE_MODES = ("default", "reduce-overhead", "max-autotune")
+DEFAULT_TORCH_COMPILE_MODE = "default"
+
+
+def _validate_torch_compile_mode(params: dict[str, Any]) -> str:
+    mode = str(params.get("torch_compile_mode", DEFAULT_TORCH_COMPILE_MODE)).lower()
+    return mode if mode in TORCH_COMPILE_MODES else DEFAULT_TORCH_COMPILE_MODE
 
 
 def _run_upscale_chain(
@@ -568,6 +594,50 @@ def _models_dir_from(params: dict[str, Any]) -> Path:
     return Path(params["models_dir"]) if params.get("models_dir") else Path("models")
 
 
+_BUNDLED_BASE_MODEL_LABEL = "Wan2.2-I2V-A14B fp8 (Kijai, bundled)"
+
+
+def base_model_label(params: dict[str, Any], models_dir: Path) -> tuple[str, bool]:
+    """Human label for the diffusion base model + whether it's a user override.
+
+    Returns the bundled-checkpoint label when no ``dit_*_path`` override is set,
+    otherwise the override filename(s). A single-file override (same path for
+    both tiers) reads as one checkpoint; distinct paths read as a high/low pair.
+    """
+    override = bool(params.get("dit_high_path") or params.get("dit_low_path"))
+    if not override:
+        return _BUNDLED_BASE_MODEL_LABEL, False
+    dit_high, dit_low = resolve_dit_paths(params, models_dir)
+    if dit_high == dit_low:
+        return f"{dit_high.name} (custom, single-file)", True
+    return f"{dit_high.name} + {dit_low.name} (custom)", True
+
+
+def _dynamo_counter_snapshot() -> dict[str, int]:
+    """Read TorchDynamo's cumulative compile counters (best-effort).
+
+    ``calls_captured``/``unique_graphs`` > 0 across a render proves compilation
+    actually ran; a high ``graph_breaks`` means it kept falling back to eager.
+    Returns an empty dict when torch/dynamo is unavailable."""
+    try:
+        from torch._dynamo.utils import counters
+
+        stats = counters.get("stats", {})
+        return {
+            "calls_captured": int(stats.get("calls_captured", 0)),
+            "unique_graphs": int(stats.get("unique_graphs", 0)),
+            "graph_breaks": int(sum(counters.get("graph_break", {}).values())),
+        }
+    except Exception:
+        return {}
+
+
+def _dynamo_counter_diff(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
+    if not after:
+        return {}
+    return {k: int(after.get(k, 0) - before.get(k, 0)) for k in after}
+
+
 def _require(path: Path, what: str, models_dir: Path) -> Path:
     if not path.exists():
         raise FileNotFoundError(
@@ -594,6 +664,14 @@ def _build_vae(params: dict[str, Any]) -> Any:
     return VaeWrapper(_require(_resolve(models_dir, "vae"), "Wan2.1 VAE", models_dir))
 
 
+def _svi_lora_for_tier(models_dir: Path, tier: str) -> Optional[Path]:
+    """Resolve the SVI2 LoRA file for a single-file expert. ``off`` → no LoRA."""
+    if tier == "off":
+        return None
+    artifact = "svi-lora-low" if tier == "low" else "svi-lora-high"
+    return _resolve(models_dir, artifact)
+
+
 def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     models_dir = _models_dir_from(params)
 
@@ -611,10 +689,11 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     # Single-file Wan model: the picker sends the same path for both tiers. Load
     # the checkpoint once and reuse one expert for high+low denoising — loading a
     # 14B file twice would double VRAM and OOM. Distinct distill LoRAs force two.
+    # The operator picks which SVI2 LoRA wraps it (high/low/off) since a lone
+    # checkpoint has no tier of its own.
     if dit_high == dit_low and distill_high == distill_low:
-        shared = _build_expert(
-            dit_high, _resolve(models_dir, "svi-lora-high"), distill_high, user_loras
-        )
+        svi_lora = _svi_lora_for_tier(models_dir, _validate_svi_lora_tier(params))
+        shared = _build_expert(dit_high, svi_lora, distill_high, user_loras)
         return shared, shared
 
     high = _build_expert(
@@ -1133,7 +1212,16 @@ def _run_render(
         log_vram("stage2 done: anchors encoded")
 
         # Stage 3 — the two fp8 experts, the only stage that needs big RAM.
-        _notify(worker, "svi2.video.progress", {"fraction": 0.06, "stage": "loading_experts"})
+        _bm_label, _bm_override = base_model_label(params, _models_dir_from(params))
+        _notify(
+            worker,
+            "svi2.video.progress",
+            {
+                "fraction": 0.06,
+                "stage": "loading_experts",
+                "detail": f"Loading base model: {_bm_label}…",
+            },
+        )
         if prebuilt is not None:
             high, low = prebuilt.high, prebuilt.low
             audit = prebuilt.audit
@@ -1156,14 +1244,48 @@ def _run_render(
         models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
         models.low.dit.configure_tea_cache(teacache_on, teacache_thresh)
 
+        compile_audit: dict[str, object] = {
+            "requested": bool(params["use_torch_compile"]),
+            "blocked_by_block_swap": bool(params["use_torch_compile"] and blocks_to_swap != 0),
+            "engaged": False,
+            "mode": None,
+            "experts_compiled": 0,
+        }
+        compile_stats_before: dict[str, int] = {}
         if params["use_torch_compile"] and blocks_to_swap == 0:
+            compile_mode = params["torch_compile_mode"]
+            try:
+                import torch._dynamo as _torch_dynamo
+
+                # Backend/compile failure degrades to eager per-graph instead of
+                # raising, so a bad install never crashes a long render.
+                _torch_dynamo.config.suppress_errors = True
+            except Exception:
+                pass
             try:
                 shared_expert = models.high.dit is models.low.dit
-                models.high.dit = torch.compile(models.high.dit)
-                if not shared_expert:
-                    models.low.dit = torch.compile(models.low.dit)
-                log_vram("torch.compile enabled (blocks_to_swap=0)")
+                compile_kwargs = {} if compile_mode == "default" else {"mode": compile_mode}
+                compiled_high = torch.compile(models.high.dit, **compile_kwargs)
+                models.high.dit = compiled_high
+                # Keep a shared single-file expert ONE object so the `is`
+                # identity (and the resident no-swap path in _move_to) still holds
+                # after compile — else the shared weights get offloaded to CPU.
+                if shared_expert:
+                    models.low.dit = compiled_high
+                    experts_compiled = 1
+                else:
+                    models.low.dit = torch.compile(models.low.dit, **compile_kwargs)
+                    experts_compiled = 2
+                compile_audit.update(
+                    engaged=True, mode=compile_mode, experts_compiled=experts_compiled
+                )
+                compile_stats_before = _dynamo_counter_snapshot()
+                log_vram(
+                    f"torch.compile enabled mode={compile_mode} "
+                    f"experts={experts_compiled} (blocks_to_swap=0)"
+                )
             except Exception as exc:
+                compile_audit["error"] = str(exc)
                 print(f"[compile] torch.compile failed, using eager: {exc}", file=sys.stderr, flush=True)
 
         mst, msh, msw = params["motion_scale_t"], params["motion_scale_h"], params["motion_scale_w"]
@@ -1355,6 +1477,11 @@ def _run_render(
                 torch.cuda.empty_cache()
             log_vram("experts released post-render")
 
+        if compile_audit.get("engaged"):
+            compile_audit["dynamo"] = _dynamo_counter_diff(
+                compile_stats_before, _dynamo_counter_snapshot()
+            )
+
         # Optional super-resolution BEFORE interpolation — fewer frames to
         # upscale at native fps, and RIFE then interpolates at the final size.
         # Engine per upscale_model: Maxine (Win/RTX) → DRCT-L → Real-ESRGAN.
@@ -1416,6 +1543,8 @@ def _run_render(
             "base_model_high": str(_rpt_dit_high),
             "base_model_low": str(_rpt_dit_low),
             "base_model_override": bool(params.get("dit_high_path") or params.get("dit_low_path")),
+            "svi_lora_tier": params["svi_lora_tier"],
+            "torch_compile": compile_audit,
             "solver": solver,
             "teacache_disabled_by_solver": teacache_disabled_by_solver,
             "pixel_re_encode": pixel_re_encode,

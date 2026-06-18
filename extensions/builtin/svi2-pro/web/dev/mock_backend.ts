@@ -1,6 +1,7 @@
 import presetCatalog from "../../data/render_presets.json";
 import type {
   ExtensionSettings,
+  InstalledModelsIndex,
   PresetCatalog,
   RenderJob,
   RenderParams,
@@ -8,7 +9,59 @@ import type {
 import { DEFAULT_SETTINGS } from "../src/domain/settings_defaults";
 
 const PREFIX = "/api/v1/extensions/nexus.video.svi2-pro";
+const MODEL_STORE_INSTALLED = "/api/v1/model-store/installed";
 const SAMPLE_OUTPUT = "/workspace/svi2-pro/sample/long_take_demo.mp4";
+
+const installedModels: InstalledModelsIndex = {
+  family_ids: ["civitai:smoothmix", "hf:wan2.2-i2v-a14b", "hf:my-loras"],
+  installed: [
+    {
+      artifact_id: "a-smoothmix-low",
+      family_id: "civitai:smoothmix",
+      variant_id: null,
+      format: "safetensors",
+      role: "base",
+      filename: "smoothmixI2VLowV2.yqcO.safetensors",
+      size_bytes: 16_000_000_000,
+      source_repo: "civitai",
+      install_path: "D:/svi2_models/smoothmixI2VLowV2.yqcO.safetensors",
+    },
+    {
+      artifact_id: "a-wan-high",
+      family_id: "hf:wan2.2-i2v-a14b",
+      variant_id: null,
+      format: "safetensors",
+      role: "base",
+      filename: "Wan2_2-I2V-A14B-HIGH_fp8.safetensors",
+      size_bytes: 14_000_000_000,
+      source_repo: "hf",
+      install_path: "D:/svi2_models/HIGH.safetensors",
+    },
+    {
+      artifact_id: "a-wan-low",
+      family_id: "hf:wan2.2-i2v-a14b",
+      variant_id: null,
+      format: "safetensors",
+      role: "base",
+      filename: "Wan2_2-I2V-A14B-LOW_fp8.safetensors",
+      size_bytes: 14_000_000_000,
+      source_repo: "hf",
+      install_path: "D:/svi2_models/LOW.safetensors",
+    },
+    {
+      artifact_id: "a-detail-lora",
+      family_id: "hf:my-loras",
+      variant_id: null,
+      format: "safetensors",
+      role: "lora",
+      filename: "detail_enhancer_v1.safetensors",
+      size_bytes: 220_000_000,
+      source_repo: "hf",
+      install_path: "D:/svi2_models/detail_enhancer_v1.safetensors",
+    },
+  ],
+  truncated: false,
+};
 
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS, modelsDir: "D:/svi2_models", outputDir: "D:/svi2_out" };
 let uploadCounter = 0;
@@ -130,6 +183,9 @@ function json(body: unknown, status = 200): Response {
 }
 
 async function handle(url: string, init: RequestInit | undefined): Promise<Response | null> {
+  if (url.split("?")[0]?.endsWith(MODEL_STORE_INSTALLED)) {
+    return json(installedModels);
+  }
   if (!url.startsWith(PREFIX)) return null;
   const path = url.slice(PREFIX.length).split("?")[0] ?? "";
   const method = (init?.method ?? "GET").toUpperCase();
