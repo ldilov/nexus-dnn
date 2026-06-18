@@ -409,6 +409,7 @@ impl NexusApp {
             backend_adapter_registry,
             spawner,
             huggingface: Some(huggingface),
+            civitai: None,
             capability_registry,
             download_job_store: Some(download_job_store),
             download_orchestrator: Some(download_orchestrator),

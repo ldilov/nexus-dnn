@@ -63,6 +63,7 @@ async fn build_state() -> (AppState, Arc<BroadcastEventBus>, tempfile::TempDir) 
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
+        civitai: None,
         capability_registry: None,
         download_job_store: None,
         download_orchestrator: None,

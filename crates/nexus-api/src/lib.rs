@@ -56,6 +56,7 @@ pub struct AppState {
     pub backend_adapter_registry: Option<Arc<BackendAdapterRegistry>>,
     pub spawner: Option<Arc<Spawner>>,
     pub huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+    pub civitai: Option<Arc<dyn nexus_civitai::CivitaiCapability>>,
     pub capability_registry: Option<Arc<CapabilityRegistry>>,
     pub download_job_store: Option<Arc<JobStore>>,
     pub download_orchestrator: Option<Arc<DownloadOrchestrator>>,

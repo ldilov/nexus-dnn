@@ -476,6 +476,10 @@ pub fn build(state: AppState) -> Router {
             post(handlers::model_store::downloads::resume_download),
         )
         .route(
+            "/model-store/resolve-url",
+            post(handlers::model_store::resolve::resolve_url),
+        )
+        .route(
             "/model-store/settings/hf-token",
             get(handlers::model_store::settings::get_hf_token_status)
                 .put(handlers::model_store::settings::set_hf_token)

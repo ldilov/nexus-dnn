@@ -100,6 +100,7 @@ async fn build_fixture() -> Fixture {
         backend_adapter_registry: None,
         spawner: Some(spawner),
         huggingface: None,
+        civitai: None,
         capability_registry: None,
         download_job_store: None,
         download_orchestrator: None,
