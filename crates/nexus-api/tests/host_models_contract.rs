@@ -67,6 +67,7 @@ async fn build_state() -> AppState {
         download_job_store: None,
         download_orchestrator: None,
         hf_token_store: None,
+        civitai_token_store: None,
         backend_event_publisher: backend_event_bus.clone(),
         backend_event_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),

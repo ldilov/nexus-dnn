@@ -62,6 +62,7 @@ pub struct AppState {
     pub download_orchestrator: Option<Arc<DownloadOrchestrator>>,
     pub install_map: Option<InstallMap>,
     pub hf_token_store: Option<TokenStore>,
+    pub civitai_token_store: Option<TokenStore>,
     pub backend_event_publisher: SharedPublisher,
     pub backend_event_bus: Arc<BackendEventBus>,
     pub draft_materialize_map: Arc<DraftMaterializeMap>,
