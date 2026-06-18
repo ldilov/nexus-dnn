@@ -3477,6 +3477,7 @@ dependencies = [
  "nexus-artifact",
  "nexus-backend-runtimes",
  "nexus-builtins",
+ "nexus-civitai",
  "nexus-events",
  "nexus-extension",
  "nexus-extension-deps",
