@@ -808,6 +808,10 @@ def _eval_dit(
             tea_slot=tea_slot_base, tea_first=tea_first, tea_last=tea_last,
         )
         if cfg_scale != 1.0:
+            # torch.compile reduce-overhead (CUDA graphs) reuses the DiT's static
+            # output buffer on the next call, so clone v_posi before the v_nega
+            # pass overwrites it — otherwise the CFG combine reads stale memory.
+            v_posi = v_posi.clone()
             v_nega = dit(
                 x=latent, timestep=ts, context=context_nega, clip_feature=None, y=y,
                 tea_slot=tea_slot_base + 1, tea_first=tea_first, tea_last=tea_last,
