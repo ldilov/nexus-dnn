@@ -570,9 +570,10 @@ fn token_for_url(
         .map(|i| &host_with_port[i + 1..])
         .unwrap_or(&host_with_port);
     let host = host.find(':').map(|i| &host[..i]).unwrap_or(host);
-    if host.ends_with("huggingface.co") || host.ends_with("hf.co") {
+    let matches = |suffix: &str| host == suffix || host.ends_with(&format!(".{suffix}"));
+    if matches("huggingface.co") || matches("hf.co") {
         hf_token.clone()
-    } else if host.ends_with("civitai.com") {
+    } else if matches("civitai.com") {
         civitai_token.clone()
     } else {
         None
@@ -997,5 +998,17 @@ mod token_select_tests {
         let hf = Some("HF".to_string());
         let cv = Some("CV".to_string());
         assert_eq!(token_for_url("https://example.com/m.gguf", &hf, &cv), None);
+    }
+
+    #[test]
+    fn lookalike_hosts_get_no_token() {
+        let hf = Some("HF".to_string());
+        let cv = Some("CV".to_string());
+        assert_eq!(token_for_url("https://nothuggingface.co/m.gguf", &hf, &cv), None);
+        assert_eq!(
+            token_for_url("https://huggingface.co.evil.test/m.gguf", &hf, &cv),
+            None
+        );
+        assert_eq!(token_for_url("https://evilcivitai.com/m", &hf, &cv), None);
     }
 }
