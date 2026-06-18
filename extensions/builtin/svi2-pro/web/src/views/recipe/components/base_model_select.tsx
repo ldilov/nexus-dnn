@@ -1,7 +1,7 @@
 import { type ReactElement, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { BUNDLED_BASE_MODEL_LABEL } from "../../../domain/settings_defaults";
-import { filterWan22Candidates } from "../../../domain/wan_models";
+import { listBaseModelCandidates } from "../../../domain/wan_models";
 import { listInstalledModels } from "../../../services/model_store_client";
 import { saveSettings } from "../../../services/settings_client";
 import { useRenderRequest } from "../../../store/render_request_store";
@@ -14,20 +14,22 @@ export function BaseModelSelect(): ReactElement {
   const installedQuery = useSWR("svi2/installed-models", listInstalledModels);
 
   const candidates = useMemo(
-    () => filterWan22Candidates(installedQuery.data?.installed ?? []),
+    () => listBaseModelCandidates(installedQuery.data?.installed ?? []),
     [installedQuery.data],
   );
 
   const selected =
-    candidates.find((c) => c.ditHighPath === params.dit_high_path)?.familyId ?? BUNDLED_VALUE;
+    candidates.find(
+      (c) => c.ditHighPath === params.dit_high_path && c.ditLowPath === params.dit_low_path,
+    )?.id ?? BUNDLED_VALUE;
 
   const handleChange = useCallback(
     (value: string) => {
-      const candidate = candidates.find((c) => c.familyId === value);
+      const candidate = candidates.find((c) => c.id === value);
       const next = candidate
         ? {
             ...settings,
-            baseModelFamilyId: candidate.familyId,
+            baseModelFamilyId: candidate.id,
             ditHighPath: candidate.ditHighPath,
             ditLowPath: candidate.ditLowPath,
           }
@@ -45,7 +47,7 @@ export function BaseModelSelect(): ReactElement {
   return (
     <div className={styles.group}>
       <label className={styles.groupLabel} htmlFor="svi2-base-model">
-        Base model (Wan2.2-I2V)
+        Base model
       </label>
       <div className={styles.selectWrap}>
         <select
@@ -56,8 +58,8 @@ export function BaseModelSelect(): ReactElement {
         >
           <option value={BUNDLED_VALUE}>{BUNDLED_BASE_MODEL_LABEL}</option>
           {candidates.map((candidate) => (
-            <option key={candidate.familyId} value={candidate.familyId}>
-              {candidate.label}
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.singleFile ? `${candidate.label} (single file)` : candidate.label}
             </option>
           ))}
         </select>
@@ -81,7 +83,7 @@ export function BaseModelSelect(): ReactElement {
       )}
       {!failed && candidates.length === 0 && (
         <span className={styles.hint}>
-          No substitutable Wan2.2-I2V high/low pairs installed via Model Foundry yet.
+          No models installed via Model Foundry yet — using the bundled base model.
         </span>
       )}
     </div>
