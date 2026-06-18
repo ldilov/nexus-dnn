@@ -50,14 +50,12 @@ export function deriveLengthPlan(durationSeconds: number, defaults: SegmentDefau
   const { fps, overlap } = defaults;
   if (fps <= 0) return { numClips: 1, framesPerClip: NATIVE_FRAMES_PER_CLIP };
   const targetFrames = Math.round(durationSeconds * fps);
-  // A chained render floors at one native clip, so sub-clip lengths can't come
-  // from clip count — shrink frames for a single short clip instead.
-  if (targetFrames <= NATIVE_FRAMES_PER_CLIP) {
+  if (targetFrames <= FLF2V_MAX_FRAMES) {
     return { numClips: 1, framesPerClip: snapToValidFrames(targetFrames) };
   }
   const stride = NATIVE_FRAMES_PER_CLIP - overlap;
   if (stride <= 0) return { numClips: 1, framesPerClip: NATIVE_FRAMES_PER_CLIP };
-  const numClips = Math.max(1, Math.ceil((targetFrames - NATIVE_FRAMES_PER_CLIP) / stride) + 1);
+  const numClips = Math.max(2, Math.round((targetFrames - NATIVE_FRAMES_PER_CLIP) / stride) + 1);
   return { numClips, framesPerClip: NATIVE_FRAMES_PER_CLIP };
 }
 

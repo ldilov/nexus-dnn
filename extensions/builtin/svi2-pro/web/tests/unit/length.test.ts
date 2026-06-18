@@ -58,6 +58,44 @@ describe("deriveLengthPlan", () => {
     expect(deriveLengthPlan(5.3, CANONICAL)).toEqual({ numClips: 1, framesPerClip: 85 });
   });
 
+  test("6s produces a single clip at 97 frames (exact short length)", () => {
+    const plan = deriveLengthPlan(6, CANONICAL);
+    expect(plan).toEqual({ numClips: 1, framesPerClip: 97 });
+    expect(actualSeconds(1, { ...CANONICAL, framesPerClip: 97 })).toBeCloseTo(6.0625, 3);
+  });
+
+  test("8s produces a single clip at 129 frames (FLF2V_MAX_FRAMES ceiling)", () => {
+    const plan = deriveLengthPlan(8, CANONICAL);
+    expect(plan).toEqual({ numClips: 1, framesPerClip: 129 });
+    expect(actualSeconds(1, { ...CANONICAL, framesPerClip: 129 })).toBeCloseTo(8.0625, 3);
+  });
+
+  test("just above 8.06s crosses into chained (>129 frames) with numClips>=2 at 85f", () => {
+    const borderSingle = deriveLengthPlan(8.06, CANONICAL);
+    expect(borderSingle.numClips).toBe(1);
+    expect(borderSingle.framesPerClip).toBe(FLF2V_MAX_FRAMES);
+
+    const borderChained = deriveLengthPlan(8.13, CANONICAL);
+    expect(borderChained.numClips).toBeGreaterThanOrEqual(2);
+    expect(borderChained.framesPerClip).toBe(85);
+  });
+
+  test("chained plans always use exactly 85 framesPerClip (quality invariant)", () => {
+    for (const seconds of [10, 15, 20, 30, 60, 120]) {
+      const plan = deriveLengthPlan(seconds, CANONICAL);
+      expect(plan.numClips).toBeGreaterThanOrEqual(2);
+      expect(plan.framesPerClip).toBe(85);
+    }
+  });
+
+  test("15s chained plan lands at 2+ clips closest to 15.3s step", () => {
+    const plan = deriveLengthPlan(15, CANONICAL);
+    expect(plan.framesPerClip).toBe(85);
+    expect(plan.numClips).toBeGreaterThanOrEqual(2);
+    const realized = actualSeconds(plan.numClips, CANONICAL);
+    expect(realized).toBeGreaterThan(0);
+  });
+
   test("durations past one clip add clips at full frames, matching deriveNumClips", () => {
     for (const seconds of [10, 30, 60, 120]) {
       const plan = deriveLengthPlan(seconds, CANONICAL);

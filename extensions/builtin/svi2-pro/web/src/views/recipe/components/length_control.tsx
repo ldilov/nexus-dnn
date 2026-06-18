@@ -86,6 +86,9 @@ function ChainedLengthControl(): ReactElement {
                 applySeconds(value);
               }
             }}
+            onBlur={() => {
+              setSeconds(Number(actualSeconds(params.num_clips ?? 1, segmentDefaults(params)).toFixed(1)));
+            }}
           />
           <span className={styles.secondsSuffix}>sec</span>
         </div>
