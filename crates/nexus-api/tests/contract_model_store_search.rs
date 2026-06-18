@@ -245,7 +245,7 @@ async fn t_s8_compat_derives_from_intersection() {
 async fn t_s9_installed_filter_joins_against_install_map() {
     use nexus_models_store::downloads::InstalledArtifactRecord;
     use nexus_models_store::ids::{ArtifactId, FamilyId, JobId, VariantId};
-    use nexus_models_store::types::Format;
+    use nexus_models_store::types::{DependencyRole, Format};
 
     let harness = harness_with(StubHf::with_results(vec![
         gguf_result("ts9org/alpha", &[("Q4_K_M", 4_000_000_000)]),
@@ -260,6 +260,7 @@ async fn t_s9_installed_filter_joins_against_install_map() {
             family_id: FamilyId::from("huggingface:ts9org/alpha".to_string()),
             variant_id: Some(VariantId::from("Q4_K_M".to_string())),
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "ts9org/alpha".into(),
             source_revision: Some("main".into()),

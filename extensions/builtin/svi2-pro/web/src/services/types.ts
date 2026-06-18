@@ -64,6 +64,7 @@ export interface RenderParams {
   models_dir?: string;
   dit_high_path?: string | null;
   dit_low_path?: string | null;
+  user_loras?: Array<{ path: string; weight: number }>;
 }
 
 export interface PresetSummary {
@@ -129,6 +130,7 @@ export interface InstalledModelArtifact {
   family_id: string;
   variant_id: string | null;
   format: string;
+  role: string;
   filename: string;
   size_bytes: number | null;
   source_repo: string;

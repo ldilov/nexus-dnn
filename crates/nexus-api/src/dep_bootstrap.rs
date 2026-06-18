@@ -2006,6 +2006,7 @@ mod tests {
             include_str!("../../../migrations/015_installed_artifact_extraction_metadata.sql"),
             include_str!("../../../migrations/021_installed_artifact_moe_metadata.sql"),
             include_str!("../../../migrations/022_model_store_artifact_refs.sql"),
+            include_str!("../../../migrations/023_installed_artifact_role.sql"),
         ] {
             for stmt in migration.split(';') {
                 let trimmed = stmt.trim();
@@ -2325,13 +2326,14 @@ mod tests {
         contents: &[u8],
     ) {
         use nexus_models_store::downloads::InstalledArtifactRecord;
-        use nexus_models_store::types::Format;
+        use nexus_models_store::types::{DependencyRole, Format};
         install_map
             .record(InstalledArtifactRecord {
                 artifact_id: ArtifactId::from(format!("{family_id}#{filename}")),
                 family_id: FamilyId::from(family_id),
                 variant_id: None,
                 format: Format::Safetensors,
+                role: DependencyRole::Primary,
                 source_provider: "huggingface".into(),
                 source_repo: "Owner/Repo".into(),
                 source_revision: Some("main".into()),

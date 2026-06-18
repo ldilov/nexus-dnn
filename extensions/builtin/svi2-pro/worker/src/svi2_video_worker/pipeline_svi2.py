@@ -77,6 +77,30 @@ _TEACACHE_MULTIPLIER_THRESH: dict[float, float] = {
 }
 
 
+def _clamp01_2(v: object) -> float:
+    try:
+        f = float(v) if v is not None else 1.0
+    except (TypeError, ValueError):
+        f = 1.0
+    return max(0.0, min(2.0, f))
+
+
+def _normalize_user_loras(raw: object) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        if not isinstance(path, str) or not path.strip():
+            continue
+        out.append({"path": path, "weight": _clamp01_2(item.get("weight"))})
+        if len(out) >= 4:
+            break
+    return out
+
+
 def _teacache_multiplier(params: dict[str, Any]) -> float:
     raw_mult = params.get("teacache_multiplier")
     return 1.0 if raw_mult is None else float(raw_mult)
@@ -237,6 +261,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "adain_factor": float(params.get("adain_factor", 0.0)),
         "distill_lora_high": params.get("distill_lora_high"),
         "distill_lora_low": params.get("distill_lora_low"),
+        "user_loras": _normalize_user_loras(params.get("user_loras")),
         "dit_high_path": params.get("dit_high_path"),
         "dit_low_path": params.get("dit_low_path"),
         "fixed_sigmas": params.get("fixed_sigmas"),
@@ -471,7 +496,10 @@ def _wan_model_builder(config: dict[str, Any]) -> Any:
 
 
 def _build_expert(
-    dit_path: Path, lora_path: Optional[Path], distill_lora_path: Optional[Path] = None
+    dit_path: Path,
+    lora_path: Optional[Path],
+    distill_lora_path: Optional[Path] = None,
+    user_loras: Optional[list[dict]] = None,
 ) -> ExpertModel:
     from .wan22 import WanModel
     from .fp8_loader import load_expert_meta
@@ -490,12 +518,28 @@ def _build_expert(
         pairs = load_lora_pairs(lora_path)
         lora_audit = wrap_module_with_lora(dit, pairs)
 
-    # Stack a distill (Lightning/lightx2v) LoRA on top — re-wrapping nests
-    # AdditiveLoraLinear so deltas sum: W·x + svi_delta + distill_delta.
     if distill_lora_path is not None and distill_lora_path.exists():
         dpairs = load_lora_pairs(distill_lora_path)
         distill_audit = wrap_module_with_lora(dit, dpairs)
         lora_audit = {"svi": lora_audit, "distill": distill_audit}
+
+    user_audits: list[dict] = []
+    for entry in (user_loras or []):
+        p = Path(entry["path"])
+        if not p.exists():
+            user_audits.append({"path": entry["path"], "missing": True})
+            continue
+        upairs = load_lora_pairs(p)
+        w = entry.get("weight", 1.0)
+        if w != 1.0:
+            upairs = {k: (a, b, s * w) for k, (a, b, s) in upairs.items()}
+        entry_audit = wrap_module_with_lora(dit, upairs)
+        user_audits.append({**entry_audit, "path": entry["path"]})
+    if user_audits:
+        if isinstance(lora_audit, dict) and lora_audit:
+            lora_audit = {**lora_audit, "user": user_audits}
+        else:
+            lora_audit = {"user": user_audits}
 
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
@@ -559,15 +603,23 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     _require(dit_high, "Wan2.2 high-noise DiT (fp8)", models_dir)
     _require(dit_low, "Wan2.2 low-noise DiT (fp8)", models_dir)
 
+    user_loras = params.get("user_loras") or []
+
     # Single-file Wan model: the picker sends the same path for both tiers. Load
     # the checkpoint once and reuse one expert for high+low denoising — loading a
     # 14B file twice would double VRAM and OOM. Distinct distill LoRAs force two.
     if dit_high == dit_low and distill_high == distill_low:
-        shared = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
+        shared = _build_expert(
+            dit_high, _resolve(models_dir, "svi-lora-high"), distill_high, user_loras
+        )
         return shared, shared
 
-    high = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
-    low = _build_expert(dit_low, _resolve(models_dir, "svi-lora-low"), distill_low)
+    high = _build_expert(
+        dit_high, _resolve(models_dir, "svi-lora-high"), distill_high, user_loras
+    )
+    low = _build_expert(
+        dit_low, _resolve(models_dir, "svi-lora-low"), distill_low, user_loras
+    )
     return high, low
 
 
@@ -1298,9 +1350,31 @@ def _run_render(
             "pixel_re_encode": pixel_re_encode,
             "resolution_warning": resolution_warning,
         }
+        warnings: list[str] = []
+        user_loras_param = params.get("user_loras") or []
+        if user_loras_param:
+            seen_warnings: set[str] = set()
+            for expert_label, lora_key in (("high", "high_lora"), ("low", "low_lora")):
+                expert_user = (audit.get(lora_key) or {}).get("user") if isinstance(audit.get(lora_key), dict) else None
+                entries: list[dict] = expert_user if isinstance(expert_user, list) else []
+                for entry in entries:
+                    path = entry.get("path", "")
+                    if entry.get("missing"):
+                        msg = f"user LoRA not found ({expert_label}): {path}"
+                    elif entry.get("wrapped_count", 0) == 0:
+                        msg = f"user LoRA applied 0 modules ({expert_label}): {path} — likely not Wan2.2-compatible"
+                    else:
+                        continue
+                    if msg not in seen_warnings:
+                        seen_warnings.add(msg)
+                        warnings.append(msg)
+
         write_render_report(output_path.parent, report_data)
 
-        return {"status": "ok", "output_path": str(video_path)}
+        result: dict[str, Any] = {"status": "ok", "output_path": str(video_path)}
+        if warnings:
+            result["warnings"] = warnings
+        return result
     finally:
         set_attention_override(None)
 

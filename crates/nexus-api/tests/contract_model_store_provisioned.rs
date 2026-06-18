@@ -5,7 +5,7 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use nexus_models_store::downloads::InstalledArtifactRecord;
 use nexus_models_store::ids::{ArtifactId, FamilyId, JobId, VariantId};
-use nexus_models_store::types::Format;
+use nexus_models_store::types::{DependencyRole, Format};
 use tower::ServiceExt;
 
 use crate::common::{StubHf, harness_with};
@@ -32,6 +32,7 @@ fn sample_record(artifact_id: &str, family_id: &str, variant_id: &str) -> Instal
         family_id: FamilyId::from(family_id.to_string()),
         variant_id: Some(VariantId::from(variant_id.to_string())),
         format: Format::Gguf,
+        role: DependencyRole::Primary,
         source_provider: "huggingface".into(),
         source_repo: format!("owner/{family_id}"),
         source_revision: Some("main".into()),

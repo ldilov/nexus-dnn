@@ -33,6 +33,7 @@ fn modality_from_str(s: &str) -> Modality {
         "upscaler" => Modality::Upscaler,
         "embedding" => Modality::Embedding,
         "llm" => Modality::Llm,
+        "lora" => Modality::Lora,
         _ => Modality::Other,
     }
 }
@@ -119,6 +120,11 @@ pub fn build_direct_family(url: &str, meta: &DirectHeadMeta) -> ModelFamily {
 pub fn build_civitai_family(r: &CivitaiResolved) -> Option<ModelFamily> {
     let file = r.primary_file()?;
     let modality = modality_from_str(r.modality());
+    let role = if r.modality() == "lora" {
+        DependencyRole::Lora
+    } else {
+        DependencyRole::Primary
+    };
     let format = classify_format(&file.name);
 
     let family_id_str = format!("civitai:{}/{}", r.model_id, r.version_id);
@@ -129,7 +135,7 @@ pub fn build_civitai_family(r: &CivitaiResolved) -> Option<ModelFamily> {
 
     let artifact = Artifact {
         artifact_id: artifact_id.clone(),
-        role: DependencyRole::Primary,
+        role,
         format,
         precision: Precision::Unknown,
         precision_source: PrecisionSource::Unknown,
@@ -339,6 +345,20 @@ mod tests {
             SourceProvider::Civitai
         );
         assert_eq!(family.artifacts[0].sha256, Some("ab".to_owned()));
+    }
+
+    #[test]
+    fn civitai_lora_family_tags_role_and_modality() {
+        let json = r#"{ "id": 7, "modelId": 3, "name": "n",
+            "model": { "type": "LORA" },
+            "files": [ { "name": "x.safetensors", "sizeKB": 1.0,
+                "hashes": { "SHA256": "AB" },
+                "downloadUrl": "https://civitai.com/api/download/models/7",
+                "primary": true } ] }"#;
+        let resolved = nexus_civitai::parse_version_response(json).unwrap();
+        let f = build_civitai_family(&resolved).unwrap();
+        assert_eq!(f.repository.modality, nexus_models_store::types::Modality::Lora);
+        assert_eq!(f.artifacts[0].role, nexus_models_store::types::DependencyRole::Lora);
     }
 
     #[test]

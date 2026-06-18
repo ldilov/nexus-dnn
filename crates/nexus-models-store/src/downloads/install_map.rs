@@ -19,7 +19,7 @@ use sqlx::{Row, SqlitePool};
 
 use crate::downloads::store::JobStoreResult;
 use crate::ids::{ArtifactId, FamilyId, JobId, VariantId};
-use crate::types::Format;
+use crate::types::{DependencyRole, Format};
 
 /// The input shape the orchestrator hands to [`InstallMap::record`].
 #[derive(Debug, Clone)]
@@ -28,6 +28,7 @@ pub struct InstalledArtifactRecord {
     pub family_id: FamilyId,
     pub variant_id: Option<VariantId>,
     pub format: Format,
+    pub role: DependencyRole,
     pub source_provider: String,
     pub source_repo: String,
     pub source_revision: Option<String>,
@@ -45,6 +46,7 @@ pub struct InstalledArtifactRow {
     pub family_id: String,
     pub variant_id: Option<String>,
     pub format: String,
+    pub role: String,
     pub source_provider: String,
     pub source_repo: String,
     pub source_revision: Option<String>,
@@ -93,6 +95,19 @@ fn format_as_str(f: Format) -> &'static str {
     }
 }
 
+fn role_as_str(role: DependencyRole) -> &'static str {
+    match role {
+        DependencyRole::Primary => "primary",
+        DependencyRole::Vae => "vae",
+        DependencyRole::TextEncoder => "text_encoder",
+        DependencyRole::Tokenizer => "tokenizer",
+        DependencyRole::Controlnet => "controlnet",
+        DependencyRole::Lora => "lora",
+        DependencyRole::Scheduler => "scheduler",
+        _ => "other",
+    }
+}
+
 /// Thin wrapper around the SQLite pool. Shares the pool handle with
 /// [`crate::downloads::store::JobStore`]; constructed from the same
 /// [`Arc<SqlitePool>`] at host-assembly time.
@@ -114,14 +129,15 @@ impl InstallMap {
         let now = Utc::now().to_rfc3339();
         sqlx::query(
             "INSERT INTO model_store_installed_artifacts (
-                artifact_id, family_id, variant_id, format,
+                artifact_id, family_id, variant_id, format, role,
                 source_provider, source_repo, source_revision,
                 filename, job_id, sha256, size_bytes, installed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(artifact_id) DO UPDATE SET
                 family_id = excluded.family_id,
                 variant_id = excluded.variant_id,
                 format = excluded.format,
+                role = excluded.role,
                 source_provider = excluded.source_provider,
                 source_repo = excluded.source_repo,
                 source_revision = excluded.source_revision,
@@ -135,6 +151,7 @@ impl InstallMap {
         .bind(record.family_id.as_str())
         .bind(record.variant_id.as_ref().map(|v| v.as_str()))
         .bind(format_as_str(record.format))
+        .bind(role_as_str(record.role))
         .bind(&record.source_provider)
         .bind(&record.source_repo)
         .bind(record.source_revision.as_deref())
@@ -155,7 +172,7 @@ impl InstallMap {
         artifact_id: &ArtifactId,
     ) -> JobStoreResult<Option<InstalledArtifactRow>> {
         let row = sqlx::query(
-            "SELECT artifact_id, family_id, variant_id, format,
+            "SELECT artifact_id, family_id, variant_id, format, role,
                     source_provider, source_repo, source_revision,
                     filename, job_id, sha256, size_bytes, installed_at,
                     layer_count, max_context, architecture, hidden_size,
@@ -172,7 +189,7 @@ impl InstallMap {
 
     pub async fn list_all(&self, limit: usize) -> JobStoreResult<Vec<InstalledArtifactRow>> {
         let rows = sqlx::query(
-            "SELECT artifact_id, family_id, variant_id, format,
+            "SELECT artifact_id, family_id, variant_id, format, role,
                     source_provider, source_repo, source_revision,
                     filename, job_id, sha256, size_bytes, installed_at,
                     layer_count, max_context, architecture, hidden_size,
@@ -227,7 +244,7 @@ impl InstallMap {
         family_id: &FamilyId,
     ) -> JobStoreResult<Vec<InstalledArtifactRow>> {
         let rows = sqlx::query(
-            "SELECT artifact_id, family_id, variant_id, format,
+            "SELECT artifact_id, family_id, variant_id, format, role,
                     source_provider, source_repo, source_revision,
                     filename, job_id, sha256, size_bytes, installed_at,
                     layer_count, max_context, architecture, hidden_size,
@@ -616,6 +633,7 @@ impl InstallMap {
                 family_id: FamilyId::from(manifest.family_id.clone()),
                 variant_id: None,
                 format: crate::normalize::classify::classify_format(filename),
+                role: DependencyRole::Other,
                 source_provider: provider_from_family(&manifest.family_id),
                 source_repo: manifest.source_repo.clone(),
                 source_revision: None,
@@ -745,6 +763,9 @@ fn parse_row(r: sqlx::sqlite::SqliteRow) -> InstalledArtifactRow {
         family_id: r.get("family_id"),
         variant_id: r.get("variant_id"),
         format: r.get("format"),
+        role: r
+            .try_get::<String, _>("role")
+            .unwrap_or_else(|_| "other".to_string()),
         source_provider: r.get("source_provider"),
         source_repo: r.get("source_repo"),
         source_revision: r.get("source_revision"),
@@ -817,6 +838,15 @@ mod tests {
             }
             sqlx::query(trimmed).execute(&pool).await.unwrap();
         }
+        for stmt in
+            include_str!("../../../../migrations/023_installed_artifact_role.sql").split(';')
+        {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let _ = sqlx::query(trimmed).execute(&pool).await;
+        }
         Arc::new(pool)
     }
 
@@ -826,6 +856,7 @@ mod tests {
             family_id: FamilyId::from(family),
             variant_id: variant.map(VariantId::from),
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "acme/model".into(),
             source_revision: Some("main".into()),
@@ -859,6 +890,26 @@ mod tests {
         assert!(row.hidden_size.is_none());
         assert!(row.extraction_status.is_none());
         assert!(row.extracted_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn role_lora_round_trips_through_record_and_list_all() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let mut rec = sample("hf:a/lora#adapter.safetensors", "hf:a/lora", None);
+        rec.role = DependencyRole::Lora;
+        map.record(rec).await.unwrap();
+
+        let rows = map.list_all(10).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "lora");
+
+        let row = map
+            .find_by_artifact(&ArtifactId::from("hf:a/lora#adapter.safetensors"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.role, "lora");
     }
 
     #[tokio::test]
@@ -1008,6 +1059,7 @@ mod tests {
             family_id: FamilyId::from(family),
             variant_id: None,
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "acme/model".into(),
             source_revision: Some("main".into()),
@@ -1791,6 +1843,7 @@ mod tests {
             family_id: FamilyId::from("hf:a/trunc"),
             variant_id: None,
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "acme/model".into(),
             source_revision: None,
@@ -1867,6 +1920,7 @@ mod tests {
             family_id: FamilyId::from("hf:a/nosize"),
             variant_id: None,
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "acme/model".into(),
             source_revision: None,
@@ -1914,6 +1968,7 @@ mod tests {
             family_id: FamilyId::from("hf:a/trunc3"),
             variant_id: None,
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "acme/model".into(),
             source_revision: None,
@@ -1968,6 +2023,7 @@ mod tests {
             family_id: FamilyId::from("hf:a/trunc2"),
             variant_id: None,
             format: Format::Gguf,
+            role: DependencyRole::Primary,
             source_provider: "huggingface".into(),
             source_repo: "acme/model".into(),
             source_revision: None,
