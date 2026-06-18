@@ -679,6 +679,7 @@ impl DownloadOrchestrator {
             family_id: job.family_id.clone(),
             variant_id,
             format: classify_format(&target.filename),
+            role: target.role,
             source_provider: job.source_provider.clone(),
             source_repo: job.source_repo.clone(),
             source_revision: None,

@@ -371,6 +371,7 @@ export interface InstalledArtifact {
   family_id: string;
   variant_id: string | null;
   format: string;
+  role: string;
   filename: string;
   size_bytes: number | null;
   source_repo: string;

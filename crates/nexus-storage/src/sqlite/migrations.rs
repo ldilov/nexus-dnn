@@ -141,6 +141,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         false,
     )
     .await?;
+    // svi2-pro LoRA T2 — persist artifact role on the install ledger
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/023_installed_artifact_role.sql"),
+        true,
+    )
+    .await?;
     Ok(())
 }
 
