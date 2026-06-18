@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { filterWan22Candidates } from "../../src/domain/wan_models";
+import { listBaseModelCandidates } from "../../src/domain/wan_models";
 import type { InstalledModelArtifact } from "../../src/services/types";
 
 function artifact(overrides: Partial<InstalledModelArtifact>): InstalledModelArtifact {
@@ -16,9 +16,9 @@ function artifact(overrides: Partial<InstalledModelArtifact>): InstalledModelArt
   };
 }
 
-describe("filterWan22Candidates", () => {
-  test("a family with a high/low Wan2.2 i2v pair qualifies", () => {
-    const candidates = filterWan22Candidates([
+describe("listBaseModelCandidates", () => {
+  test("a family with a high/low pair collapses into one two-expert candidate", () => {
+    const candidates = listBaseModelCandidates([
       artifact({ artifact_id: "h" }),
       artifact({
         artifact_id: "l",
@@ -27,53 +27,65 @@ describe("filterWan22Candidates", () => {
       }),
     ]);
     expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.ditHighPath).toBe("/sink/job/wan2.2-i2v-high.safetensors");
-    expect(candidates[0]?.ditLowPath).toBe("/sink/job/wan2.2-i2v-low.safetensors");
-    expect(candidates[0]?.label).toBe("acme/Wan2.2-I2V-A14B-pack");
+    const [pair] = candidates;
+    expect(pair?.singleFile).toBe(false);
+    expect(pair?.id).toBe("pair:huggingface:acme/Wan2.2-I2V-A14B-pack");
+    expect(pair?.ditHighPath).toBe("/sink/job/wan2.2-i2v-high.safetensors");
+    expect(pair?.ditLowPath).toBe("/sink/job/wan2.2-i2v-low.safetensors");
+    expect(pair?.label).toBe("acme/Wan2.2-I2V-A14B-pack");
   });
 
-  test("family id naming variants match (Wan 2.2 / wan_2.2 / Wan2_2)", () => {
-    for (const family of ["hf:x/Wan 2.2-I2V", "hf:x/wan_2.2-i2v", "hf:x/Wan2_2-I2V"]) {
-      const candidates = filterWan22Candidates([
-        artifact({ artifact_id: "h", family_id: family, filename: "HIGH.safetensors" }),
-        artifact({
-          artifact_id: "l",
-          family_id: family,
-          filename: "LOW.safetensors",
-          install_path: "/sink/job/low",
-        }),
-      ]);
-      expect(candidates, family).toHaveLength(1);
-    }
-  });
-
-  test("a family missing the low half does not qualify", () => {
-    const candidates = filterWan22Candidates([artifact({})]);
-    expect(candidates).toHaveLength(0);
-  });
-
-  test("non-wan, non-i2v and pathless artifacts are excluded", () => {
-    const candidates = filterWan22Candidates([
-      artifact({ family_id: "hf:x/SDXL", filename: "high.safetensors", source_repo: "x/SDXL" }),
-      artifact({ family_id: "hf:x/Wan2.2-T2V", filename: "high-t2v.safetensors" }),
-      artifact({ install_path: null }),
-      artifact({ format: "pytorch_bin" }),
-    ]);
-    expect(
-      candidates.filter((c) => c.familyId !== "huggingface:acme/Wan2.2-I2V-A14B-pack"),
-    ).toHaveLength(0);
-  });
-
-  test("gguf pairs qualify", () => {
-    const candidates = filterWan22Candidates([
-      artifact({ artifact_id: "h", format: "gguf", filename: "wan2.2-i2v-HIGH-Q5.gguf" }),
+  test("a lone file becomes a single-file candidate with identical high/low paths", () => {
+    const candidates = listBaseModelCandidates([
       artifact({
-        artifact_id: "l",
-        format: "gguf",
-        filename: "wan2.2-i2v-LOW-Q5.gguf",
-        install_path: "/sink/job/low.gguf",
+        family_id: "direct_url:smooth-mix-wan2.2-14b.safetensors",
+        filename: "smooth-mix-wan2.2-14b.safetensors",
+        install_path: "/sink/job/smooth-mix-wan2.2-14b.safetensors",
       }),
     ]);
     expect(candidates).toHaveLength(1);
+    const [single] = candidates;
+    expect(single?.singleFile).toBe(true);
+    expect(single?.id).toBe("/sink/job/smooth-mix-wan2.2-14b.safetensors");
+    expect(single?.ditHighPath).toBe("/sink/job/smooth-mix-wan2.2-14b.safetensors");
+    expect(single?.ditLowPath).toBe(single?.ditHighPath);
+    expect(single?.label).toBe("smooth-mix-wan2.2-14b.safetensors");
+  });
+
+  test("any safetensors/gguf is listed regardless of name (operator's choice)", () => {
+    const candidates = listBaseModelCandidates([
+      artifact({ family_id: "hf:x/SDXL", filename: "sdxl_base.safetensors", install_path: "/m/sdxl.safetensors" }),
+      artifact({ family_id: "hf:x/some-merge", filename: "merge.gguf", format: "gguf", install_path: "/m/merge.gguf" }),
+    ]);
+    expect(candidates.map((c) => c.label).sort()).toEqual(["merge.gguf", "sdxl_base.safetensors"]);
+    expect(candidates.every((c) => c.singleFile)).toBe(true);
+  });
+
+  test("pathless and unsupported-format artifacts are excluded", () => {
+    const candidates = listBaseModelCandidates([
+      artifact({ install_path: null }),
+      artifact({ format: "pytorch_bin", install_path: "/m/x.bin" }),
+    ]);
+    expect(candidates).toHaveLength(0);
+  });
+
+  test("ids are unique for two single files sharing a family id", () => {
+    const candidates = listBaseModelCandidates([
+      artifact({ family_id: "hf:x/pack", filename: "a.safetensors", install_path: "/m/a.safetensors" }),
+      artifact({ family_id: "hf:x/pack", filename: "b.safetensors", install_path: "/m/b.safetensors" }),
+    ]);
+    expect(candidates).toHaveLength(2);
+    const ids = new Set(candidates.map((c) => c.id));
+    expect(ids.size).toBe(2);
+  });
+
+  test("a paired family with an extra loose file yields the pair plus a single", () => {
+    const candidates = listBaseModelCandidates([
+      artifact({ artifact_id: "h", filename: "wan2.2-i2v-high.safetensors", install_path: "/m/high.safetensors" }),
+      artifact({ artifact_id: "l", filename: "wan2.2-i2v-low.safetensors", install_path: "/m/low.safetensors" }),
+      artifact({ artifact_id: "v", filename: "vae.safetensors", install_path: "/m/vae.safetensors" }),
+    ]);
+    expect(candidates.filter((c) => !c.singleFile)).toHaveLength(1);
+    expect(candidates.filter((c) => c.singleFile).map((c) => c.label)).toEqual(["vae.safetensors"]);
   });
 });

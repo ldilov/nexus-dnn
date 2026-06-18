@@ -559,6 +559,13 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     _require(dit_high, "Wan2.2 high-noise DiT (fp8)", models_dir)
     _require(dit_low, "Wan2.2 low-noise DiT (fp8)", models_dir)
 
+    # Single-file Wan model: the picker sends the same path for both tiers. Load
+    # the checkpoint once and reuse one expert for high+low denoising — loading a
+    # 14B file twice would double VRAM and OOM. Distinct distill LoRAs force two.
+    if dit_high == dit_low and distill_high == distill_low:
+        shared = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
+        return shared, shared
+
     high = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
     low = _build_expert(dit_low, _resolve(models_dir, "svi-lora-low"), distill_low)
     return high, low
@@ -1036,8 +1043,10 @@ def _run_render(
 
         if params["use_torch_compile"] and blocks_to_swap == 0:
             try:
+                shared_expert = models.high.dit is models.low.dit
                 models.high.dit = torch.compile(models.high.dit)
-                models.low.dit = torch.compile(models.low.dit)
+                if not shared_expert:
+                    models.low.dit = torch.compile(models.low.dit)
                 log_vram("torch.compile enabled (blocks_to_swap=0)")
             except Exception as exc:
                 print(f"[compile] torch.compile failed, using eager: {exc}", file=sys.stderr, flush=True)
@@ -1050,6 +1059,15 @@ def _run_render(
 
         def _move_to(tier: str) -> None:
             if device != "cuda":
+                return
+            # Single shared expert (high is low): keep it resident, skip the
+            # CPU round-trip the two-expert swap would otherwise do each switch.
+            if models.high.dit is models.low.dit:
+                models.high.dit.block_swap(
+                    blocks_to_swap,
+                    main_device=torch.device("cuda"),
+                    offload_device=torch.device("cpu"),
+                )
                 return
             keep = models.high.dit if tier == "high" else models.low.dit
             drop = models.low.dit if tier == "high" else models.high.dit

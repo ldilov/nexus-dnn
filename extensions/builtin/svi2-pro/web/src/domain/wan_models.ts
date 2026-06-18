@@ -1,47 +1,76 @@
 import type { InstalledModelArtifact } from "../services/types";
 
-export interface Wan22Candidate {
-  familyId: string;
+export interface BaseModelCandidate {
+  id: string;
   label: string;
   ditHighPath: string;
   ditLowPath: string;
+  singleFile: boolean;
 }
 
-const WAN22_RE = /wan[\s._-]?2[._]2/i;
-const I2V_RE = /i2v/i;
 const HIGH_RE = /high/i;
 const LOW_RE = /low/i;
 const ALLOWED_FORMATS = new Set(["safetensors", "gguf"]);
 
-function isWan22I2vFile(artifact: InstalledModelArtifact): boolean {
-  const haystack = `${artifact.family_id} ${artifact.filename}`;
-  return (
-    ALLOWED_FORMATS.has(artifact.format) &&
-    artifact.install_path !== null &&
-    WAN22_RE.test(haystack) &&
-    I2V_RE.test(haystack)
-  );
+function stripScheme(familyId: string): string {
+  return familyId.replace(/^[a-z0-9_]+:/i, "");
 }
 
-export function filterWan22Candidates(installed: InstalledModelArtifact[]): Wan22Candidate[] {
+function basename(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
+function isUsable(artifact: InstalledModelArtifact): boolean {
+  return ALLOWED_FORMATS.has(artifact.format) && artifact.install_path !== null;
+}
+
+/**
+ * List every installed safetensors/gguf as a selectable base model.
+ *
+ * A Wan2.2 high/low pair within one family collapses into a single two-expert
+ * candidate. Every other usable file (including a lone Wan file or any other
+ * safetensors/gguf) becomes a single-file candidate whose high and low DiT paths
+ * are identical — the worker loads it once and reuses it for both denoise tiers.
+ * The list is intentionally unfiltered by name: it is the operator's choice what
+ * to drive the pipeline with.
+ */
+export function listBaseModelCandidates(
+  installed: InstalledModelArtifact[],
+): BaseModelCandidate[] {
   const byFamily = new Map<string, InstalledModelArtifact[]>();
   for (const artifact of installed) {
-    if (!isWan22I2vFile(artifact)) continue;
+    if (!isUsable(artifact)) continue;
     const group = byFamily.get(artifact.family_id) ?? [];
     byFamily.set(artifact.family_id, [...group, artifact]);
   }
 
-  const candidates: Wan22Candidate[] = [];
+  const candidates: BaseModelCandidate[] = [];
   for (const [familyId, artifacts] of byFamily) {
+    const consumed = new Set<InstalledModelArtifact>();
     const high = artifacts.find((a) => HIGH_RE.test(a.filename));
     const low = artifacts.find((a) => LOW_RE.test(a.filename) && a !== high);
-    if (!high?.install_path || !low?.install_path) continue;
-    candidates.push({
-      familyId,
-      label: familyId.replace(/^huggingface:/, ""),
-      ditHighPath: high.install_path,
-      ditLowPath: low.install_path,
-    });
+    if (high?.install_path && low?.install_path) {
+      candidates.push({
+        id: `pair:${familyId}`,
+        label: stripScheme(familyId),
+        ditHighPath: high.install_path,
+        ditLowPath: low.install_path,
+        singleFile: false,
+      });
+      consumed.add(high);
+      consumed.add(low);
+    }
+    for (const artifact of artifacts) {
+      if (consumed.has(artifact) || artifact.install_path === null) continue;
+      candidates.push({
+        id: artifact.install_path,
+        label: basename(artifact.filename),
+        ditHighPath: artifact.install_path,
+        ditLowPath: artifact.install_path,
+        singleFile: true,
+      });
+    }
   }
   return candidates.sort((a, b) => a.label.localeCompare(b.label));
 }
