@@ -171,6 +171,7 @@ pub async fn harness_with_extra(
         sink_root,
         reqwest::Client::new(),
         tokens.clone(),
+        TokenStore::new(None),
     ));
 
     let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
@@ -313,6 +314,7 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         sink_root,
         reqwest::Client::new(),
         tokens.clone(),
+        TokenStore::new(None),
     ));
 
     let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
