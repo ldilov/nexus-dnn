@@ -57,7 +57,7 @@ export interface RenderParams {
   num_motion_frame?: number;
   blocks_to_swap?: number;
   teacache_multiplier?: number;
-  solver?: "euler" | "heun";
+  solver?: "euler" | "heun" | "euler_ancestral";
   use_torch_compile?: boolean;
   torch_compile_mode?: TorchCompileMode;
   svi_lora_tier?: SviLoraTier;

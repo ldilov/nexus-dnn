@@ -269,7 +269,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "dit_low_path": params.get("dit_low_path"),
         "fixed_sigmas": params.get("fixed_sigmas"),
         "solver": str(params.get("solver", "euler")).lower()
-        if str(params.get("solver", "euler")).lower() in {"euler", "heun"}
+        if str(params.get("solver", "euler")).lower() in {"euler", "heun", "euler_ancestral"}
         else "euler",
         "seed_multiplier": int(params.get("seed_multiplier", 42)),
         "models_dir": params.get("models_dir"),
@@ -888,6 +888,20 @@ def _eval_dit(
     return torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def _ancestral_step_sigmas(
+    sigma_from: float, sigma_to: float, eta: float = 1.0
+) -> tuple[float, float]:
+    """k-diffusion ancestral split (Euler a): descend deterministically to
+    sigma_down, then re-noise by sigma_up so variance returns to sigma_to.
+    Returns (sigma_to, 0.0) on the final step (sigma_to == 0)."""
+    if eta <= 0.0 or sigma_to <= 0.0 or sigma_from <= 0.0:
+        return sigma_to, 0.0
+    inner = (sigma_to**2) * (sigma_from**2 - sigma_to**2) / (sigma_from**2)
+    sigma_up = min(sigma_to, eta * (max(inner, 0.0) ** 0.5))
+    sigma_down = max(sigma_to**2 - sigma_up**2, 0.0) ** 0.5
+    return sigma_down, sigma_up
+
+
 def _denoise_clip(
     models: RenderModels,
     latent: Any,
@@ -967,6 +981,22 @@ def _denoise_clip(
 
             if latent.is_cuda:
                 del v1, v2, v_avg, x_pred
+                torch.cuda.empty_cache()
+        elif solver == "euler_ancestral":
+            # Deterministic descent to sigma_down (velocity = dx/dsigma), then
+            # inject fresh noise scaled by sigma_up.
+            v = _eval_dit(
+                dit, latent, ts, context_posi, context_nega, y,
+                cfg_scale, tea_slot_base=0, tea_first=tea_first, tea_last=tea_last,
+            )
+            sigma_down, sigma_up = _ancestral_step_sigmas(sigma, sigma_next)
+            latent = latent + v * (sigma_down - sigma)
+            if sigma_up > 0.0:
+                latent = latent + torch.randn_like(latent) * sigma_up
+            latent = torch.nan_to_num(latent, nan=0.0, posinf=0.0, neginf=0.0)
+
+            if latent.is_cuda:
+                del v
                 torch.cuda.empty_cache()
         else:
             noise_pred = _eval_dit(

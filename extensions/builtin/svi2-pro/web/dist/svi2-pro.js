@@ -22595,9 +22595,10 @@ const qw = [
     default: "euler",
     options: [
       { value: "euler", label: "Euler (standard)" },
+      { value: "euler_ancestral", label: "Euler ancestral (distill / lightx2v)" },
       { value: "heun", label: "Heun (2nd-order, ~2× slower)" }
     ],
-    help: "Euler = standard flow step (fast). Heun = 2nd-order, ~2× render time, slightly cleaner motion. Heun disables TeaCache."
+    help: "Euler = standard flow step (fast). Euler ancestral = re-noises each step; matches ComfyUI euler_ancestral for distill (lightx2v) models. Heun = 2nd-order, ~2× render time. Heun disables TeaCache."
   },
   {
     key: "seed_multiplier",
