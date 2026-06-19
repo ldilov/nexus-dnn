@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback, useMemo, useState } from "react";
+import { type ReactElement, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { SVI_LORA_TIER_OPTIONS } from "../../../domain/settings_defaults";
 import { listExpertFiles } from "../../../domain/wan_models";
@@ -78,8 +78,10 @@ export function BaseModelSelect(): ReactElement {
 
   const highPath = params.dit_high_path ?? undefined;
   const lowPath = params.dit_low_path ?? undefined;
-  const isSingleFile = typeof highPath === "string" && highPath.length > 0 && highPath === lowPath;
-  const [linked, setLinked] = useState(isSingleFile);
+  // Derived, not state: a stored `linked` flag goes stale when a preset rewrites
+  // the dit paths. "Linked" simply means both experts point at one file.
+  const linked = typeof highPath === "string" && highPath.length > 0 && highPath === lowPath;
+  const isSingleFile = linked;
 
   const failed = installedQuery.error !== undefined;
   const sviTier: SviLoraTier = (settings.sviLoraTier ?? params.svi_lora_tier ?? "high") as SviLoraTier;
@@ -97,10 +99,13 @@ export function BaseModelSelect(): ReactElement {
 
   const handleLinkToggle = useCallback(
     (checked: boolean) => {
-      setLinked(checked);
       if (checked) {
         const one = highPath ?? lowPath ?? files[0]?.value;
-        applyPaths(one, one);
+        if (one) applyPaths(one, one);
+      } else {
+        // Unlink: split the paths (low -> bundled) so the two pickers appear and
+        // the user can choose a distinct low-noise expert.
+        applyPaths(highPath, undefined);
       }
     },
     [highPath, lowPath, files, applyPaths],
