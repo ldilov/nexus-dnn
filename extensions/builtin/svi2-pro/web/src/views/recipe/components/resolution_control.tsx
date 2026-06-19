@@ -1,5 +1,5 @@
 import { type ReactElement, useMemo, useState } from "react";
-import type { Dimensions } from "../../../domain/custom_resolution";
+import { DEFAULT_CUSTOM_RESOLUTION, type Dimensions } from "../../../domain/custom_resolution";
 import {
   CUSTOM_RESOLUTION,
   buildResolutionOptions,
@@ -107,7 +107,10 @@ export function ResolutionControl({ presets }: ResolutionControlProps): ReactEle
           className={[styles.resCard, styles.resCardAdd, customActive ? styles.resCardActive : ""]
             .filter(Boolean)
             .join(" ")}
-          onClick={() => setCustomOpen(true)}
+          onClick={() => {
+            setCustomOpen(true);
+            if (selection !== CUSTOM_RESOLUTION) applyDimensions(DEFAULT_CUSTOM_RESOLUTION);
+          }}
         >
           <span className={styles.resHead}>
             <span className={styles.resValue}>Custom</span>

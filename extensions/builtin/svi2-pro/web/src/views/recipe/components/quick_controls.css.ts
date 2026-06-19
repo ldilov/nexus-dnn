@@ -213,8 +213,6 @@ export const resBadgeWarn = style([
 ]);
 
 export const resCardAdd = style({
-  alignItems: "flex-start",
-  justifyContent: "center",
   gap: "4px",
 });
 

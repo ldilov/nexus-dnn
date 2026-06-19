@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   ASPECT_PRESETS,
+  DEFAULT_CUSTOM_RESOLUTION,
   MAX_DIM,
   MIN_DIM,
   NATIVE_BUDGET,
@@ -143,5 +144,18 @@ describe("describeResolution", () => {
 
   test("a 720p canvas reads well above the 480p budget", () => {
     expect(describeResolution({ width: 1280, height: 720 }).budgetPct).toBeGreaterThan(200);
+  });
+});
+
+describe("DEFAULT_CUSTOM_RESOLUTION", () => {
+  test("is a Wan2.2-aligned 16:9 canvas at native height", () => {
+    expect(DEFAULT_CUSTOM_RESOLUTION).toEqual({ width: 848, height: 480 });
+    expect(DEFAULT_CUSTOM_RESOLUTION.width % WAN_ALIGN).toBe(0);
+    expect(DEFAULT_CUSTOM_RESOLUTION.height % WAN_ALIGN).toBe(0);
+    expect(matchAspectPreset(DEFAULT_CUSTOM_RESOLUTION)).toBe("16:9");
+  });
+
+  test("sits within a few percent of the native 480p budget", () => {
+    expect(describeResolution(DEFAULT_CUSTOM_RESOLUTION).budgetPct).toBe(102);
   });
 });

@@ -21,6 +21,10 @@ export interface Dimensions {
   height: number;
 }
 
+// Seeded when the user opens the custom form from a preset: a Wan2.2-aligned
+// 16:9 canvas one block above native (832×480), so Custom starts on-aspect.
+export const DEFAULT_CUSTOM_RESOLUTION: Dimensions = { width: 848, height: 480 };
+
 export interface AspectPreset {
   id: string;
   label: string;
