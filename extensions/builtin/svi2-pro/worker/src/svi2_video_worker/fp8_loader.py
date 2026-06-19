@@ -285,22 +285,57 @@ def _freqs_head_dim(dit: nn.Module) -> int:
     return dit.blocks[0].self_attn.head_dim
 
 
+def _summarize_state(state: dict[str, torch.Tensor]) -> dict[str, object]:
+    """Count tensors by dtype and detect which weight-scale suffix (if any) the
+    checkpoint uses — the signal for whether it is an fp8-scaled checkpoint, a
+    raw bf16/fp16 merge, or an fp8 format whose scale convention we don't handle."""
+    dtype_counts: dict[str, int] = {}
+    for value in state.values():
+        name = str(value.dtype).replace("torch.", "")
+        dtype_counts[name] = dtype_counts.get(name, 0) + 1
+    scale_suffixes = sorted(
+        {sfx for sfx in WEIGHT_SCALE_SUFFIXES if any(k.endswith(sfx) for k in state)}
+    )
+    return {"dtype_counts": dtype_counts, "scale_suffixes": scale_suffixes}
+
+
 def load_expert_meta(
     config: dict,
     dit_path: str | Path,
     build_model: Callable[[dict], nn.Module],
 ) -> tuple[nn.Module, dict[str, object]]:
+    import sys
+
     with torch.device("meta"):
         dit = build_model(config)
 
     state = load_fp8_state_dict(dit_path)
     audit = audit_key_overlap(state, dit)
+    audit.update(_summarize_state(state))
 
     linears = build_fp8_linears(state)
+    audit["fp8_linears_built"] = len(linears)
     apply_fp8_linears_to_module(dit, linears)
 
     remainder = build_remainder_bf16(state)
+    audit["bf16_remainder_loaded"] = len(remainder)
     dit.load_state_dict(remainder, strict=False, assign=True)
+
+    overlap = audit.get("overlap_pct", 0.0)
+    unmatched_src = audit.get("unmatched_src", []) or []
+    unmatched_target = audit.get("unmatched_target", []) or []
+    print(
+        f"[svi2-load] {Path(dit_path).name} dtypes={audit['dtype_counts']} "
+        f"scale_suffixes={audit['scale_suffixes']} fp8_linears={len(linears)} "
+        f"bf16_remainder={len(remainder)}\n"
+        f"[svi2-load] key_overlap={overlap:.1f}% matched={audit.get('matched_count')}"
+        f"/{audit.get('target_count')} unmatched_src={len(unmatched_src)} "
+        f"unmatched_target={len(unmatched_target)}"
+        + (f"\n[svi2-load] WARN unmatched_target sample={unmatched_target[:8]}" if unmatched_target else "")
+        + (f"\n[svi2-load] WARN unmatched_src sample={unmatched_src[:8]}" if unmatched_src else ""),
+        file=sys.stderr,
+        flush=True,
+    )
 
     _materialize_freqs(dit)
     _assert_no_meta(dit)
