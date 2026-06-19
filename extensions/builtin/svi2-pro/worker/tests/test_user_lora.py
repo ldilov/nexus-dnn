@@ -22,13 +22,51 @@ def test_user_loras_normalized_clamped_capped():
         "/m/c.safetensors",
         "/m/d.safetensors",
     ]
-    assert out[0]["weight"] == 2.0
+    assert out[0]["weight"] == 4.0
     assert out[1]["weight"] == 0.0
     assert out[2]["weight"] == 1.0
 
 
 def test_user_loras_defaults_empty():
     assert validate_render_params({"ref_image_path": "x.png", "prompts": ["a"]})["user_loras"] == []
+
+
+def test_user_loras_per_expert_weights():
+    from svi2_video_worker.pipeline_svi2 import _tier_loras, _user_loras_weights_differ
+
+    p = validate_render_params({
+        "ref_image_path": "x.png",
+        "prompts": ["a"],
+        "user_loras": [
+            {"path": "/m/lightx2v.safetensors", "weight_high": 3.0, "weight_low": 1.5},
+            {"path": "/m/legacy.safetensors", "weight": 0.8},
+            {"path": "/m/highonly.safetensors", "weight_high": 2.0, "weight_low": 0.0},
+        ],
+    })
+    loras = p["user_loras"]
+    assert loras[0] == {"path": "/m/lightx2v.safetensors", "weight": 1.0, "weight_high": 3.0, "weight_low": 1.5}
+    assert loras[1] == {"path": "/m/legacy.safetensors", "weight": 0.8, "weight_high": 0.8, "weight_low": 0.8}
+
+    assert _user_loras_weights_differ(loras) is True
+    high = _tier_loras(loras, "high")
+    low = _tier_loras(loras, "low")
+    assert [e["path"] for e in high] == [
+        "/m/lightx2v.safetensors", "/m/legacy.safetensors", "/m/highonly.safetensors",
+    ]
+    assert [e["weight"] for e in high] == [3.0, 0.8, 2.0]
+    assert [e["path"] for e in low] == ["/m/lightx2v.safetensors", "/m/legacy.safetensors"]
+    assert [e["weight"] for e in low] == [1.5, 0.8]
+
+
+def test_user_loras_legacy_weight_does_not_differ():
+    from svi2_video_worker.pipeline_svi2 import _user_loras_weights_differ
+
+    p = validate_render_params({
+        "ref_image_path": "x.png",
+        "prompts": ["a"],
+        "user_loras": [{"path": "/m/a.safetensors", "weight": 1.0}],
+    })
+    assert _user_loras_weights_differ(p["user_loras"]) is False
 
 
 def test_user_loras_non_list_treated_as_empty():

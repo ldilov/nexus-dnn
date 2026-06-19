@@ -35,6 +35,24 @@ function isUsable(artifact: InstalledModelArtifact): boolean {
  * The list is intentionally unfiltered by name: it is the operator's choice what
  * to drive the pipeline with.
  */
+export interface ExpertFileOption {
+  value: string;
+  label: string;
+}
+
+/** Flat list of every installed usable file, for the independent High/Low
+ * expert pickers. Each option's value is its install path; the bundled default
+ * is offered separately by the picker (it resolves per-tier, not as a file). */
+export function listExpertFiles(installed: InstalledModelArtifact[]): ExpertFileOption[] {
+  return installed
+    .filter((a) => isUsable(a) && a.install_path)
+    .map((a) => ({
+      value: a.install_path as string,
+      label: `${basename(a.filename)}${a.family_id ? ` (${stripScheme(a.family_id)})` : ""}`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export function listBaseModelCandidates(
   installed: InstalledModelArtifact[],
 ): BaseModelCandidate[] {

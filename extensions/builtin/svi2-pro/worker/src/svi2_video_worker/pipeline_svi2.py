@@ -78,12 +78,28 @@ _TEACACHE_MULTIPLIER_THRESH: dict[float, float] = {
 }
 
 
-def _clamp01_2(v: object) -> float:
+MAX_LORA_WEIGHT = 4.0
+
+
+def _clamp_lora_weight(v: object) -> float:
     try:
         f = float(v) if v is not None else 1.0
     except (TypeError, ValueError):
         f = 1.0
-    return max(0.0, min(2.0, f))
+    return max(0.0, min(MAX_LORA_WEIGHT, f))
+
+
+def _clamp_lora_weight_or(v: object, fallback: float) -> float:
+    """Clamp to [0, MAX_LORA_WEIGHT]; None/invalid falls back so an explicit 0
+    survives as a real per-tier weight while a missing field inherits the base.
+    Distill LoRAs (lightx2v 3.0 high / 1.5 low) need the >2.0 headroom."""
+    if v is None:
+        return fallback
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return fallback
+    return max(0.0, min(MAX_LORA_WEIGHT, f))
 
 
 def _normalize_user_loras(raw: object) -> list[dict]:
@@ -96,7 +112,15 @@ def _normalize_user_loras(raw: object) -> list[dict]:
         path = item.get("path")
         if not isinstance(path, str) or not path.strip():
             continue
-        out.append({"path": path, "weight": _clamp01_2(item.get("weight"))})
+        base = _clamp_lora_weight(item.get("weight"))
+        out.append(
+            {
+                "path": path,
+                "weight": base,
+                "weight_high": _clamp_lora_weight_or(item.get("weight_high"), base),
+                "weight_low": _clamp_lora_weight_or(item.get("weight_low"), base),
+            }
+        )
         if len(out) >= 4:
             break
     return out
@@ -656,7 +680,11 @@ def _log_render_inputs(raw: dict[str, Any], validated: dict[str, Any]) -> None:
     setting reach the backend?"."""
     override = bool(raw.get("dit_high_path") or raw.get("dit_low_path"))
     loras = [
-        {"file": Path(str(e.get("path", ""))).name, "weight": e.get("weight")}
+        {
+            "file": Path(str(e.get("path", ""))).name,
+            "high": e.get("weight_high", e.get("weight")),
+            "low": e.get("weight_low", e.get("weight")),
+        }
         for e in (validated.get("user_loras") or [])
     ]
     sent = sorted(k for k in _LOGGED_INPUT_KEYS if k in raw)
@@ -738,6 +766,27 @@ def _svi_lora_for_tier(models_dir: Path, tier: str) -> Optional[Path]:
     return _resolve(models_dir, artifact)
 
 
+def _tier_loras(user_loras: list[dict], tier: str) -> list[dict]:
+    """Resolve the per-expert user-LoRA list: pick this tier's weight and drop
+    LoRAs disabled for the tier (weight 0). _build_expert stays tier-agnostic."""
+    key = "weight_high" if tier == "high" else "weight_low"
+    out: list[dict] = []
+    for entry in user_loras:
+        weight = entry.get(key, entry.get("weight", 1.0))
+        if weight <= 0.0:
+            continue
+        out.append({"path": entry["path"], "weight": weight})
+    return out
+
+
+def _user_loras_weights_differ(user_loras: list[dict]) -> bool:
+    for entry in user_loras:
+        base = entry.get("weight", 1.0)
+        if entry.get("weight_high", base) != entry.get("weight_low", base):
+            return True
+    return False
+
+
 def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     models_dir = _models_dir_from(params)
 
@@ -751,22 +800,27 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     _require(dit_low, "Wan2.2 low-noise DiT (fp8)", models_dir)
 
     user_loras = params.get("user_loras") or []
+    high_loras = _tier_loras(user_loras, "high")
+    low_loras = _tier_loras(user_loras, "low")
 
-    # Single-file Wan model: the picker sends the same path for both tiers. Load
-    # the checkpoint once and reuse one expert for high+low denoising — loading a
-    # 14B file twice would double VRAM and OOM. Distinct distill LoRAs force two.
-    # The operator picks which SVI2 LoRA wraps it (high/low/off) since a lone
-    # checkpoint has no tier of its own.
-    if dit_high == dit_low and distill_high == distill_low:
+    # Single-file model: one SVI2 LoRA (operator's tier) wraps BOTH experts —
+    # never fall through to the official high/low SVI split for a lone checkpoint.
+    if dit_high == dit_low:
         svi_lora = _svi_lora_for_tier(models_dir, _validate_svi_lora_tier(params))
-        shared = _build_expert(dit_high, svi_lora, distill_high, user_loras)
-        return shared, shared
+        # Share one 14B expert only when distill + per-tier weights all match;
+        # differing per-tier state forces a second load (2× VRAM).
+        if distill_high == distill_low and not _user_loras_weights_differ(user_loras):
+            shared = _build_expert(dit_high, svi_lora, distill_high, high_loras)
+            return shared, shared
+        high = _build_expert(dit_high, svi_lora, distill_high, high_loras)
+        low = _build_expert(dit_low, svi_lora, distill_low, low_loras)
+        return high, low
 
     high = _build_expert(
-        dit_high, _resolve(models_dir, "svi-lora-high"), distill_high, user_loras
+        dit_high, _resolve(models_dir, "svi-lora-high"), distill_high, high_loras
     )
     low = _build_expert(
-        dit_low, _resolve(models_dir, "svi-lora-low"), distill_low, user_loras
+        dit_low, _resolve(models_dir, "svi-lora-low"), distill_low, low_loras
     )
     return high, low
 

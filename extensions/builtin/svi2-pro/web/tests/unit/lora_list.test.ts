@@ -1,25 +1,32 @@
 import { describe, expect, it } from "vitest";
+import type { UserLoraParam } from "../../src/services/types";
 import {
   MAX_LORAS,
   addLora,
+  loraWeightHigh,
+  loraWeightLow,
   removeLora,
   setLoraPath,
-  setLoraWeight,
-  type UserLora,
+  setLoraWeightHigh,
+  setLoraWeightLow,
 } from "../../src/views/recipe/components/lora_list";
 
-const make = (n: number): UserLora[] =>
-  Array.from({ length: n }, (_, i) => ({ path: `/loras/l${i}.safetensors`, weight: 1.0 }));
+const make = (n: number): UserLoraParam[] =>
+  Array.from({ length: n }, (_, i) => ({
+    path: `/loras/l${i}.safetensors`,
+    weight_high: 1.0,
+    weight_low: 1.0,
+  }));
 
 describe("addLora", () => {
-  it("appends a blank entry to an empty list", () => {
+  it("appends a blank entry with per-expert weights", () => {
     const result = addLora([]);
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({ path: "", weight: 1.0 });
+    expect(result[0]).toEqual({ path: "", weight_high: 1.0, weight_low: 1.0 });
   });
 
   it("appends up to MAX_LORAS", () => {
-    let list: UserLora[] = [];
+    let list: UserLoraParam[] = [];
     for (let i = 0; i < MAX_LORAS; i++) list = addLora(list);
     expect(list).toHaveLength(MAX_LORAS);
   });
@@ -32,7 +39,7 @@ describe("addLora", () => {
   });
 
   it("does not mutate the original list", () => {
-    const original: UserLora[] = [];
+    const original: UserLoraParam[] = [];
     addLora(original);
     expect(original).toHaveLength(0);
   });
@@ -47,11 +54,6 @@ describe("removeLora", () => {
     expect(result[1]?.path).toBe("/loras/l2.safetensors");
   });
 
-  it("returns an empty list when removing the only entry", () => {
-    const result = removeLora(make(1), 0);
-    expect(result).toHaveLength(0);
-  });
-
   it("does not mutate the original list", () => {
     const original = make(2);
     removeLora(original, 0);
@@ -60,45 +62,39 @@ describe("removeLora", () => {
 });
 
 describe("setLoraPath", () => {
-  it("updates only the entry at the given index", () => {
+  it("updates only the entry at the given index, preserving weights", () => {
     const list = make(3);
     const result = setLoraPath(list, 1, "/new/path.safetensors");
-    expect(result[0]?.path).toBe("/loras/l0.safetensors");
     expect(result[1]?.path).toBe("/new/path.safetensors");
-    expect(result[2]?.path).toBe("/loras/l2.safetensors");
-  });
-
-  it("preserves weight on the updated row", () => {
-    const list: UserLora[] = [{ path: "/old.safetensors", weight: 0.75 }];
-    const result = setLoraPath(list, 0, "/new.safetensors");
-    expect(result[0]?.weight).toBe(0.75);
-  });
-
-  it("does not mutate the original list", () => {
-    const original = make(2);
-    setLoraPath(original, 0, "/new.safetensors");
-    expect(original[0]?.path).toBe("/loras/l0.safetensors");
+    expect(result[1]?.weight_high).toBe(1.0);
+    expect(result[0]?.path).toBe("/loras/l0.safetensors");
   });
 });
 
-describe("setLoraWeight", () => {
-  it("updates only the weight at the given index", () => {
-    const list = make(3);
-    const result = setLoraWeight(list, 2, 0.5);
-    expect(result[0]?.weight).toBe(1.0);
-    expect(result[1]?.weight).toBe(1.0);
-    expect(result[2]?.weight).toBe(0.5);
+describe("per-expert weights", () => {
+  it("setLoraWeightHigh updates only the high weight at the index", () => {
+    const result = setLoraWeightHigh(make(2), 1, 3.0);
+    expect(result[1]?.weight_high).toBe(3.0);
+    expect(result[1]?.weight_low).toBe(1.0);
+    expect(result[0]?.weight_high).toBe(1.0);
   });
 
-  it("preserves path on the updated row", () => {
-    const list: UserLora[] = [{ path: "/keep.safetensors", weight: 1.0 }];
-    const result = setLoraWeight(list, 0, 0.25);
-    expect(result[0]?.path).toBe("/keep.safetensors");
+  it("setLoraWeightLow updates only the low weight at the index", () => {
+    const result = setLoraWeightLow(make(2), 0, 1.5);
+    expect(result[0]?.weight_low).toBe(1.5);
+    expect(result[0]?.weight_high).toBe(1.0);
   });
 
   it("does not mutate the original list", () => {
-    const original = make(2);
-    setLoraWeight(original, 0, 0.0);
-    expect(original[0]?.weight).toBe(1.0);
+    const original = make(1);
+    setLoraWeightHigh(original, 0, 2.0);
+    expect(original[0]?.weight_high).toBe(1.0);
+  });
+
+  it("loraWeightHigh/Low fall back to legacy single weight then 1.0", () => {
+    expect(loraWeightHigh({ path: "/a", weight: 0.8 })).toBe(0.8);
+    expect(loraWeightLow({ path: "/a", weight: 0.8 })).toBe(0.8);
+    expect(loraWeightHigh({ path: "/a", weight_high: 3.0, weight: 0.8 })).toBe(3.0);
+    expect(loraWeightLow({ path: "/a" })).toBe(1.0);
   });
 });

@@ -1,38 +1,72 @@
 import { type ReactElement, useId } from "react";
 import useSWR from "swr";
 import { fetchInstalledLoras } from "../../../services/installed_loras";
+import type { UserLoraParam } from "../../../services/types";
 import { useRenderRequest } from "../../../store/render_request_store";
 import {
+  MAX_LORA_WEIGHT,
   MAX_LORAS,
   addLora,
+  loraWeightHigh,
+  loraWeightLow,
   removeLora,
   setLoraPath,
-  setLoraWeight,
+  setLoraWeightHigh,
+  setLoraWeightLow,
 } from "./lora_list";
 import * as styles from "./quick_controls.css";
 
 const NONE_VALUE = "__none__";
 
+function WeightSlider({
+  tier,
+  value,
+  onChange,
+}: {
+  tier: "High" | "Low";
+  value: number;
+  onChange: (n: number) => void;
+}): ReactElement {
+  const id = useId();
+  return (
+    <div className={styles.customRow}>
+      <label className={styles.groupLabel} htmlFor={id} style={{ width: "34px" }}>
+        {tier}
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={0}
+        max={MAX_LORA_WEIGHT}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        style={{ flex: 1 }}
+      />
+      <span className={styles.summary}>{value.toFixed(2)}</span>
+    </div>
+  );
+}
+
 function LoraRow({
   rowIndex,
-  path,
-  weight,
+  row,
   options,
   onPath,
-  onWeight,
+  onWeightHigh,
+  onWeightLow,
   onRemove,
 }: {
   rowIndex: number;
-  path: string;
-  weight: number;
+  row: UserLoraParam;
   options: Awaited<ReturnType<typeof fetchInstalledLoras>>;
   onPath: (v: string | null) => void;
-  onWeight: (n: number) => void;
+  onWeightHigh: (n: number) => void;
+  onWeightLow: (n: number) => void;
   onRemove: () => void;
 }): ReactElement {
   const selectId = useId();
-  const weightId = useId();
-  const selected = path.length > 0 ? path : NONE_VALUE;
+  const selected = row.path.length > 0 ? row.path : NONE_VALUE;
 
   const handleSelect = (raw: string) => {
     onPath(raw === NONE_VALUE ? null : raw);
@@ -89,22 +123,14 @@ function LoraRow({
         </span>
       </div>
       {selected !== NONE_VALUE && (
-        <div className={styles.customRow}>
-          <label className={styles.groupLabel} htmlFor={weightId}>
-            weight
-          </label>
-          <input
-            id={weightId}
-            type="range"
-            min={0}
-            max={2}
-            step={0.05}
-            value={weight}
-            onChange={(e) => onWeight(parseFloat(e.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span className={styles.summary}>{weight.toFixed(2)}</span>
-        </div>
+        <>
+          <WeightSlider tier="High" value={loraWeightHigh(row)} onChange={onWeightHigh} />
+          <WeightSlider tier="Low" value={loraWeightLow(row)} onChange={onWeightLow} />
+          <span className={styles.hint}>
+            Per-expert weight (0 = off for that expert). Distill LoRAs like lightx2v run High&gt;Low,
+            e.g. 3.0 / 1.5.
+          </span>
+        </>
       )}
     </div>
   );
@@ -134,11 +160,11 @@ export function LoraControls(): ReactElement {
           <LoraRow
             key={i}
             rowIndex={i}
-            path={row.path}
-            weight={row.weight}
+            row={row}
             options={installedLoras}
             onPath={(v) => commit(setLoraPath(rows, i, v ?? ""))}
-            onWeight={(n) => commit(setLoraWeight(rows, i, n))}
+            onWeightHigh={(n) => commit(setLoraWeightHigh(rows, i, n))}
+            onWeightLow={(n) => commit(setLoraWeightLow(rows, i, n))}
             onRemove={() => commit(removeLora(rows, i))}
           />
         ))}

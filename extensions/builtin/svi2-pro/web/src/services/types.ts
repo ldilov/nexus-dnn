@@ -6,6 +6,15 @@ export interface ErrorEnvelope {
 
 export type GenerationMode = "image_to_video" | "text_to_video";
 export type SviLoraTier = "high" | "low" | "off";
+
+/** A user LoRA with per-expert weights. `weight` is the legacy single value;
+ * `weight_high`/`weight_low` override it for the high-/low-noise expert. */
+export interface UserLoraParam {
+  path: string;
+  weight?: number;
+  weight_high?: number;
+  weight_low?: number;
+}
 export type TorchCompileMode = "default" | "reduce-overhead" | "max-autotune";
 export type InterpolateMethod = "rife" | "rife_torch" | "rife_ncnn" | "ffmpeg";
 export type StitchMode = "trim" | "crossfade";
@@ -69,7 +78,7 @@ export interface RenderParams {
   models_dir?: string;
   dit_high_path?: string | null;
   dit_low_path?: string | null;
-  user_loras?: Array<{ path: string; weight: number }>;
+  user_loras?: Array<UserLoraParam>;
 }
 
 export interface PresetSummary {
