@@ -296,6 +296,42 @@ export function RenderRequestProvider({
   const startRenderJob = useCallback(async () => {
     streamCleanup.current?.();
     lastReconnectAt.current = 0;
+    // Diagnostic: confirm exactly what the UI sends to the backend.
+    console.info("[svi2] render → params", {
+      base_model: {
+        dit_high_path: params.dit_high_path ?? "(bundled)",
+        dit_low_path: params.dit_low_path ?? "(bundled)",
+        svi_lora_tier: params.svi_lora_tier ?? "high",
+      },
+      quality: {
+        num_inference_steps: params.num_inference_steps,
+        cfg_scale: params.cfg_scale,
+        sigma_shift: params.sigma_shift,
+        switch_boundary: params.switch_boundary,
+        solver: params.solver,
+        seed: params.seed,
+        seed_multiplier: params.seed_multiplier,
+      },
+      basics: {
+        width: params.width,
+        height: params.height,
+        num_clips: params.num_clips,
+        frames_per_clip: params.frames_per_clip,
+        fps: params.fps,
+        interpolate_fps: params.interpolate_fps,
+        interpolate_method: params.interpolate_method,
+        upscale_factor: params.upscale_factor,
+        upscale_model: params.upscale_model,
+        upscale_quality: params.upscale_quality,
+      },
+      compile: {
+        use_torch_compile: params.use_torch_compile,
+        torch_compile_mode: params.torch_compile_mode,
+        blocks_to_swap: params.blocks_to_swap,
+      },
+      user_loras: params.user_loras ?? [],
+      presetId,
+    });
     const { jobId } = await startRender({ presetId, params });
     setRender(startedState(jobId, qwenEdit.enabled));
     persistActiveRender(jobId);

@@ -483,6 +483,7 @@ def register_svi2_handlers(worker: Any) -> None:
         validated = validate_render_params(params or {})
         if not validated.get("models_dir"):
             validated["models_dir"] = str(resolve_models_dir())
+        _log_render_inputs(params or {}, validated)
         try:
             return await asyncio.to_thread(
                 _run_render, validated, worker, cancel_event=cancel_event
@@ -636,6 +637,71 @@ def _dynamo_counter_diff(before: dict[str, int], after: dict[str, int]) -> dict[
     if not after:
         return {}
     return {k: int(after.get(k, 0) - before.get(k, 0)) for k in after}
+
+
+_LOGGED_INPUT_KEYS = (
+    "dit_high_path", "dit_low_path", "svi_lora_tier", "num_inference_steps",
+    "cfg_scale", "sigma_shift", "switch_boundary", "solver", "seed",
+    "seed_multiplier", "fps", "interpolate_fps", "interpolate_method",
+    "upscale_factor", "upscale_model", "upscale_quality", "num_clips",
+    "frames_per_clip", "width", "height", "use_torch_compile",
+    "torch_compile_mode", "blocks_to_swap", "teacache_thresh", "user_loras",
+)
+
+
+def _log_render_inputs(raw: dict[str, Any], validated: dict[str, Any]) -> None:
+    """Dump resolved render inputs to stderr so the operator can confirm exactly
+    what the UI delivered. ``keys_sent_by_ui`` lists which fields arrived in the
+    raw RPC vs were filled by validation defaults — the ground truth for "did my
+    setting reach the backend?"."""
+    override = bool(raw.get("dit_high_path") or raw.get("dit_low_path"))
+    loras = [
+        {"file": Path(str(e.get("path", ""))).name, "weight": e.get("weight")}
+        for e in (validated.get("user_loras") or [])
+    ]
+    sent = sorted(k for k in _LOGGED_INPUT_KEYS if k in raw)
+    lines = [
+        f"[svi2-params] base_model={'OVERRIDE' if override else 'bundled'} "
+        f"high={validated.get('dit_high_path') or 'bundled'} "
+        f"low={validated.get('dit_low_path') or 'bundled'} "
+        f"svi_lora_tier={validated.get('svi_lora_tier')}",
+        f"[svi2-params] steps={validated.get('num_inference_steps')} "
+        f"cfg={validated.get('cfg_scale')} shift={validated.get('sigma_shift')} "
+        f"boundary={validated.get('switch_boundary')} solver={validated.get('solver')} "
+        f"seed={validated.get('seed')} seed_mult={validated.get('seed_multiplier')}",
+        f"[svi2-params] {validated.get('width')}x{validated.get('height')} "
+        f"clips={validated.get('num_clips')} frames_per_clip={validated.get('frames_per_clip')} "
+        f"fps={validated.get('fps')} interp_fps={validated.get('interpolate_fps')} "
+        f"interp={validated.get('interpolate_method')}",
+        f"[svi2-params] upscale={validated.get('upscale_factor')}x "
+        f"model={validated.get('upscale_model')} q={validated.get('upscale_quality')} "
+        f"compile={validated.get('use_torch_compile')} mode={validated.get('torch_compile_mode')} "
+        f"blocks_to_swap={validated.get('blocks_to_swap')} teacache_thresh={validated.get('teacache_thresh')}",
+        f"[svi2-params] user_loras={loras}",
+        f"[svi2-params] keys_sent_by_ui={sent}",
+    ]
+    print("\n".join(lines), file=sys.stderr, flush=True)
+
+
+def _summarize_lora_audit(audit: object) -> str:
+    """One-line summary of which LoRAs actually wrapped DiT modules. wrapped=0
+    means the LoRA did not match the model (wrong family) and had no effect."""
+    if not isinstance(audit, dict) or not audit:
+        return "none"
+    if "wrapped_count" in audit:
+        return f"svi(wrapped={audit.get('wrapped_count')},missing={audit.get('missing_count')})"
+    parts: list[str] = []
+    for key in ("svi", "distill"):
+        sub = audit.get(key)
+        if isinstance(sub, dict) and "wrapped_count" in sub:
+            parts.append(f"{key}(wrapped={sub['wrapped_count']},missing={sub['missing_count']})")
+    for user in audit.get("user", []) if isinstance(audit.get("user"), list) else []:
+        name = Path(str(user.get("path", ""))).name
+        if user.get("missing"):
+            parts.append(f"user[{name}]=MISSING_FILE")
+        else:
+            parts.append(f"user[{name}](wrapped={user.get('wrapped_count')},missing={user.get('missing_count')})")
+    return " ".join(parts) if parts else "none"
 
 
 def _require(path: Path, what: str, models_dir: Path) -> Path:
@@ -1239,6 +1305,13 @@ def _run_render(
                 "low_lora": low.lora_audit,
             }
         models = RenderModels(high=high, low=low, vae=vae, text_encoder=None, audit=audit)
+        shared_note = " (shared single-file expert)" if high is low else ""
+        print(
+            f"[svi2-lora] high: {_summarize_lora_audit(audit.get('high_lora'))}\n"
+            f"[svi2-lora] low: {_summarize_lora_audit(audit.get('low_lora'))}{shared_note}",
+            file=sys.stderr,
+            flush=True,
+        )
         log_vram("stage3 done: experts loaded")
 
         solver: str = params.get("solver", "euler")
