@@ -5,6 +5,9 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   base: "/",
+  define: {
+    __NEXUS_BUILD_ID__: JSON.stringify(process.env.NEXUS_BUILD_ID ?? "dev"),
+  },
   plugins: [
     react(),
     vanillaExtractPlugin(),

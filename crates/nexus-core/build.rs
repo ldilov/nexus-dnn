@@ -15,6 +15,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../apps/web/src");
     println!("cargo:rerun-if-changed=../../apps/web/index.html");
     println!("cargo:rerun-if-changed=../../apps/web/package.json");
+    println!("cargo:rerun-if-env-changed=NEXUS_BUILD_ID");
 
     let web_dir = std::path::Path::new("../../apps/web");
 

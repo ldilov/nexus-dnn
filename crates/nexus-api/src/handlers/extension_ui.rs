@@ -211,10 +211,8 @@ pub async fn serve_extension_asset(
     );
     resp.headers_mut()
         .insert(header::CONTENT_LENGTH, HeaderValue::from(content_length));
-    resp.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=300, must-revalidate"),
-    );
+    resp.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     if let Ok(value) = HeaderValue::from_str(&etag) {
         resp.headers_mut().insert(header::ETAG, value);
     }

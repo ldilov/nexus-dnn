@@ -6,6 +6,11 @@ declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: ReadonlyArray<{ revision: string | null; url: string }>;
 };
 
+// Replaced at build time (vite `define`); a fresh value per deploy changes
+// sw.js bytes even for extension-only builds, forcing the update→purge→reload.
+declare const __NEXUS_BUILD_ID__: string;
+const BUILD_ID: string = __NEXUS_BUILD_ID__;
+
 const precacheEntries: ReadonlyArray<{ revision: string | null; url: string }> =
   self.__WB_MANIFEST;
 self.addEventListener("message", (event) => {
@@ -13,6 +18,7 @@ self.addEventListener("message", (event) => {
     event.source?.postMessage({
       type: "PRECACHE_INFO",
       count: precacheEntries.length,
+      buildId: BUILD_ID,
     });
   }
 });

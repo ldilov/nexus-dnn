@@ -71,6 +71,28 @@ async fn serves_declared_file() {
 }
 
 #[tokio::test]
+async fn asset_served_with_no_cache_header() {
+    let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path()]).await;
+    let app = nexus_api::router::build(harness.state);
+    let req = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/extensions/{FIXTURE_ID}/ui/fixture.js"))
+        .body(Body::empty())
+        .expect("request");
+    let res = app.oneshot(req).await.expect("route");
+    assert_eq!(res.status(), StatusCode::OK);
+    let cache_control = res
+        .headers()
+        .get(axum::http::header::CACHE_CONTROL)
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(
+        cache_control,
+        Some("no-cache"),
+        "redeployed extension bundles must always revalidate"
+    );
+}
+
+#[tokio::test]
 async fn path_traversal_blocked() {
     let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path()]).await;
     let (status, body, _) = call(

@@ -34,6 +34,10 @@ RUN curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-lin
  && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY . .
+# Per-deploy id stamped into sw.js (vite define) so its bytes change every
+# build — even extension-only — so the SW purge+reload fires on every deploy.
+ARG NEXUS_BUILD_ID=dev
+ENV NEXUS_BUILD_ID=${NEXUS_BUILD_ID}
 # Build the web app up front so apps/web/dist exists before nexus-api's
 # rust-embed embeds it. nexus-api compiles before nexus-core's build.rs runs,
 # so relying on that build.rs to emit dist in time is a race that loses on a
