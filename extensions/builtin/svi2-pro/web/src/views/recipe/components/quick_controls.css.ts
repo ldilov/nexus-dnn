@@ -212,6 +212,204 @@ export const resBadgeWarn = style([
   },
 ]);
 
+export const resCardAdd = style({
+  alignItems: "flex-start",
+  justifyContent: "center",
+  gap: "4px",
+});
+
+export const resAddSub = style({
+  fontSize: "11px",
+  color: vars.color.textMuted,
+  lineHeight: 1.4,
+});
+
+export const customForm = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.md,
+  marginTop: vars.space.sm,
+  padding: "16px",
+  borderRadius: "12px",
+  background: vars.color.surface,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+});
+
+export const dimRow = style({
+  display: "flex",
+  alignItems: "flex-end",
+  gap: vars.space.md,
+  flexWrap: "wrap",
+});
+
+export const dimField = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+  minWidth: "150px",
+});
+
+export const dimLabel = style({
+  fontSize: "10.5px",
+  fontWeight: vars.weight.semibold,
+  letterSpacing: "0.07em",
+  textTransform: "uppercase",
+  color: vars.color.textMuted,
+});
+
+export const stepperWrap = style({
+  display: "inline-flex",
+  alignItems: "center",
+  height: "42px",
+  background: vars.color.surfaceMuted,
+  borderRadius: "9px",
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  overflow: "hidden",
+  transition: `box-shadow ${vars.motion.fast}`,
+  selectors: {
+    "&:focus-within": {
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, 0 0 0 3px ${vars.color.accentGlow}`,
+    },
+  },
+});
+
+export const stepBtn = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "38px",
+  height: "100%",
+  flexShrink: 0,
+  border: "none",
+  background: "transparent",
+  color: vars.color.textMuted,
+  fontFamily: vars.font.mono,
+  fontSize: "18px",
+  lineHeight: 1,
+  cursor: "pointer",
+  transition: `color ${vars.motion.fast}, background ${vars.motion.fast}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      color: vars.color.text,
+      background: vars.color.surfaceHigh,
+    },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.35 },
+  },
+});
+
+export const dimInput = style({
+  width: "72px",
+  height: "100%",
+  border: "none",
+  background: "transparent",
+  textAlign: "center",
+  color: vars.color.text,
+  fontFamily: vars.font.mono,
+  fontSize: "15px",
+  fontWeight: vars.weight.semibold,
+  fontVariantNumeric: "tabular-nums",
+  outline: "none",
+  // Hide native number spinners; the ± steppers own that affordance.
+  MozAppearance: "textfield",
+  selectors: {
+    "&::-webkit-outer-spin-button": { WebkitAppearance: "none", margin: 0 },
+    "&::-webkit-inner-spin-button": { WebkitAppearance: "none", margin: 0 },
+  },
+});
+
+export const dimTimes = style({
+  alignSelf: "center",
+  paddingBottom: "10px",
+  color: vars.color.textFaint,
+  fontFamily: vars.font.mono,
+  fontSize: "15px",
+});
+
+export const swapBtn = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "7px",
+  height: "42px",
+  padding: "0 14px",
+  border: "none",
+  borderRadius: "9px",
+  background: vars.color.surfaceMuted,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  color: vars.color.text,
+  fontFamily: vars.font.body,
+  fontSize: "12.5px",
+  fontWeight: vars.weight.semibold,
+  cursor: "pointer",
+  transition: `all ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": {
+      boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+      color: vars.color.text,
+    },
+  },
+});
+
+export const swapIcon = style({
+  display: "inline-flex",
+  width: "15px",
+  height: "15px",
+  color: vars.color.accent,
+});
+
+export const aspectRow = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+});
+
+export const aspectChips = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  flexWrap: "wrap",
+});
+
+export const aspectChip = style({
+  height: "30px",
+  padding: "0 11px",
+  borderRadius: "8px",
+  border: "none",
+  background: vars.color.surfaceMuted,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  color: vars.color.textMuted,
+  fontFamily: vars.font.mono,
+  fontSize: "12px",
+  fontWeight: vars.weight.semibold,
+  fontVariantNumeric: "tabular-nums",
+  cursor: "pointer",
+  transition: `all ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": { color: vars.color.text },
+  },
+});
+
+export const aspectChipActive = style({
+  background: `color-mix(in oklab, ${vars.color.accent} 14%, ${vars.color.surfaceMuted})`,
+  color: vars.color.text,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 55%, transparent)`,
+});
+
+export const customReadout = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+  fontFamily: vars.font.mono,
+  fontSize: "11.5px",
+  color: vars.color.textMuted,
+  fontVariantNumeric: "tabular-nums",
+});
+
+export const readoutDot = style({
+  color: vars.color.textFaint,
+});
+
 export const selectWrap = style({
   position: "relative",
 });
