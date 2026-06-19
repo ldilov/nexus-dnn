@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Outlet, useLoaderData } from "react-router";
+import { Outlet, useLoaderData, useParams } from "react-router";
 import { Toaster } from "sonner";
 import { CANONICAL_PRESET_ID } from "../../domain/preset_meta";
 import { DEFAULT_SETTINGS } from "../../domain/settings_defaults";
@@ -14,11 +14,16 @@ export interface WorkspaceLoaderData {
 
 export function WorkspaceLayout(): ReactElement {
   const data = useLoaderData() as WorkspaceLoaderData;
+  const { deploymentId } = useParams();
 
   const initialPreset = pickCanonical(data.catalog?.presets ?? []);
 
   return (
-    <RenderRequestProvider initialSettings={data.settings} initialPreset={initialPreset}>
+    <RenderRequestProvider
+      initialSettings={data.settings}
+      initialPreset={initialPreset}
+      deploymentId={deploymentId}
+    >
       <div className={styles.shell}>
         <header className={styles.header}>
           <div className={styles.titleBlock}>

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { applyPreset, defaultParamsFromSettings } from "../domain/build_params";
+import { loadPersistedParams, savePersistedParams } from "./recipe_persistence";
 import { snapToValidFrames } from "../domain/length";
 import {
   cancelledState,
@@ -104,12 +105,14 @@ const RenderRequestContext = createContext<RenderRequestContextValue | null>(nul
 interface ProviderProps {
   initialSettings?: ExtensionSettings;
   initialPreset?: PresetSummary | null;
+  deploymentId?: string | undefined;
   children: ReactNode;
 }
 
 export function RenderRequestProvider({
   initialSettings = DEFAULT_SETTINGS,
   initialPreset = null,
+  deploymentId,
   children,
 }: ProviderProps): ReactElement {
   const [settings, setSettingsState] = useState<ExtensionSettings>(initialSettings);
@@ -119,7 +122,9 @@ export function RenderRequestProvider({
   const [presetApplied, setPresetApplied] = useState<boolean>(initialPreset !== null);
   const [params, setParams] = useState<RenderParams>(() => {
     const base = defaultParamsFromSettings(initialSettings);
-    return initialPreset ? applyPreset(base, initialPreset) : base;
+    const seeded = initialPreset ? applyPreset(base, initialPreset) : base;
+    const persisted = loadPersistedParams(deploymentId);
+    return persisted ? { ...seeded, ...persisted } : seeded;
   });
   const [refImageName, setRefImageName] = useState<string | null>(null);
   const [lastImageName, setLastImageName] = useState<string | null>(null);
@@ -366,6 +371,10 @@ export function RenderRequestProvider({
     },
     [stopWatchdog],
   );
+
+  useEffect(() => {
+    savePersistedParams(deploymentId, params);
+  }, [deploymentId, params]);
 
   useEffect(() => {
     if (render.phase === "done" || render.phase === "error" || render.phase === "cancelled") {
