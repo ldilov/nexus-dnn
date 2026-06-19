@@ -1,5 +1,6 @@
-import { type ReactElement, useId } from "react";
+import { type CSSProperties, type ReactElement, useId } from "react";
 import useSWR from "swr";
+import * as fc from "../../../components/form/field_control.css";
 import { fetchInstalledLoras } from "../../../services/installed_loras";
 import type { UserLoraParam } from "../../../services/types";
 import { useRenderRequest } from "../../../store/render_request_store";
@@ -28,6 +29,8 @@ function WeightSlider({
   onChange: (n: number) => void;
 }): ReactElement {
   const id = useId();
+  const pct = (Math.max(0, Math.min(MAX_LORA_WEIGHT, value)) / MAX_LORA_WEIGHT) * 100;
+  const fillStyle = { flex: 1, "--svi2-slider-fill": `${pct}%` } as CSSProperties;
   return (
     <div className={styles.customRow}>
       <label className={styles.groupLabel} htmlFor={id} style={{ width: "34px" }}>
@@ -36,12 +39,13 @@ function WeightSlider({
       <input
         id={id}
         type="range"
+        className={fc.slider}
         min={0}
         max={MAX_LORA_WEIGHT}
         step={0.05}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        style={{ flex: 1 }}
+        style={fillStyle}
       />
       <span className={styles.summary}>{value.toFixed(2)}</span>
     </div>
