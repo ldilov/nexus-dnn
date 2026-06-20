@@ -1,12 +1,26 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearDeploymentModel,
+  hydrateDeploymentModel,
   persistDeploymentModel,
   readDeploymentModel,
   type StickyModel,
 } from "../sticky_model";
 
+const { mockFetch, mockPut, mockDelete } = vi.hoisted(() => ({
+  mockFetch: vi.fn(),
+  mockPut: vi.fn(),
+  mockDelete: vi.fn(),
+}));
+
+vi.mock("../../../services/deployment_extension_settings", () => ({
+  fetchDeploymentExtensionSettings: mockFetch,
+  putDeploymentExtensionSettings: mockPut,
+  deleteDeploymentExtensionSettings: mockDelete,
+}));
+
 const STORAGE_KEY = "local-llm:deployment-active-model";
+const EXTENSION_ID = "nexus.local-llm";
 
 const sampleModel: StickyModel = {
   family_id: "meta/llama",
@@ -26,6 +40,16 @@ const sampleModel: StickyModel = {
   },
   saved_at: "2026-05-07T12:00:00Z",
 };
+
+function remoteEnvelope(settings: unknown, updatedAt: string | null) {
+  return {
+    deployment_id: "dep-1",
+    extension_id: EXTENSION_ID,
+    settings,
+    schema_fingerprint: null,
+    updated_at: updatedAt,
+  };
+}
 
 let storage: Record<string, string>;
 let originalLocalStorage: Storage;
@@ -52,6 +76,9 @@ beforeEach(() => {
       },
     },
   });
+  mockFetch.mockReset();
+  mockPut.mockReset().mockResolvedValue(undefined);
+  mockDelete.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -61,7 +88,7 @@ afterEach(() => {
   });
 });
 
-describe("sticky_model", () => {
+describe("sticky_model — local cache", () => {
   it("returns null when no entry exists", () => {
     expect(readDeploymentModel("dep-1")).toBeNull();
   });
@@ -74,8 +101,7 @@ describe("sticky_model", () => {
 
   it("persists and reads back a model for a deployment", () => {
     persistDeploymentModel("dep-1", sampleModel);
-    const retrieved = readDeploymentModel("dep-1");
-    expect(retrieved).toEqual(sampleModel);
+    expect(readDeploymentModel("dep-1")).toEqual(sampleModel);
   });
 
   it("scopes entries per deployment id", () => {
@@ -105,5 +131,74 @@ describe("sticky_model", () => {
     expect(readDeploymentModel("dep-1")).toBeNull();
     storage[STORAGE_KEY] = "not-json";
     expect(readDeploymentModel("dep-1")).toBeNull();
+  });
+});
+
+describe("sticky_model — server sync", () => {
+  it("mirrors writes to the server under the local-llm extension id", () => {
+    persistDeploymentModel("dep-1", sampleModel);
+    expect(mockPut).toHaveBeenCalledWith("dep-1", EXTENSION_ID, sampleModel);
+  });
+
+  it("mirrors clears to the server", () => {
+    clearDeploymentModel("dep-1");
+    expect(mockDelete).toHaveBeenCalledWith("dep-1", EXTENSION_ID);
+  });
+
+  it("hydrate prefers the server row and refreshes the local cache", async () => {
+    const serverModel: StickyModel = { ...sampleModel, family_id: "server/win" };
+    mockFetch.mockResolvedValue(remoteEnvelope(serverModel, "2026-06-20T00:00:00Z"));
+
+    const result = await hydrateDeploymentModel("dep-1");
+
+    expect(result?.family_id).toBe("server/win");
+    expect(readDeploymentModel("dep-1")?.family_id).toBe("server/win");
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("hydrate migrates a cached localStorage value up when the server has no row", async () => {
+    storage[STORAGE_KEY] = JSON.stringify({ "dep-1": sampleModel });
+    mockFetch.mockResolvedValue(remoteEnvelope({}, null));
+
+    const result = await hydrateDeploymentModel("dep-1");
+
+    expect(result).toEqual(sampleModel);
+    expect(mockPut).toHaveBeenCalledWith("dep-1", EXTENSION_ID, sampleModel);
+  });
+
+  it("hydrate falls back to the local cache when the server is unreachable", async () => {
+    storage[STORAGE_KEY] = JSON.stringify({ "dep-1": sampleModel });
+    mockFetch.mockRejectedValue(new Error("network down"));
+
+    const result = await hydrateDeploymentModel("dep-1");
+
+    expect(result).toEqual(sampleModel);
+  });
+
+  it("hydrate returns null for a missing deployment id", async () => {
+    expect(await hydrateDeploymentModel(null)).toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("hydrate rejects a partial server blob and migrates the cache instead", async () => {
+    storage[STORAGE_KEY] = JSON.stringify({ "dep-1": sampleModel });
+    mockFetch.mockResolvedValue(remoteEnvelope({ family_id: "partial" }, "2026-06-20T00:00:00Z"));
+
+    const result = await hydrateDeploymentModel("dep-1");
+
+    expect(result).toEqual(sampleModel);
+    expect(mockPut).toHaveBeenCalledWith("dep-1", EXTENSION_ID, sampleModel);
+  });
+
+  it("hydrate skips the migration write when the signal is already aborted", async () => {
+    storage[STORAGE_KEY] = JSON.stringify({ "dep-1": sampleModel });
+    mockFetch.mockResolvedValue(remoteEnvelope({}, null));
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await hydrateDeploymentModel("dep-1", controller.signal);
+
+    expect(result).toEqual(sampleModel);
+    expect(mockPut).not.toHaveBeenCalled();
   });
 });
