@@ -498,6 +498,19 @@ class _ProgressHeartbeat:
         self.stop()
 
 
+def _sweep_vram() -> None:
+    """Reclaim residual VRAM via the generic worker sweep (gc + empty_cache).
+
+    Called once a render's stack frame is fully unwound, so the references the
+    in-function ``finally`` still held (latents, conditioning, compiled
+    experts) are gone and the sweep can actually return blocks to the driver.
+    Lazy import avoids a circular dependency with ``main``; torch-absent-safe.
+    """
+    from .main import base_release_memory
+
+    base_release_memory()
+
+
 def register_svi2_handlers(worker: Any) -> None:
     cancel_event = threading.Event()
 
@@ -513,6 +526,10 @@ def register_svi2_handlers(worker: Any) -> None:
             )
         except RenderCancelled:
             return {"status": "cancelled"}
+        finally:
+            # Frame fully unwound here: no render-local GPU tensor survives,
+            # so this sweep reclaims what the in-function finally could not.
+            await asyncio.to_thread(_sweep_vram)
 
     async def _render_cancel(_params: Any) -> dict[str, Any]:
         cancel_event.set()
