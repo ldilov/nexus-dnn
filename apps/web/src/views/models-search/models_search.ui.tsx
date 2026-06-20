@@ -34,6 +34,7 @@ export interface ModelsSearchUIProps {
   degraded: boolean;
   resolved: ModelFamily | null;
   resolving: boolean;
+  uploading: boolean;
   resolveError: { message: string } | null;
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
@@ -60,6 +61,7 @@ export interface ModelsSearchUIProps {
   onResume: (jobId: string) => void;
   onAuthRequired: (family: ModelFamily) => void;
   onResolveUrl: (url: string) => void;
+  onUpload: (file: File) => void;
   onRetry: () => void;
   onRevalidated: () => void;
 }
@@ -106,6 +108,8 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     onResume,
     onAuthRequired,
     onResolveUrl,
+    onUpload,
+    uploading,
     onRetry,
     onRevalidated,
   } = props;
@@ -139,7 +143,9 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
         onCycleInstalled={onCycleInstalled}
         onClearAll={onClearAll}
         onResolveUrl={onResolveUrl}
+        onUpload={onUpload}
         resolving={resolving}
+        uploading={uploading}
         degraded={degraded}
       />
 

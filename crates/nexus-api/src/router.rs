@@ -480,6 +480,11 @@ pub fn build(state: AppState) -> Router {
             post(handlers::model_store::resolve::resolve_url),
         )
         .route(
+            "/model-store/upload",
+            post(handlers::model_store::upload::upload_model)
+                .layer(axum::extract::DefaultBodyLimit::disable()),
+        )
+        .route(
             "/model-store/settings/hf-token",
             get(handlers::model_store::settings::get_hf_token_status)
                 .put(handlers::model_store::settings::set_hf_token)

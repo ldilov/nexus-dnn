@@ -389,6 +389,26 @@ export function fetchInstalled(signal?: AbortSignal): Promise<InstalledIndex> {
   return apiFetch("/model-store/installed", { signal });
 }
 
+export interface UploadResult {
+  artifact_id: string;
+  family_id: string;
+  filename: string;
+  size_bytes: number;
+  install_path: string;
+}
+
+/**
+ * Import a local weight file directly into the model store. Streams the file as
+ * multipart/form-data; the browser sets the boundary content-type, so no header
+ * is passed. Progress is not reported (fetch can't observe upload bytes) — the
+ * caller shows a spinner.
+ */
+export function uploadModel(file: File, signal?: AbortSignal): Promise<UploadResult> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return apiFetch("/model-store/upload", { method: "POST", body: form, signal });
+}
+
 export interface CreateDownloadBody {
   family_id: string;
   target:

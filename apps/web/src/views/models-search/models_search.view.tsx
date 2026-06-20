@@ -20,6 +20,7 @@ import {
   resolveUrl,
   resumeDownload,
   serializeSearchParams,
+  uploadModel,
   type BackendCapability,
   type DownloadJob,
   type DownloadState,
@@ -97,6 +98,7 @@ export function ModelsSearchView() {
   const [jobVariantMap, setJobVariantMap] = useState<Record<string, string>>({});
   const [resolved, setResolved] = useState<ModelFamily | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [resolveError, setResolveError] = useState<{ message: string } | null>(null);
 
   useEffect(() => {
@@ -440,6 +442,21 @@ export function ModelsSearchView() {
           setResolving(false);
         }
       },
+      onUpload: async (file: File) => {
+        setUploading(true);
+        setResolveError(null);
+        try {
+          await uploadModel(file);
+          dispatchModelsChanged();
+          navigate(0);
+        } catch (e) {
+          setResolveError({
+            message: e instanceof Error ? e.message : "upload failed",
+          });
+        } finally {
+          setUploading(false);
+        }
+      },
       onSortChange: (sort: ParsedSearchParams["sort"]) =>
         mutateParams({ sort, page: 1 }),
       onViewChange: (view: "grid" | "list") => mutateParams({ view }),
@@ -482,6 +499,7 @@ export function ModelsSearchView() {
       degraded={loaderData.backendsDegraded}
       resolved={resolved}
       resolving={resolving}
+      uploading={uploading}
       resolveError={resolveError}
       jobStateByVariant={jobStateByVariant}
       jobIdByVariant={jobIdByVariant}

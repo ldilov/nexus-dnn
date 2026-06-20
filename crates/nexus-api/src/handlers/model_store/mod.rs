@@ -9,3 +9,4 @@ pub mod installed;
 pub mod resolve;
 pub mod search;
 pub mod settings;
+pub mod upload;

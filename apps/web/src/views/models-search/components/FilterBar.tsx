@@ -10,7 +10,9 @@ interface FilterBarProps {
   onCycleInstalled: () => void;
   onClearAll: () => void;
   onResolveUrl: (url: string) => void;
+  onUpload: (file: File) => void;
   resolving: boolean;
+  uploading: boolean;
   degraded: boolean;
 }
 
@@ -22,7 +24,9 @@ export function FilterBar({
   onCycleInstalled,
   onClearAll,
   onResolveUrl,
+  onUpload,
   resolving,
+  uploading,
   degraded,
 }: FilterBarProps) {
   const [url, setUrl] = useState("");
@@ -125,6 +129,20 @@ export function FilterBar({
             >
               {resolving ? "Resolving…" : "Resolve"}
             </button>
+            <label className={uploading ? s.chip : `${s.chip} ${s.chipActive}`}>
+              {uploading ? "Uploading…" : "Upload file"}
+              <input
+                type="file"
+                accept=".safetensors,.gguf,.ckpt,.pt,.pth,.bin"
+                disabled={uploading}
+                className={s.screenReaderOnly}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onUpload(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
           </>
         )}
       </div>

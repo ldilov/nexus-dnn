@@ -24,7 +24,9 @@ function renderBar(
       onCycleInstalled={noop}
       onClearAll={noop}
       onResolveUrl={noop}
+      onUpload={noop}
       resolving={false}
+      uploading={false}
       degraded={false}
     />,
   );
@@ -41,6 +43,30 @@ describe("FilterBar (slim)", () => {
     renderBar({ source: "from_url" });
     expect(screen.getByPlaceholderText(/paste/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /resolve/i })).toBeInTheDocument();
+  });
+  it("emits onUpload with the selected file in from_url mode", () => {
+    const onUpload = vi.fn();
+    render(
+      <FilterBar
+        query=""
+        params={{ ...DEFAULT_SEARCH_PARAMS, source: "from_url" }}
+        onQueryChange={noop}
+        onSourceChange={noop}
+        onCycleInstalled={noop}
+        onClearAll={noop}
+        onResolveUrl={noop}
+        onUpload={onUpload}
+        resolving={false}
+        uploading={false}
+        degraded={false}
+      />,
+    );
+    expect(screen.getByText(/upload file/i)).toBeInTheDocument();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["weights"], "m.safetensors");
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onUpload).toHaveBeenCalledTimes(1);
+    expect(onUpload.mock.calls[0]?.[0]?.name).toBe("m.safetensors");
   });
   it("clears the URL field and emits onSourceChange when switching mode", () => {
     const onSourceChange = vi.fn();
