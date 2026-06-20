@@ -462,6 +462,14 @@ impl NexusApp {
             dep_host_data_dir: Some(app_for_health.config.resolved_data_dir()),
         };
 
+        // Heal any worker venv whose bundled deps grew since install (e.g. a
+        // redeploy added a package to an extra). Background — boot isn't blocked.
+        let reconcile_state = state.clone();
+        tokio::spawn(async move {
+            nexus_api::handlers::extension_dependencies::reconcile_extension_deps(reconcile_state)
+                .await;
+        });
+
         let router = nexus_api::create_router(state);
 
         let bind_addr = format!("0.0.0.0:{}", app_for_health.config.port);

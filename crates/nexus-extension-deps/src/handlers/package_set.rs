@@ -829,6 +829,122 @@ mod tests {
         assert_eq!(default_target(), "extension_local");
     }
 
+    fn stub_services() -> (
+        std::sync::Arc<dyn crate::ModelStoreClient>,
+        std::sync::Arc<dyn crate::RuntimeBootstrapper>,
+        std::sync::Arc<dyn crate::WorkerHandshake>,
+        std::sync::Arc<dyn crate::ProgressSink>,
+        std::sync::Arc<crate::fetch::FetchArtifact>,
+    ) {
+        (
+            std::sync::Arc::new(stubs::ModelStore),
+            std::sync::Arc::new(stubs::Runtime),
+            std::sync::Arc::new(stubs::Handshake),
+            std::sync::Arc::new(stubs::Sink),
+            std::sync::Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            }),
+        )
+    }
+
+    /// A `.synced.json` marker whose `manifest_sha256` no longer matches the
+    /// current manifest means a dependency was added/changed since the venv was
+    /// synced — the probe MUST report `NotSatisfied` so the runner re-syncs.
+    /// This is the mechanism the startup reconcile relies on.
+    #[tokio::test]
+    async fn probe_reports_drift_when_manifest_sha_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("ext");
+        let ext_data = tmp.path().join("data");
+        let worker = ext_dir.join("worker");
+        std::fs::create_dir_all(&worker).unwrap();
+        std::fs::write(
+            worker.join("pyproject.toml"),
+            "name = 'x'\nspandrel = '1'\n",
+        )
+        .unwrap();
+
+        // Both venv and marker must exist for the probe to reach the sha compare.
+        let packages = ext_data.join("runtime").join("packages");
+        std::fs::create_dir_all(packages.join(".venv")).unwrap();
+        std::fs::write(
+            packages.join(".synced.json"),
+            serde_json::json!({ "manifest_sha256": "stale-sha", "extras": [] }).to_string(),
+        )
+        .unwrap();
+
+        let (ms, rb, wh, sink, fa) = stub_services();
+        let upstream = std::collections::HashMap::new();
+        let ctx = StepContext {
+            extension_id: "x",
+            extension_dir: &ext_dir,
+            extension_data_dir: &ext_data,
+            host_data_dir: &ext_data,
+            model_store: ms,
+            runtime_bootstrapper: rb,
+            worker_handshake: wh,
+            fetch_artifact: fa,
+            progress_sink: sink,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            force: false,
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({ "manager": "uv", "manifest_path": "worker/pyproject.toml" });
+        let result = PackageSetHandler::new().probe(&ctx, &spec).await.unwrap();
+        assert!(
+            matches!(result, ProbeResult::NotSatisfied),
+            "a drifted manifest sha must force a re-sync"
+        );
+    }
+
+    /// The companion: when the marker sha matches the current manifest and the
+    /// declared extras are unchanged, an intact venv probes `Satisfied` (no
+    /// needless re-sync on every boot).
+    #[tokio::test]
+    async fn probe_satisfied_when_manifest_sha_matches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("ext");
+        let ext_data = tmp.path().join("data");
+        let worker = ext_dir.join("worker");
+        std::fs::create_dir_all(&worker).unwrap();
+        let manifest = worker.join("pyproject.toml");
+        std::fs::write(&manifest, "name = 'x'\n").unwrap();
+        let sha = file_sha256(&manifest).await.unwrap();
+
+        let packages = ext_data.join("runtime").join("packages");
+        std::fs::create_dir_all(packages.join(".venv")).unwrap();
+        std::fs::write(
+            packages.join(".synced.json"),
+            serde_json::json!({ "manifest_sha256": sha, "extras": [] }).to_string(),
+        )
+        .unwrap();
+
+        let (ms, rb, wh, sink, fa) = stub_services();
+        let upstream = std::collections::HashMap::new();
+        let ctx = StepContext {
+            extension_id: "x",
+            extension_dir: &ext_dir,
+            extension_data_dir: &ext_data,
+            host_data_dir: &ext_data,
+            model_store: ms,
+            runtime_bootstrapper: rb,
+            worker_handshake: wh,
+            fetch_artifact: fa,
+            progress_sink: sink,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            force: false,
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({ "manager": "uv", "manifest_path": "worker/pyproject.toml" });
+        let result = PackageSetHandler::new().probe(&ctx, &spec).await.unwrap();
+        assert!(
+            matches!(result, ProbeResult::Satisfied { .. }),
+            "matching sha + intact venv must probe satisfied"
+        );
+    }
+
     #[test]
     fn spec_without_extras_defaults_to_empty() {
         let spec = serde_json::json!({
