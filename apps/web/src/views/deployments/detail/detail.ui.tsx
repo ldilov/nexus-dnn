@@ -100,6 +100,7 @@ export interface DeploymentDetailUIProps {
    * button is hidden (e.g. for soft-deleted/already-purged states the
    * caller may suppress this affordance). */
   onRequestDelete?: () => void;
+  onRequestExport?: () => void;
 }
 
 function renderTitle(moduleName: string | null, name: string) {
@@ -198,6 +199,7 @@ export function DeploymentDetailUI({
   extensionLayout,
   extensionId,
   onRequestDelete,
+  onRequestExport,
 }: DeploymentDetailUIProps) {
   const name = displayName ?? "Deployment detail";
   const titleAriaLabel = buildTitleAriaLabel(moduleName, name);
@@ -346,6 +348,27 @@ export function DeploymentDetailUI({
                 fallbackVariant="primary"
                 onInvoke={handleInvoke}
               />
+            )}
+            {onRequestExport && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={onRequestExport}
+                aria-label={
+                  displayName
+                    ? `Export deployment ${displayName}`
+                    : "Export deployment"
+                }
+              >
+                <span
+                  className={`material-symbols-outlined ${s.actionIcon}`}
+                  aria-hidden="true"
+                >
+                  download
+                </span>
+                Export
+              </Button>
             )}
             {onRequestDelete && (
               <Button

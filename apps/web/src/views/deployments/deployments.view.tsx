@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { mutate as globalMutate } from "swr";
@@ -6,10 +6,12 @@ import type { DeploymentSummary, ModuleSummary } from "../../api/client";
 import { ConfirmDialog } from "../../components/base/confirm_dialog";
 import { useDeploymentsList, useModules } from "../../hooks/use_api";
 import { deleteDeployment } from "../../services/deployments";
+import { importDeployment, isExportEnvelope } from "../../services/deployment_transfer";
 import { DeploymentsUI, type DeploymentsFilter } from "./deployments.ui";
 
 export function DeploymentsView() {
   const navigate = useNavigate();
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [filter, setFilter] = useState<DeploymentsFilter>({
     userOnly: false,
     moduleId: null,
@@ -105,8 +107,55 @@ export function DeploymentsView() {
     }
   }, [deployments, mutateDeployments, pendingDelete]);
 
+  const importBusyRef = useRef(false);
+  const handleImportFile = useCallback(
+    async (file: File) => {
+      if (importBusyRef.current) return;
+      importBusyRef.current = true;
+      try {
+        let envelope: unknown;
+        try {
+          envelope = JSON.parse(await file.text());
+        } catch {
+          toast.error("Not a valid JSON file");
+          return;
+        }
+        if (!isExportEnvelope(envelope)) {
+          toast.error("File is not a deployment export");
+          return;
+        }
+        const result = await importDeployment(envelope);
+        await mutateDeployments();
+        toast.success(
+          result.diagnostics_count > 0
+            ? `Imported with ${result.diagnostics_count} missing dependency(ies)`
+            : "Deployment imported",
+        );
+        navigate(`/deployments/${encodeURIComponent(result.deployment_id)}`);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to import deployment";
+        toast.error(message);
+      } finally {
+        importBusyRef.current = false;
+      }
+    },
+    [mutateDeployments, navigate],
+  );
+
   return (
     <>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void handleImportFile(file);
+        }}
+      />
       <DeploymentsUI
         items={items}
         modules={modules}
@@ -119,6 +168,7 @@ export function DeploymentsView() {
         onOpenModule={handleOpenModule}
         onGoToModules={() => navigate("/modules")}
         onRequestDelete={setPendingDelete}
+        onRequestImport={() => importInputRef.current?.click()}
       />
       <ConfirmDialog
         open={pendingDelete !== null}
