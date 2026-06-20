@@ -794,6 +794,32 @@ def _svi_loras_for_split(
     return _resolve(models_dir, "svi-lora-high"), _resolve(models_dir, "svi-lora-low")
 
 
+def _user_lora_failures(audit: object) -> list[str]:
+    """User LoRAs that did not actually apply — missing file, or wrapped 0
+    modules (key-name mismatch). A silently-skipped LoRA — e.g. a distill LoRA —
+    produces badly under-denoised output (firefly noise) while the render still
+    reports success, so callers MUST treat these as hard errors, not warnings."""
+    out: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(audit, dict):
+        return out
+    for expert_label, lora_key in (("high", "high_lora"), ("low", "low_lora")):
+        entry_audit = audit.get(lora_key)
+        expert_user = entry_audit.get("user") if isinstance(entry_audit, dict) else None
+        for entry in expert_user if isinstance(expert_user, list) else []:
+            path = entry.get("path", "")
+            if entry.get("missing"):
+                msg = f"user LoRA not found ({expert_label}): {path}"
+            elif entry.get("wrapped_count", 0) == 0:
+                msg = f"user LoRA applied 0 modules ({expert_label}): {path} — not Wan2.2-compatible"
+            else:
+                continue
+            if msg not in seen:
+                seen.add(msg)
+                out.append(msg)
+    return out
+
+
 def _tier_loras(user_loras: list[dict], tier: str) -> list[dict]:
     """Resolve the per-expert user-LoRA list: pick this tier's weight and drop
     LoRAs disabled for the tier (weight 0). _build_expert stays tier-agnostic."""
@@ -1421,6 +1447,12 @@ def _run_render(
             file=sys.stderr,
             flush=True,
         )
+        lora_failures = _user_lora_failures(audit)
+        if lora_failures:
+            raise ValueError(
+                "user LoRA(s) could not be applied — aborting before render: "
+                + "; ".join(lora_failures)
+            )
         log_vram("stage3 done: experts loaded")
 
         solver: str = params.get("solver", "euler")
@@ -1736,31 +1768,9 @@ def _run_render(
             "pixel_re_encode": pixel_re_encode,
             "resolution_warning": resolution_warning,
         }
-        warnings: list[str] = []
-        user_loras_param = params.get("user_loras") or []
-        if user_loras_param:
-            seen_warnings: set[str] = set()
-            for expert_label, lora_key in (("high", "high_lora"), ("low", "low_lora")):
-                expert_user = (audit.get(lora_key) or {}).get("user") if isinstance(audit.get(lora_key), dict) else None
-                entries: list[dict] = expert_user if isinstance(expert_user, list) else []
-                for entry in entries:
-                    path = entry.get("path", "")
-                    if entry.get("missing"):
-                        msg = f"user LoRA not found ({expert_label}): {path}"
-                    elif entry.get("wrapped_count", 0) == 0:
-                        msg = f"user LoRA applied 0 modules ({expert_label}): {path} — likely not Wan2.2-compatible"
-                    else:
-                        continue
-                    if msg not in seen_warnings:
-                        seen_warnings.add(msg)
-                        warnings.append(msg)
-
         write_render_report(output_path.parent, report_data)
 
-        result: dict[str, Any] = {"status": "ok", "output_path": str(video_path)}
-        if warnings:
-            result["warnings"] = warnings
-        return result
+        return {"status": "ok", "output_path": str(video_path)}
     finally:
         set_attention_override(None)
 

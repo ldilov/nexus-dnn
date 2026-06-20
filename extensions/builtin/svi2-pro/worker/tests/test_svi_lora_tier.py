@@ -5,6 +5,7 @@ import pytest
 from svi2_video_worker.pipeline_svi2 import (
     _svi_lora_for_tier,
     _svi_loras_for_split,
+    _user_lora_failures,
     _validate_svi_lora_tier,
     _validate_torch_compile_mode,
     validate_render_params,
@@ -51,6 +52,28 @@ def test_svi_loras_for_split_on_for_non_off_tiers(tier):
 def test_svi_loras_for_split_off_disables_both():
     hi, lo = _svi_loras_for_split(Path("models"), {**_BASE, "svi_lora_tier": "off"})
     assert hi is None and lo is None
+
+
+def test_user_lora_failures_flags_missing_file():
+    audit = {"low_lora": {"user": [{"path": "/x/distill.safetensors", "missing": True}]}}
+    fails = _user_lora_failures(audit)
+    assert len(fails) == 1 and "not found (low)" in fails[0]
+
+
+def test_user_lora_failures_flags_zero_modules():
+    audit = {"high_lora": {"user": [{"path": "/x/l.safetensors", "wrapped_count": 0}]}}
+    fails = _user_lora_failures(audit)
+    assert len(fails) == 1 and "0 modules (high)" in fails[0]
+
+
+def test_user_lora_failures_passes_applied_lora():
+    audit = {"high_lora": {"user": [{"path": "/x/l.safetensors", "wrapped_count": 405}]}}
+    assert _user_lora_failures(audit) == []
+
+
+def test_user_lora_failures_ignores_non_dict_audit():
+    assert _user_lora_failures(None) == []
+    assert _user_lora_failures({"high_lora": {}}) == []
 
 
 @pytest.mark.parametrize("raw,expected", [
