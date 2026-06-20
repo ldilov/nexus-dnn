@@ -824,7 +824,10 @@ fn map_extension_settings_row(r: &sqlx::sqlite::SqliteRow) -> RawExtensionSettin
         deployment_id: r.try_get("deployment_id").unwrap_or_default(),
         extension_id: r.try_get("extension_id").unwrap_or_default(),
         settings_json: r.try_get("settings_json").unwrap_or_default(),
-        settings_schema_fingerprint: r.try_get("settings_schema_fingerprint").ok(),
+        settings_schema_fingerprint: r
+            .try_get::<Option<String>, _>("settings_schema_fingerprint")
+            .ok()
+            .flatten(),
         created_at: r.try_get("created_at").unwrap_or_default(),
         updated_at: r.try_get("updated_at").unwrap_or_default(),
     }

@@ -159,9 +159,12 @@ async fn export_bundles_settings_and_import_restores_them() {
         .unwrap();
     let v: serde_json::Value = serde_json::from_str(&restored.settings_json).unwrap();
     assert_eq!(v["model"], json!("qwen"));
-    assert_eq!(
-        restored.settings_schema_fingerprint.as_deref(),
-        Some("fp-9")
+    // Import drops the envelope's fingerprint — it is host-authoritative and
+    // re-established on the next host PUT, never trusted from the import file.
+    assert!(
+        restored.settings_schema_fingerprint.is_none(),
+        "import must not carry the fingerprint, got {:?}",
+        restored.settings_schema_fingerprint
     );
 }
 

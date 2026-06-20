@@ -6,6 +6,95 @@ use crate::service::export::ExportEnvelope;
 use chrono::Utc;
 use std::sync::Arc;
 
+#[cfg(test)]
+mod missing_extensions_tests {
+    use super::*;
+    use crate::service::export::{ExtensionSettingsBundle, Integrity};
+    use serde_json::json;
+
+    fn envelope(ext_ids: &[&str]) -> ExportEnvelope {
+        envelope_with(ext_ids, json!({}))
+    }
+
+    fn envelope_with(ext_ids: &[&str], deployment: serde_json::Value) -> ExportEnvelope {
+        ExportEnvelope {
+            package_version: 1,
+            deployment,
+            revisions: vec![json!({})],
+            extension_settings: ext_ids
+                .iter()
+                .map(|id| ExtensionSettingsBundle {
+                    extension_id: (*id).to_string(),
+                    settings: json!({}),
+                    schema_fingerprint: None,
+                })
+                .collect(),
+            integrity: Integrity {
+                hash_algo: "x".into(),
+                digest: "0".repeat(64),
+            },
+        }
+    }
+
+    #[test]
+    fn returns_only_uninstalled_deduped_and_sorted() {
+        let env = envelope(&["b", "a", "a", "c"]);
+        let missing = missing_extensions(&env, |id| id == "a");
+        assert_eq!(missing, vec!["b".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn empty_when_all_installed() {
+        let env = envelope(&["a", "b"]);
+        assert!(missing_extensions(&env, |_| true).is_empty());
+    }
+
+    #[test]
+    fn includes_source_extension_id_even_without_settings_rows() {
+        let env = envelope_with(&[], json!({ "source_extension_id": "nexus.backing" }));
+        let missing = missing_extensions(&env, |id| id == "something.else");
+        assert_eq!(missing, vec!["nexus.backing".to_string()]);
+    }
+
+    #[test]
+    fn source_extension_id_installed_is_not_missing() {
+        let env = envelope_with(&["a"], json!({ "source_extension_id": "nexus.backing" }));
+        let missing = missing_extensions(&env, |id| id == "nexus.backing");
+        assert_eq!(missing, vec!["a".to_string()]);
+    }
+}
+
+/// Derive which extensions referenced by an envelope's settings bundles are
+/// NOT installed, per the host-provided `is_installed` predicate. The import
+/// handler uses this so missing-dependency state is host-derived, never trusted
+/// from the client payload (which drives persisted restore_state).
+pub fn missing_extensions(
+    envelope: &ExportEnvelope,
+    is_installed: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    let mut candidates: Vec<String> = envelope
+        .extension_settings
+        .iter()
+        .map(|b| b.extension_id.clone())
+        .collect();
+    // A deployment binds its backing extension via source_extension_id, not
+    // only settings rows — include it so a settings-less deployment counts.
+    if let Some(src) = envelope
+        .deployment
+        .get("source_extension_id")
+        .and_then(|v| v.as_str())
+    {
+        candidates.push(src.to_owned());
+    }
+    let mut missing: Vec<String> = candidates
+        .into_iter()
+        .filter(|id| !is_installed(id))
+        .collect();
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
 pub struct DeploymentImportService {
     repo: Arc<dyn DeploymentRepository>,
 }
@@ -120,13 +209,10 @@ impl DeploymentImportService {
         // with the host-owned deployment so a later install restores features.
         for bundle in &envelope.extension_settings {
             let settings_json = serde_json::to_string(&bundle.settings)?;
+            // Drop the envelope's fingerprint — it is host-authoritative and a
+            // forged export must not implant it; the next host PUT recomputes it.
             self.repo
-                .upsert_extension_settings(
-                    &new_id,
-                    &bundle.extension_id,
-                    &settings_json,
-                    bundle.schema_fingerprint.as_deref(),
-                )
+                .upsert_extension_settings(&new_id, &bundle.extension_id, &settings_json, None)
                 .await?;
         }
 

@@ -18,6 +18,7 @@ use nexus_deployments::service::save::{DeploymentSaveService, SaveRequest};
 use nexus_deployments::service::validate::DeploymentValidateService;
 use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
 use nexus_events::types::NexusEvent;
+use nexus_extension::ExtensionRegistry;
 use nexus_storage::DeploymentMappers;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -341,7 +342,10 @@ async fn clone_deployment(
 
 async fn export(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let repo = repo_for(&state);
-    let did = DeploymentId::from_str(&id).unwrap();
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return bad_id_response(),
+    };
     let svc = DeploymentExportService::new(repo);
     match svc.export(&did).await {
         Ok(env) => (StatusCode::OK, Json(ApiResponse::ok(env))).into_response(),
@@ -352,14 +356,17 @@ async fn export(State(state): State<AppState>, Path(id): Path<String>) -> impl I
 #[derive(Debug, Deserialize)]
 struct ImportBody {
     envelope: nexus_deployments::service::export::ExportEnvelope,
-    #[serde(default)]
-    missing_dependencies: Vec<String>,
 }
 
 async fn import(State(state): State<AppState>, Json(body): Json<ImportBody>) -> impl IntoResponse {
     let repo = repo_for(&state);
+    // Derive missing dependencies host-side from the envelope vs the registry —
+    // never trust a client-supplied list to set persisted restore_state.
+    let missing = nexus_deployments::service::import::missing_extensions(&body.envelope, |id| {
+        state.extension_registry.get_extension(id).is_some()
+    });
     let svc = DeploymentImportService::new(repo);
-    match svc.import(body.envelope, body.missing_dependencies).await {
+    match svc.import(body.envelope, missing).await {
         Ok((res, _events)) => {
             #[derive(Serialize)]
             struct I {
@@ -398,8 +405,16 @@ struct ExtensionSettingsResponse {
 #[derive(Debug, Deserialize)]
 struct PutExtensionSettingsBody {
     settings: Value,
-    #[serde(default)]
-    schema_fingerprint: Option<String>,
+}
+
+/// Host-computed schema fingerprint: sha256 of the validating `config_schema`.
+/// serde_json sorts object keys, so the serialization is deterministic across
+/// loads — the same schema always yields the same fingerprint.
+fn config_schema_fingerprint(schema: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(schema.to_string().as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn bad_id_response() -> axum::response::Response {
@@ -495,13 +510,34 @@ async fn put_extension_settings(
     if let Err(e) = repo.fetch_deployment(&did).await {
         return err_to_response(e);
     }
+    // Validate against the extension's config_schema when declared (422), else
+    // opaque passthrough. Uninstalled extension is never rejected here (gate B1).
+    let schema_fingerprint = match state
+        .extension_registry
+        .get_extension(&ext_id)
+        .and_then(|ext| ext.manifest.config_schema)
+    {
+        Some(schema) => {
+            if let Err(errors) =
+                nexus_extension::validate_settings_against_schema(&schema, &body.settings)
+            {
+                return (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(ApiResponse::<()>::err(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "deployment.settings_schema_violation",
+                        "deployment",
+                        errors.join("; "),
+                    )),
+                )
+                    .into_response();
+            }
+            Some(config_schema_fingerprint(&schema))
+        }
+        None => None,
+    };
     match repo
-        .upsert_extension_settings(
-            &did,
-            &ext_id,
-            &settings_json,
-            body.schema_fingerprint.as_deref(),
-        )
+        .upsert_extension_settings(&did, &ext_id, &settings_json, schema_fingerprint.as_deref())
         .await
     {
         Ok(r) => (

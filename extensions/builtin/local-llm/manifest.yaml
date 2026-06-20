@@ -18,6 +18,18 @@ runtime:
     cuda_version: null
     env_vars: {}
 
+# Draft-07 schema for per-deployment active-model settings. Loose by design:
+# typed when present, no required keys, so partial blobs still persist.
+config_schema:
+  $schema: "http://json-schema.org/draft-07/schema#"
+  type: object
+  properties:
+    family_id: { type: string }
+    variant_id: { type: string }
+    tuning: { type: object }
+    saved_at: { type: string }
+  additionalProperties: true
+
 # Spec 053 — first-class generic dependency graph (parity with the other
 # builtins). The host walks this graph for the unified install UX. The
 # legacy `runtime_dependencies` block was REMOVED (AC-6.5): its
