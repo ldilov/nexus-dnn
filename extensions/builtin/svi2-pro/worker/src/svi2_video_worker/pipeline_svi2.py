@@ -344,9 +344,8 @@ def _validate_upscale_model(params: dict[str, Any]) -> str:
     return model
 
 
-# Which SVI2 LoRA wraps a SINGLE-FILE base model (the shared high+low expert).
-# The bundled high/low pair always gets its matching per-tier LoRA; this only
-# routes the lone-checkpoint case (e.g. a "low" community finetune). "off" skips.
+# SINGLE-FILE base picks one tier; a split base gets the high/low pair.
+# "off" skips SVI everywhere — for merged checkpoints (e.g. SmoothMix).
 SVI_LORA_TIERS = ("high", "low", "off")
 DEFAULT_SVI_LORA_TIER = "high"
 
@@ -766,6 +765,18 @@ def _svi_lora_for_tier(models_dir: Path, tier: str) -> Optional[Path]:
     return _resolve(models_dir, artifact)
 
 
+def _svi_loras_for_split(
+    models_dir: Path, params: dict[str, Any]
+) -> tuple[Optional[Path], Optional[Path]]:
+    """Per-expert SVI2 LoRAs for a split (two-file) base: high→high, low→low.
+    ``svi_lora_tier == "off"`` disables both — required for merged checkpoints
+    (e.g. SmoothMix) that bake the behaviour into the weights and would be
+    double-wrapped if the SVI pair were force-applied on top."""
+    if _validate_svi_lora_tier(params) == "off":
+        return None, None
+    return _resolve(models_dir, "svi-lora-high"), _resolve(models_dir, "svi-lora-low")
+
+
 def _tier_loras(user_loras: list[dict], tier: str) -> list[dict]:
     """Resolve the per-expert user-LoRA list: pick this tier's weight and drop
     LoRAs disabled for the tier (weight 0). _build_expert stays tier-agnostic."""
@@ -816,12 +827,9 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
         low = _build_expert(dit_low, svi_lora, distill_low, low_loras)
         return high, low
 
-    high = _build_expert(
-        dit_high, _resolve(models_dir, "svi-lora-high"), distill_high, high_loras
-    )
-    low = _build_expert(
-        dit_low, _resolve(models_dir, "svi-lora-low"), distill_low, low_loras
-    )
+    svi_high, svi_low = _svi_loras_for_split(models_dir, params)
+    high = _build_expert(dit_high, svi_high, distill_high, high_loras)
+    low = _build_expert(dit_low, svi_low, distill_low, low_loras)
     return high, low
 
 

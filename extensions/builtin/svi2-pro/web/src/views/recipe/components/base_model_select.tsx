@@ -168,6 +168,24 @@ export function BaseModelSelect(): ReactElement {
         </>
       )}
 
+      {!isSingleFile && (
+        <div className={fc.toggleRow}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sviTier !== "off"}
+            aria-label="Apply SVI LoRA to both experts"
+            className={fc.toggle}
+            onClick={() => handleTierChange(sviTier === "off" ? "high" : "off")}
+          >
+            <span className={fc.toggleThumb} aria-hidden="true" />
+          </button>
+          <span className={styles.hint}>
+            SVI LoRA (auto: high→high, low→low). Turn off for merged checkpoints (e.g. SmoothMix).
+          </span>
+        </div>
+      )}
+
       {failed && (
         <span className={styles.hint}>
           Model Foundry list unavailable — using the bundled base model.
