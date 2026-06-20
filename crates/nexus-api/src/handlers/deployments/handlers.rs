@@ -44,6 +44,12 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/runs", post(run))
         .route("/{id}/clone", post(clone_deployment))
         .route("/{id}/export", post(export))
+        .route(
+            "/{id}/extension-settings/{ext_id}",
+            get(get_extension_settings)
+                .put(put_extension_settings)
+                .delete(delete_extension_settings),
+        )
 }
 
 async fn create(State(state): State<AppState>, Json(req): Json<SaveRequest>) -> impl IntoResponse {
@@ -371,6 +377,163 @@ async fn import(State(state): State<AppState>, Json(body): Json<ImportBody>) -> 
             )
                 .into_response()
         }
+        Err(e) => err_to_response(e),
+    }
+}
+
+/// Max serialized size of a settings blob the host will persist. The host
+/// stores the payload opaquely, so this is the only structural bound it
+/// enforces beyond "must be a JSON object".
+const MAX_SETTINGS_BYTES: usize = 256 * 1024;
+
+#[derive(Debug, Serialize)]
+struct ExtensionSettingsResponse {
+    deployment_id: String,
+    extension_id: String,
+    settings: Value,
+    schema_fingerprint: Option<String>,
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PutExtensionSettingsBody {
+    settings: Value,
+    #[serde(default)]
+    schema_fingerprint: Option<String>,
+}
+
+fn bad_id_response() -> axum::response::Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ApiResponse::<()>::err(
+            StatusCode::BAD_REQUEST,
+            "deployment.invalid_id",
+            "deployment",
+            String::from("malformed deployment id"),
+        )),
+    )
+        .into_response()
+}
+
+async fn get_extension_settings(
+    State(state): State<AppState>,
+    Path((id, ext_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let repo = repo_for(&state);
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return bad_id_response(),
+    };
+    if let Err(e) = repo.fetch_deployment(&did).await {
+        return err_to_response(e);
+    }
+    match repo.get_extension_settings(&did, &ext_id).await {
+        Ok(row) => {
+            let (settings, schema_fingerprint, updated_at) = match row {
+                Some(r) => (
+                    serde_json::from_str(&r.settings_json)
+                        .unwrap_or_else(|_| serde_json::json!({})),
+                    r.settings_schema_fingerprint,
+                    Some(r.updated_at),
+                ),
+                None => (serde_json::json!({}), None, None),
+            };
+            (
+                StatusCode::OK,
+                Json(ApiResponse::ok(ExtensionSettingsResponse {
+                    deployment_id: did.to_string(),
+                    extension_id: ext_id,
+                    settings,
+                    schema_fingerprint,
+                    updated_at,
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => err_to_response(e),
+    }
+}
+
+async fn put_extension_settings(
+    State(state): State<AppState>,
+    Path((id, ext_id)): Path<(String, String)>,
+    Json(body): Json<PutExtensionSettingsBody>,
+) -> impl IntoResponse {
+    let repo = repo_for(&state);
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return bad_id_response(),
+    };
+    if !body.settings.is_object() {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse::<()>::err(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "deployment.settings_not_object",
+                "deployment",
+                String::from("settings must be a JSON object"),
+            )),
+        )
+            .into_response();
+    }
+    let settings_json = body.settings.to_string();
+    if settings_json.len() > MAX_SETTINGS_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(ApiResponse::<()>::err(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "deployment.settings_too_large",
+                "deployment",
+                format!(
+                    "settings payload {} bytes exceeds maximum {MAX_SETTINGS_BYTES}",
+                    settings_json.len()
+                ),
+            )),
+        )
+            .into_response();
+    }
+    if let Err(e) = repo.fetch_deployment(&did).await {
+        return err_to_response(e);
+    }
+    match repo
+        .upsert_extension_settings(
+            &did,
+            &ext_id,
+            &settings_json,
+            body.schema_fingerprint.as_deref(),
+        )
+        .await
+    {
+        Ok(r) => (
+            StatusCode::OK,
+            Json(ApiResponse::ok(ExtensionSettingsResponse {
+                deployment_id: r.deployment_id.to_string(),
+                extension_id: r.extension_id,
+                settings: serde_json::from_str(&r.settings_json)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+                schema_fingerprint: r.settings_schema_fingerprint,
+                updated_at: Some(r.updated_at),
+            })),
+        )
+            .into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+async fn delete_extension_settings(
+    State(state): State<AppState>,
+    Path((id, ext_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let repo = repo_for(&state);
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return bad_id_response(),
+    };
+    if let Err(e) = repo.fetch_deployment(&did).await {
+        return err_to_response(e);
+    }
+    match repo.delete_extension_settings(&did, &ext_id).await {
+        Ok(()) => (StatusCode::NO_CONTENT, ()).into_response(),
         Err(e) => err_to_response(e),
     }
 }

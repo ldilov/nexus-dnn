@@ -116,6 +116,20 @@ impl DeploymentImportService {
             .advance_current_revision(&new_id, &new_revision_id, None)
             .await?;
 
+        // Persist settings as-is even when the extension is absent — they ride
+        // with the host-owned deployment so a later install restores features.
+        for bundle in &envelope.extension_settings {
+            let settings_json = serde_json::to_string(&bundle.settings)?;
+            self.repo
+                .upsert_extension_settings(
+                    &new_id,
+                    &bundle.extension_id,
+                    &settings_json,
+                    bundle.schema_fingerprint.as_deref(),
+                )
+                .await?;
+        }
+
         let result = ImportResult {
             deployment_id: new_id.clone(),
             state: state.into(),

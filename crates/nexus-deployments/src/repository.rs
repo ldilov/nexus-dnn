@@ -236,6 +236,20 @@ pub struct RevisionRow {
     pub compatibility_summary_json: Option<String>,
 }
 
+/// A persisted per-deployment, per-extension settings row. `settings_json`
+/// is an opaque blob the host never interprets; `settings_schema_fingerprint`
+/// is an opaque hint the owning extension declares and compares on import.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionSettingsRow {
+    pub id: String,
+    pub deployment_id: DeploymentId,
+    pub extension_id: String,
+    pub settings_json: String,
+    pub settings_schema_fingerprint: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[async_trait]
 pub trait DeploymentRepository: Send + Sync {
     async fn insert_deployment(&self, row: NewDeployment) -> Result<(), DeploymentError>;
@@ -314,4 +328,38 @@ pub trait DeploymentRepository: Send + Sync {
     /// `PurgeRequiresSoftDeleteFirst` when the row exists but is still
     /// live; `NotFound` when the row does not exist.
     async fn purge(&self, id: &DeploymentId) -> Result<(), DeploymentError>;
+
+    /// Fetch the opaque settings row for `(deployment_id, extension_id)`, or
+    /// `None` when no row exists yet. Does not check extension-install state.
+    async fn get_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+        extension_id: &str,
+    ) -> Result<Option<ExtensionSettingsRow>, DeploymentError>;
+
+    /// All settings rows for a deployment, ordered by `extension_id`. Used by
+    /// the export pipeline to bundle every extension's settings host-side.
+    async fn list_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+    ) -> Result<Vec<ExtensionSettingsRow>, DeploymentError>;
+
+    /// Idempotent upsert of the opaque settings blob keyed on
+    /// `(deployment_id, extension_id)`. Persists regardless of whether the
+    /// extension is currently installed — deployments are host-owned and may
+    /// carry settings for an absent extension (`missing_dependencies` flow).
+    async fn upsert_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+        extension_id: &str,
+        settings_json: &str,
+        settings_schema_fingerprint: Option<&str>,
+    ) -> Result<ExtensionSettingsRow, DeploymentError>;
+
+    /// Remove the settings row for `(deployment_id, extension_id)`. Idempotent.
+    async fn delete_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+        extension_id: &str,
+    ) -> Result<(), DeploymentError>;
 }

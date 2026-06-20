@@ -26,6 +26,7 @@ async fn import_with_missing_dependency_lands_in_stale_state_no_autoinstall() {
             "effective_workflow_hash": "a".repeat(64),
             "mapping_state": "custom"
         })],
+        extension_settings: vec![],
         integrity: Integrity {
             hash_algo: "sha256-jcs-rfc8785".into(),
             digest: "0".repeat(64),
