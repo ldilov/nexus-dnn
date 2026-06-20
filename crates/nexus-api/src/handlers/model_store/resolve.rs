@@ -2,7 +2,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use nexus_civitai::{CivitaiError, CivitaiResolved, parse_civitai_url};
+use nexus_civitai::{CivitaiError, CivitaiRef, CivitaiResolved, parse_civitai_url};
 use nexus_models_store::ids::{ArtifactId, FamilyId, VariantId};
 use nexus_models_store::model::{Artifact, ModelFamily, ModelRepository, SourceProvider, Variant};
 use nexus_models_store::normalize::classify::classify_format;
@@ -60,6 +60,19 @@ fn host_of(url: &str) -> &str {
 fn is_civitai_host(url: &str) -> bool {
     let host = host_of(url).to_ascii_lowercase();
     host == "civitai.com" || host.ends_with(".civitai.com")
+}
+
+/// The catalog reference to resolve through the Civitai API, or `None` when the
+/// URL should go through the generic direct-download path instead. A civitai
+/// subdomain that isn't a catalog URL — notably the `b2.civitai.com` file CDN
+/// that serves signed `.safetensors` download links — is a direct download, not
+/// a catalog lookup, so it falls through rather than erroring.
+fn civitai_catalog_ref(url: &str) -> Option<CivitaiRef> {
+    if is_civitai_host(url) {
+        parse_civitai_url(url).ok()
+    } else {
+        None
+    }
 }
 
 pub fn build_direct_family(url: &str, meta: &DirectHeadMeta) -> ModelFamily {
@@ -193,15 +206,7 @@ pub async fn resolve_url(
         .into_response();
     }
 
-    if is_civitai_host(&url) {
-        let reference = match parse_civitai_url(&url) {
-            Ok(r) => r,
-            Err(e) => {
-                return ApiResponse::<()>::bad_request(format!("could not parse civitai url: {e}"))
-                    .into_response();
-            }
-        };
-
+    if let Some(reference) = civitai_catalog_ref(&url) {
         let client = match state.civitai.as_ref() {
             Some(c) => c,
             None => {
@@ -340,10 +345,7 @@ mod tests {
         let resolved = parse_version_response(fixture).expect("valid fixture");
         let family = build_civitai_family(&resolved).expect("has primary file");
 
-        assert_eq!(
-            family.repository.source_provider,
-            SourceProvider::Civitai
-        );
+        assert_eq!(family.repository.source_provider, SourceProvider::Civitai);
         assert_eq!(family.artifacts[0].sha256, Some("ab".to_owned()));
     }
 
@@ -357,8 +359,14 @@ mod tests {
                 "primary": true } ] }"#;
         let resolved = nexus_civitai::parse_version_response(json).unwrap();
         let f = build_civitai_family(&resolved).unwrap();
-        assert_eq!(f.repository.modality, nexus_models_store::types::Modality::Lora);
-        assert_eq!(f.artifacts[0].role, nexus_models_store::types::DependencyRole::Lora);
+        assert_eq!(
+            f.repository.modality,
+            nexus_models_store::types::Modality::Lora
+        );
+        assert_eq!(
+            f.artifacts[0].role,
+            nexus_models_store::types::DependencyRole::Lora
+        );
     }
 
     #[test]
@@ -371,5 +379,31 @@ mod tests {
         assert!(!is_civitai_host("https://not-civitai.com/models/1"));
         assert!(!is_civitai_host("https://civitai.com.evil.test/models/1"));
         assert!(!is_civitai_host("https://example.com/?civitai.com"));
+    }
+
+    #[test]
+    fn b2_civitai_file_url_falls_through_to_direct() {
+        // Signed Backblaze download link on civitai's file CDN — a civitai
+        // subdomain, but not a catalog URL, so it must NOT route to the API.
+        let url = "https://b2.civitai.com/file/civitai-modelfiles/model/7445037/\
+                   x.safetensors?Authorization=tok&b2ContentDisposition=attachment";
+        assert!(is_civitai_host(url));
+        assert!(
+            civitai_catalog_ref(url).is_none(),
+            "file CDN download links go through the direct-download path"
+        );
+    }
+
+    #[test]
+    fn civitai_catalog_urls_resolve_through_api() {
+        assert_eq!(
+            civitai_catalog_ref("https://civitai.com/models/4201?modelVersionId=130072"),
+            Some(CivitaiRef::Version(130072))
+        );
+        assert_eq!(
+            civitai_catalog_ref("https://civitai.com/models/4201"),
+            Some(CivitaiRef::Model(4201))
+        );
+        assert!(civitai_catalog_ref("https://example.com/x.safetensors").is_none());
     }
 }
