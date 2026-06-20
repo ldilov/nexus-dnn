@@ -453,20 +453,54 @@ impl InstallMap {
         job_id: &str,
         sink_root: &std::path::Path,
     ) -> JobStoreResult<GcOutcome> {
-        if self.refcount(job_id).await? > 0 {
+        // TOCTOU: the refcount check and the row delete must be ONE write
+        // transaction, or a racing add_ref can slip a reference in between.
+        let mut conn = self.pool.acquire().await?;
+        // The host pool sets no busy_timeout (instant SQLITE_BUSY); wait briefly
+        // so a competing writer doesn't fail this delete outright.
+        sqlx::query("PRAGMA busy_timeout = 5000")
+            .execute(&mut *conn)
+            .await?;
+        // BEGIN IMMEDIATE takes the write (RESERVED) lock up front — a plain
+        // BEGIN takes a shared lock that wouldn't block the racing add_ref.
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+
+        let refs: i64 = match sqlx::query(
+            "SELECT COUNT(*) AS n FROM model_store_artifact_refs WHERE job_id = ?1",
+        )
+        .bind(job_id)
+        .fetch_one(&mut *conn)
+        .await
+        {
+            Ok(row) => row.get("n"),
+            Err(e) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(e.into());
+            }
+        };
+        if refs > 0 {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
             return Ok(GcOutcome::retained());
         }
 
+        if let Err(e) = sqlx::query("DELETE FROM model_store_installed_artifacts WHERE job_id = ?1")
+            .bind(job_id)
+            .execute(&mut *conn)
+            .await
+        {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(e.into());
+        }
+        sqlx::query("COMMIT").execute(&mut *conn).await?;
+        drop(conn);
+
+        // Files come off disk only AFTER the row delete commits: a crash here
+        // leaves orphan bytes that prune/backfill reconcile, never a live row.
         let sink_dir = sink_root.join(job_id);
         let freed_bytes = dir_size_bytes(&sink_dir).await;
         if sink_dir.exists() {
             let _ = tokio::fs::remove_dir_all(&sink_dir).await;
         }
-
-        sqlx::query("DELETE FROM model_store_installed_artifacts WHERE job_id = ?1")
-            .bind(job_id)
-            .execute(self.pool.as_ref())
-            .await?;
 
         if let Err(e) = crate::downloads::legibility::remove_index_entry(sink_root, job_id).await {
             tracing::warn!(
@@ -850,6 +884,41 @@ mod tests {
         Arc::new(pool)
     }
 
+    /// File-backed pool with several connections, so the gc write transaction
+    /// and a racing add_ref actually contend on one DB (the memory pool serializes).
+    async fn file_pool(db_path: &std::path::Path) -> Arc<SqlitePool> {
+        let opts = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(true)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        sqlx::query(include_str!(
+            "../../../../migrations/014_model_store_installed_artifacts.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
+        for mig in [
+            include_str!("../../../../migrations/015_installed_artifact_extraction_metadata.sql"),
+            include_str!("../../../../migrations/021_installed_artifact_moe_metadata.sql"),
+            include_str!("../../../../migrations/022_model_store_artifact_refs.sql"),
+            include_str!("../../../../migrations/023_installed_artifact_role.sql"),
+        ] {
+            for stmt in mig.split(';') {
+                let trimmed = stmt.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let _ = sqlx::query(trimmed).execute(&pool).await;
+            }
+        }
+        Arc::new(pool)
+    }
+
     fn sample(artifact: &str, family: &str, variant: Option<&str>) -> InstalledArtifactRecord {
         InstalledArtifactRecord {
             artifact_id: ArtifactId::from(artifact),
@@ -1188,6 +1257,50 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    /// TOCTOU regression: a gc racing an add_ref on the same job (real file-DB
+    /// contention) must never error (no spurious SQLITE_BUSY) and must stay
+    /// atomic — a deleted job leaves no row AND no files; a retained job keeps
+    /// both. The BEGIN IMMEDIATE + in-transaction recount closes the window.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn gc_racing_add_ref_is_atomic_and_never_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = file_pool(&tmp.path().join("race.db")).await;
+        let map = Arc::new(InstallMap::new(pool));
+        let sink = tmp.path().join("sink");
+        tokio::fs::create_dir_all(&sink).await.unwrap();
+
+        for i in 0..40u32 {
+            let job = format!("00000000-0000-7000-8000-{i:012x}");
+            seed_install(&map, &sink, "hf:a/race", &job, "m.gguf", b"weights").await;
+
+            let (m1, s1, j1) = (map.clone(), sink.clone(), job.clone());
+            let (m2, j2) = (map.clone(), job.clone());
+            let gc = tokio::spawn(async move { m1.gc_artifact_if_unreferenced(&j1, &s1).await });
+            let add = tokio::spawn(async move { m2.add_ref(&j2, "ext.race").await });
+            let (gc_res, add_res) = tokio::join!(gc, add);
+
+            let outcome = gc_res.unwrap().expect("gc must not error under contention");
+            add_res
+                .unwrap()
+                .expect("add_ref must not error under contention");
+
+            let file = sink.join(&job).join("m.gguf");
+            let row_present = map
+                .list_for_family(&FamilyId::from("hf:a/race"))
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.job_id == job);
+            if outcome.deleted {
+                assert!(!file.exists(), "deleted job {job} left files on disk");
+                assert!(!row_present, "deleted job {job} left a row");
+            } else {
+                assert!(file.exists(), "retained job {job} lost its file");
+                assert!(row_present, "retained job {job} lost its row");
+            }
+        }
     }
 
     /// Forced-reinstall purge — `remove_ref` drops just one holder's ref. An
