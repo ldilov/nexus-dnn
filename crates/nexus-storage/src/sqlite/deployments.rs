@@ -591,6 +591,10 @@ impl DeploymentMappers {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        sqlx::query("DELETE FROM deployment_extension_settings WHERE deployment_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         sqlx::query("DELETE FROM deployment_tags WHERE deployment_id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -603,6 +607,85 @@ impl DeploymentMappers {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Upsert the opaque settings blob for `(deployment_id, extension_id)`.
+    /// Idempotent on the unique pair: a second call with the same pair
+    /// replaces `settings_json`/`settings_schema_fingerprint`/`updated_at`
+    /// while preserving the original `id` and `created_at`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_extension_settings(
+        &self,
+        id: &str,
+        deployment_id: &str,
+        extension_id: &str,
+        settings_json: &str,
+        settings_schema_fingerprint: Option<&str>,
+        created_at: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO deployment_extension_settings (id, deployment_id, extension_id, settings_json, settings_schema_fingerprint, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(deployment_id, extension_id) DO UPDATE SET \
+               settings_json = excluded.settings_json, \
+               settings_schema_fingerprint = excluded.settings_schema_fingerprint, \
+               updated_at = excluded.updated_at",
+        )
+        .bind(id)
+        .bind(deployment_id)
+        .bind(extension_id)
+        .bind(settings_json)
+        .bind(settings_schema_fingerprint)
+        .bind(created_at)
+        .bind(updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_extension_settings(
+        &self,
+        deployment_id: &str,
+        extension_id: &str,
+    ) -> Result<Option<RawExtensionSettings>, StorageError> {
+        let row = sqlx::query(
+            "SELECT id, deployment_id, extension_id, settings_json, settings_schema_fingerprint, created_at, updated_at \
+             FROM deployment_extension_settings WHERE deployment_id = ? AND extension_id = ?",
+        )
+        .bind(deployment_id)
+        .bind(extension_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| map_extension_settings_row(&r)))
+    }
+
+    pub async fn list_extension_settings(
+        &self,
+        deployment_id: &str,
+    ) -> Result<Vec<RawExtensionSettings>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, deployment_id, extension_id, settings_json, settings_schema_fingerprint, created_at, updated_at \
+             FROM deployment_extension_settings WHERE deployment_id = ? ORDER BY extension_id",
+        )
+        .bind(deployment_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(map_extension_settings_row).collect())
+    }
+
+    pub async fn delete_extension_settings(
+        &self,
+        deployment_id: &str,
+        extension_id: &str,
+    ) -> Result<u64, StorageError> {
+        let res =
+            sqlx::query("DELETE FROM deployment_extension_settings WHERE deployment_id = ? AND extension_id = ?")
+                .bind(deployment_id)
+                .bind(extension_id)
+                .execute(&self.pool)
+                .await?;
         Ok(res.rows_affected())
     }
 
@@ -713,6 +796,31 @@ pub struct RevisionRowRaw {
     pub effective_workflow_hash: String,
     pub workflow_snapshot_id: Option<String>,
     pub compatibility_summary_json: Option<String>,
+}
+
+pub struct RawExtensionSettings {
+    pub id: String,
+    pub deployment_id: String,
+    pub extension_id: String,
+    pub settings_json: String,
+    pub settings_schema_fingerprint: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn map_extension_settings_row(r: &sqlx::sqlite::SqliteRow) -> RawExtensionSettings {
+    RawExtensionSettings {
+        id: r.try_get("id").unwrap_or_default(),
+        deployment_id: r.try_get("deployment_id").unwrap_or_default(),
+        extension_id: r.try_get("extension_id").unwrap_or_default(),
+        settings_json: r.try_get("settings_json").unwrap_or_default(),
+        settings_schema_fingerprint: r
+            .try_get::<Option<String>, _>("settings_schema_fingerprint")
+            .ok()
+            .flatten(),
+        created_at: r.try_get("created_at").unwrap_or_default(),
+        updated_at: r.try_get("updated_at").unwrap_or_default(),
+    }
 }
 
 fn row_to_deployment(r: sqlx::sqlite::SqliteRow) -> DeploymentRowRaw {

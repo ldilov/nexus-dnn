@@ -43,6 +43,7 @@ import { prettyModelLabel, modelOrgFromLabel } from "./local_llm/model_label";
 import { EmptyChatState } from "./local_llm/empty_chat_state";
 import {
   clearDeploymentModel,
+  hydrateDeploymentModel,
   persistDeploymentModel,
   readDeploymentModel,
   type StickyModel,
@@ -316,6 +317,13 @@ export function ChatPanelAdapter({
   useEffect(() => {
     stickyModelRef.current = readDeploymentModel(deploymentId);
     autoBindAttemptedRef.current = new Set();
+    const controller = new AbortController();
+    void hydrateDeploymentModel(deploymentId, controller.signal).then((model) => {
+      if (!controller.signal.aborted) stickyModelRef.current = model;
+    });
+    return () => {
+      controller.abort();
+    };
   }, [deploymentId]);
 
   useEffect(() => {

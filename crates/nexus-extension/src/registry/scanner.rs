@@ -5,7 +5,9 @@ use tracing::{info, warn};
 
 use crate::error::ExtensionError;
 use crate::manifest::{ExtensionManifest, OperatorDefinition, parse_manifest};
-use crate::validation::{check_compatibility, validate_manifest_schema};
+use crate::validation::{
+    check_compatibility, validate_config_schema_compiles, validate_manifest_schema,
+};
 
 use super::loaders::{
     load_layouts, load_operators, load_recipes, load_ui_contributions, yaml_to_json_value,
@@ -131,6 +133,7 @@ pub(super) fn process_extension(
 
     let manifest_json = yaml_to_json_value(&manifest_path)?;
     validate_manifest_schema(&manifest_json)?;
+    validate_config_schema_compiles(&manifest)?;
     check_compatibility(&manifest, host_version, protocol_version)?;
 
     let mut validation_errors = Vec::new();
@@ -180,6 +183,7 @@ fn process_builtin_extension(
 
     let manifest_json = yaml_to_json_value(&manifest_path)?;
     validate_manifest_schema(&manifest_json)?;
+    validate_config_schema_compiles(&manifest)?;
     check_compatibility(&manifest, host_version, protocol_version)?;
 
     Ok(ActivatedExtension {

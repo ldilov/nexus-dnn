@@ -15,5 +15,7 @@ pub use records::{
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 pub use sqlite::SqliteDatabase;
-pub use sqlite::deployments::{DeploymentMappers, DeploymentRowRaw, RevisionRowRaw};
+pub use sqlite::deployments::{
+    DeploymentMappers, DeploymentRowRaw, RawExtensionSettings, RevisionRowRaw,
+};
 pub use sqlite::extensions::{upsert_icon, upsert_primary_refs};

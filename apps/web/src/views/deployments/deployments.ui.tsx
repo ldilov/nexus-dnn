@@ -1,4 +1,5 @@
 import type { DeploymentSummary, ModuleSummary } from "../../api/client";
+import { Button } from "../../components/base/button";
 import { PageHero } from "../../components/base/page_hero";
 import { Section } from "../../components/base/section";
 import { Pill } from "../../components/base/pill";
@@ -24,6 +25,7 @@ export interface DeploymentsUIProps {
   onOpenModule: (moduleId: string) => void;
   onGoToModules: () => void;
   onRequestDelete: (deployment: DeploymentSummary) => void;
+  onRequestImport?: () => void;
 }
 
 function formatTimestamp(iso: string): string {
@@ -54,6 +56,7 @@ export function DeploymentsUI({
   onOpenModule,
   onGoToModules,
   onRequestDelete,
+  onRequestImport,
 }: DeploymentsUIProps) {
   const userCount = items.filter((d) => {
     const m = resolveModule(d);
@@ -66,6 +69,16 @@ export function DeploymentsUI({
       <PageHero
         eyebrow="Operator surface · Saved working states"
         title="Deployments"
+        actions={
+          onRequestImport ? (
+            <Button type="button" variant="secondary" size="sm" onClick={onRequestImport}>
+              <span className="material-symbols-outlined" aria-hidden="true">
+                upload
+              </span>
+              Import
+            </Button>
+          ) : undefined
+        }
         meta={
           <span className={s.subtitle}>
             Saved working states of modules — name, restore, and re-run them without

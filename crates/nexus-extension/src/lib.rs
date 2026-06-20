@@ -46,6 +46,6 @@ pub use ui_contribution::{
     UIContributionFile, UIContributionKind, parse_ui_contribution, parse_ui_contribution_from_str,
 };
 pub use validation::{
-    CapabilityGrant, check_compatibility, resolve_capabilities, validate_manifest_schema,
-    validate_operator_schema,
+    CapabilityGrant, check_compatibility, resolve_capabilities, validate_config_schema_compiles,
+    validate_manifest_schema, validate_operator_schema, validate_settings_against_schema,
 };

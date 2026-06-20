@@ -90,6 +90,18 @@ impl DeploymentCloneService {
             .advance_current_revision(&new_id, &new_revision_id, None)
             .await?;
 
+        // Deep-copy each extension's opaque settings to the cloned deployment.
+        for row in self.repo.list_extension_settings(source_id).await? {
+            self.repo
+                .upsert_extension_settings(
+                    &new_id,
+                    &row.extension_id,
+                    &row.settings_json,
+                    row.settings_schema_fingerprint.as_deref(),
+                )
+                .await?;
+        }
+
         let events = vec![
             DeploymentEvent::Created {
                 deployment_id: new_id.clone(),

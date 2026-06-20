@@ -1,12 +1,14 @@
 use crate::error::DeploymentError;
 use crate::id::{DeploymentId, DeploymentRevisionId};
 use crate::repository::{
-    DeploymentRepository, DeploymentRow, ListFilter, MetadataPatch, NewArtifactBinding,
-    NewDeployment, NewModelBinding, NewParameter, NewRestoreDiagnostic, NewRevision, NewRunLink,
-    NewRuntimeBinding, NewSnapshot, NewSourceLink, NewValidation, RevisionRow,
+    DeploymentRepository, DeploymentRow, ExtensionSettingsRow, ListFilter, MetadataPatch,
+    NewArtifactBinding, NewDeployment, NewModelBinding, NewParameter, NewRestoreDiagnostic,
+    NewRevision, NewRunLink, NewRuntimeBinding, NewSnapshot, NewSourceLink, NewValidation,
+    RevisionRow,
 };
 use async_trait::async_trait;
 use nexus_storage::DeploymentMappers;
+use nexus_storage::RawExtensionSettings;
 use std::str::FromStr;
 
 pub struct SqliteDeploymentRepository {
@@ -429,5 +431,78 @@ impl DeploymentRepository for SqliteDeploymentRepository {
                 Ok(())
             }
         }
+    }
+
+    async fn get_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+        extension_id: &str,
+    ) -> Result<Option<ExtensionSettingsRow>, DeploymentError> {
+        let raw = self
+            .inner
+            .get_extension_settings(deployment_id.as_str(), extension_id)
+            .await?;
+        Ok(raw.map(to_settings_row))
+    }
+
+    async fn list_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+    ) -> Result<Vec<ExtensionSettingsRow>, DeploymentError> {
+        let raws = self
+            .inner
+            .list_extension_settings(deployment_id.as_str())
+            .await?;
+        Ok(raws.into_iter().map(to_settings_row).collect())
+    }
+
+    async fn upsert_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+        extension_id: &str,
+        settings_json: &str,
+        settings_schema_fingerprint: Option<&str>,
+    ) -> Result<ExtensionSettingsRow, DeploymentError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let id = format!("depext_{}", uuid::Uuid::now_v7());
+        self.inner
+            .upsert_extension_settings(
+                &id,
+                deployment_id.as_str(),
+                extension_id,
+                settings_json,
+                settings_schema_fingerprint,
+                &now,
+                &now,
+            )
+            .await?;
+        // Re-fetch so the returned row reflects the canonical persisted state
+        // (original id + created_at are preserved across an upsert-update).
+        self.get_extension_settings(deployment_id, extension_id)
+            .await?
+            .ok_or_else(|| DeploymentError::NotFound(deployment_id.clone()))
+    }
+
+    async fn delete_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+        extension_id: &str,
+    ) -> Result<(), DeploymentError> {
+        self.inner
+            .delete_extension_settings(deployment_id.as_str(), extension_id)
+            .await?;
+        Ok(())
+    }
+}
+
+fn to_settings_row(raw: RawExtensionSettings) -> ExtensionSettingsRow {
+    ExtensionSettingsRow {
+        id: raw.id,
+        deployment_id: DeploymentId::from_str(&raw.deployment_id).unwrap(),
+        extension_id: raw.extension_id,
+        settings_json: raw.settings_json,
+        settings_schema_fingerprint: raw.settings_schema_fingerprint,
+        created_at: raw.created_at,
+        updated_at: raw.updated_at,
     }
 }

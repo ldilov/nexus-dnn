@@ -35,6 +35,11 @@ pub struct ExtensionManifest {
     /// catalog. Empty by default for backward compat with existing extensions.
     #[serde(default)]
     pub backend_runtimes: Vec<BackendRuntimeContribution>,
+    /// Optional JSON Schema (draft-07) the host validates per-deployment
+    /// extension settings against on write. Absent → settings are an opaque
+    /// passthrough. Compiled at extension load (malformed schema fails load).
+    #[serde(default)]
+    pub config_schema: Option<serde_json::Value>,
 }
 
 /// One row contributed to `backend_runtime_catalog` (spec 032). The host

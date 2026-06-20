@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { mutate as globalMutate } from "swr";
 import type { LayoutSummary, ModuleSummary } from "../../../api/client";
@@ -12,6 +12,7 @@ import {
 import { useRuntimeStatus } from "../../../hooks/use_runtime_status";
 import type { StatusKind } from "../../../components/base/status_chip";
 import { deleteDeployment } from "../../../services/deployments";
+import { downloadJson, exportDeployment } from "../../../services/deployment_transfer";
 import { useRootOutletContext } from "../../../root_layout";
 import { DeploymentDetailUI, type DetailTabId } from "./detail.ui";
 
@@ -132,6 +133,25 @@ export function DeploymentDetailPlaceholder({
     }
   }, [cleanedDisplayName, deploymentId, onBack]);
 
+  const exportBusyRef = useRef(false);
+  const handleExport = useCallback(async () => {
+    if (exportBusyRef.current) return;
+    exportBusyRef.current = true;
+    try {
+      const envelope = await exportDeployment(deploymentId);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const base = (slug ?? cleanedDisplayName ?? deploymentId).replace(/[^a-zA-Z0-9._-]+/g, "_");
+      downloadJson(`${base}-${stamp}.nexus-deployment.json`, envelope);
+      toast.success("Deployment exported");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to export deployment";
+      toast.error(message);
+    } finally {
+      exportBusyRef.current = false;
+    }
+  }, [cleanedDisplayName, deploymentId, slug]);
+
   return (
     <>
       <DeploymentDetailUI
@@ -151,6 +171,7 @@ export function DeploymentDetailPlaceholder({
         extensionLayout={extensionLayout}
         extensionId={deployment?.source_extension_id ?? null}
         onRequestDelete={() => setDeleteOpen(true)}
+        onRequestExport={handleExport}
       />
       <ConfirmDialog
         open={deleteOpen}
