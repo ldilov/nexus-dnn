@@ -80,6 +80,7 @@ function renderCard(opts: {
   onDownload?: (...args: unknown[]) => void;
   onPause?: (jobId: string) => void;
   onResume?: (jobId: string) => void;
+  onDelete?: (artifactId: string, label: string) => void;
 }) {
   const family = opts.family ?? makeFamily();
   const jobStateByFamily: Record<string, DownloadState | undefined> = {};
@@ -103,6 +104,7 @@ function renderCard(opts: {
       onPause={opts.onPause ?? noop}
       onResume={opts.onResume ?? noop}
       onAuthRequired={noop}
+      onDelete={opts.onDelete ?? noop}
     />,
   );
 }
@@ -145,6 +147,14 @@ describe("ModelCard — primary download state-machine", () => {
     expect(
       screen.getByRole("button", { name: /re-download/i }),
     ).toBeInTheDocument();
+  });
+
+  it("fires onDelete from the Downloaded chip", () => {
+    const onDelete = vi.fn();
+    const job = makeJob({ state: "downloaded", progress_bytes: 1000, total_bytes: 1000 });
+    renderCard({ liveState: "downloaded", job, onDelete });
+    fireEvent.click(screen.getByRole("button", { name: /delete download/i }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to Artifact.install_state when no live job exists (downloaded)", () => {

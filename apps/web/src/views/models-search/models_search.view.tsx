@@ -17,6 +17,7 @@ import {
   isTerminalState,
   parseSearchParams,
   pauseDownload,
+  deleteInstalled,
   resolveUrl,
   resumeDownload,
   serializeSearchParams,
@@ -455,6 +456,22 @@ export function ModelsSearchView() {
           });
         } finally {
           setUploading(false);
+        }
+      },
+      onDelete: async (artifactId: string, label: string) => {
+        if (
+          !window.confirm(
+            `Delete "${label}"? This permanently removes the downloaded files from disk.`,
+          )
+        ) {
+          return;
+        }
+        try {
+          await deleteInstalled(artifactId);
+          dispatchModelsChanged();
+          navigate(0);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "could not delete model");
         }
       },
       onSortChange: (sort: ParsedSearchParams["sort"]) =>

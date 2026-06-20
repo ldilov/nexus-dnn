@@ -16,6 +16,7 @@ interface ArtifactListProps {
   onDownload: (artifact: Artifact) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
+  onDelete: (artifact: Artifact) => void;
   compatHint?: string;
 }
 
@@ -109,6 +110,7 @@ export function ArtifactList({
   onDownload,
   onPause,
   onResume,
+  onDelete,
   compatHint,
 }: ArtifactListProps) {
   return (
@@ -182,6 +184,21 @@ export function ArtifactList({
               >
                 {glyph.icon}
               </span>
+              {state === "downloaded" && (
+                <button
+                  type="button"
+                  className={s.rowAction}
+                  aria-label={`Delete ${artifactLabel(artifact)}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(artifact);
+                  }}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    delete
+                  </span>
+                </button>
+              )}
             </li>
           );
         })}

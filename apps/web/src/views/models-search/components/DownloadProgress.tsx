@@ -124,11 +124,13 @@ export function DownloadProgress({
 interface DownloadedChipProps {
   sizeBytes: number | null;
   onReDownload?: () => void;
+  onDelete?: () => void;
 }
 
 export function DownloadedChip({
   sizeBytes,
   onReDownload,
+  onDelete,
 }: DownloadedChipProps) {
   return (
     <div className={s.row}>
@@ -149,6 +151,16 @@ export function DownloadedChip({
           onClick={onReDownload}
         >
           Re-download
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          className={s.inlineButton}
+          aria-label="Delete download"
+          onClick={onDelete}
+        >
+          Delete
         </button>
       )}
     </div>

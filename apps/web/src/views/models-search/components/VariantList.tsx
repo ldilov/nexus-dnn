@@ -16,6 +16,7 @@ interface VariantListProps {
   onDownload: (variant: Variant) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
+  onDelete: (variant: Variant) => void;
   compatHint?: string;
 }
 
@@ -56,6 +57,7 @@ interface VariantRowProps {
   onDownload: () => void;
   onPause: () => void;
   onResume: () => void;
+  onDelete: () => void;
   onArrow: (dir: 1 | -1) => void;
 }
 
@@ -116,6 +118,7 @@ function VariantRow({
   onDownload,
   onPause,
   onResume,
+  onDelete,
   onArrow,
 }: VariantRowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
@@ -201,6 +204,21 @@ function VariantRow({
           {meta.icon}
         </span>
       </button>
+      {state === "downloaded" && (
+        <button
+          type="button"
+          className={s.rowAction}
+          aria-label={`Delete ${variant.label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            delete
+          </span>
+        </button>
+      )}
     </div>
   );
 }
@@ -214,6 +232,7 @@ export function VariantList({
   onDownload,
   onPause,
   onResume,
+  onDelete,
   compatHint,
 }: VariantListProps) {
   const sizeMap = useMemo(() => {
@@ -258,6 +277,7 @@ export function VariantList({
               onResume={() => {
                 if (jobId) onResume(jobId);
               }}
+              onDelete={() => onDelete(variant)}
               onArrow={(dir) => focusSibling(idx, dir)}
             />
           );

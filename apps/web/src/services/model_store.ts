@@ -389,6 +389,27 @@ export function fetchInstalled(signal?: AbortSignal): Promise<InstalledIndex> {
   return apiFetch("/model-store/installed", { signal });
 }
 
+export interface DeleteInstalledResult {
+  artifact_id: string;
+  job_id: string;
+  freed_bytes: number;
+}
+
+/**
+ * Delete a downloaded model by one of its installed artifact ids. The host
+ * resolves the artifact to its download job and removes the files + rows.
+ * Rejects with a 409 when an extension still references the model.
+ */
+export function deleteInstalled(
+  artifactId: string,
+  signal?: AbortSignal,
+): Promise<DeleteInstalledResult> {
+  return apiFetch(`/model-store/installed/${encodeURIComponent(artifactId)}`, {
+    method: "DELETE",
+    signal,
+  });
+}
+
 export interface UploadResult {
   artifact_id: string;
   family_id: string;

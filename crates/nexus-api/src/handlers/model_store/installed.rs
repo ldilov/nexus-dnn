@@ -1,8 +1,10 @@
-use axum::extract::State;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
 use nexus_models_store::downloads::InstalledArtifactRow;
+use nexus_models_store::ids::ArtifactId;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
@@ -102,6 +104,79 @@ pub async fn get_installed(State(state): State<AppState>) -> Response {
         truncated,
     })
     .into_response()
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteInstalledDto {
+    pub artifact_id: String,
+    pub job_id: String,
+    pub freed_bytes: u64,
+}
+
+/// `DELETE /api/v1/model-store/installed/:artifact_id` — delete a downloaded
+/// model. Resolves the artifact to its download job, then removes the job's
+/// sink files, install-map rows, and legibility index entry. Returns 404 when
+/// the artifact isn't installed and 409 when an extension still references it.
+pub async fn delete_installed(
+    State(state): State<AppState>,
+    Path(artifact_id): Path<String>,
+) -> Response {
+    let Some(install_map) = state.install_map.as_ref() else {
+        return ApiResponse::<()>::err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "not_ready",
+            "model_store",
+            "Model store not yet initialised.".into(),
+        )
+        .into_response();
+    };
+    let Some(orchestrator) = state.download_orchestrator.as_ref() else {
+        return ApiResponse::<()>::err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "not_ready",
+            "model_store",
+            "Download orchestrator not yet initialised.".into(),
+        )
+        .into_response();
+    };
+
+    let row = match install_map
+        .find_by_artifact(&ArtifactId::from(artifact_id.clone()))
+        .await
+    {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return ApiResponse::<()>::not_found(format!("artifact not installed: {artifact_id}"))
+                .into_response();
+        }
+        Err(e) => return ApiResponse::<()>::internal(format!("lookup: {e}")).into_response(),
+    };
+    let job_id = row.job_id;
+
+    match install_map
+        .gc_artifact_if_unreferenced(&job_id, orchestrator.sink_root())
+        .await
+    {
+        Ok(outcome) if outcome.deleted => ApiResponse::ok(DeleteInstalledDto {
+            artifact_id,
+            job_id,
+            freed_bytes: outcome.freed_bytes,
+        })
+        .into_response(),
+        Ok(_) => {
+            let refs = install_map.refcount(&job_id).await.unwrap_or(1);
+            ApiResponse::<()>::err(
+                StatusCode::CONFLICT,
+                "in_use",
+                "model_store",
+                format!(
+                    "model is in use by {refs} extension(s); uninstall those before deleting it"
+                ),
+            )
+            .into_response()
+        }
+        Err(e) => ApiResponse::<()>::internal(format!("delete: {e}")).into_response(),
+    }
 }
 
 #[cfg(test)]

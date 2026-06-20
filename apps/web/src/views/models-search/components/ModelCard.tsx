@@ -51,6 +51,7 @@ interface ModelCardProps {
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
   onAuthRequired: (family: ModelFamily) => void;
+  onDelete: (artifactId: string, label: string) => void;
 }
 
 function formatCount(n: number | null | undefined): string {
@@ -117,6 +118,7 @@ export function ModelCard({
   onPause,
   onResume,
   onAuthRequired,
+  onDelete,
 }: ModelCardProps) {
   const primary = primaryArtifact(family);
   const accent = accentFor(family);
@@ -211,6 +213,9 @@ export function ModelCard({
           }
           onPause={onPause}
           onResume={onResume}
+          onDelete={(v: Variant) =>
+            onDelete(v.artifact_ids[0] ?? primary?.artifact_id ?? "", v.label)
+          }
           compatHint={
             primary?.format === "gguf" || primary?.format === "ggml"
               ? "llama.cpp compatible"
@@ -230,6 +235,7 @@ export function ModelCard({
           }
           onPause={onPause}
           onResume={onResume}
+          onDelete={(a) => onDelete(a.artifact_id, a.filename)}
           compatHint={
             primary?.format === "gguf" || primary?.format === "ggml"
               ? "llama.cpp compatible"
@@ -304,6 +310,7 @@ export function ModelCard({
                 onDownload={onDownload}
                 onPause={onPause}
                 onResume={onResume}
+                onDelete={onDelete}
               />
             )}
             {hasRequiredDeps && (
@@ -328,6 +335,7 @@ export function ModelCard({
                 onDownload={onDownload}
                 onPause={onPause}
                 onResume={onResume}
+                onDelete={onDelete}
               />
             )}
             {!showVariants && !hasRequiredDeps && !primary && (
@@ -357,6 +365,7 @@ interface PrimaryDownloadActionProps {
   onDownload: (family: ModelFamily, target: DownloadKind) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
+  onDelete: (artifactId: string, label: string) => void;
 }
 
 function PrimaryDownloadAction({
@@ -370,6 +379,7 @@ function PrimaryDownloadAction({
   onDownload,
   onPause,
   onResume,
+  onDelete,
 }: PrimaryDownloadActionProps) {
   const state: DownloadState = liveState ?? fallbackState;
 
@@ -384,6 +394,7 @@ function PrimaryDownloadAction({
       <DownloadedChip
         sizeBytes={primarySize}
         onReDownload={triggerDownload}
+        onDelete={() => onDelete(primaryArtifactId, family.repository.name)}
       />
     );
   }
@@ -441,6 +452,7 @@ interface BundleDownloadActionProps {
   onDownload: (family: ModelFamily, target: DownloadKind) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
+  onDelete: (artifactId: string, label: string) => void;
 }
 
 function BundleDownloadAction({
@@ -452,6 +464,7 @@ function BundleDownloadAction({
   onDownload,
   onPause,
   onResume,
+  onDelete,
 }: BundleDownloadActionProps) {
   const state: DownloadState = liveState ?? "not_downloaded";
 
@@ -462,6 +475,9 @@ function BundleDownloadAction({
       <DownloadedChip
         sizeBytes={liveJob?.total_bytes ?? null}
         onReDownload={triggerDownload}
+        onDelete={() =>
+          onDelete(primaryArtifact(family)?.artifact_id ?? "", family.repository.name)
+        }
       />
     );
   }

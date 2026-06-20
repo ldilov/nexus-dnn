@@ -15,10 +15,13 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use nexus_huggingface::{RepoFile, SearchResult};
-use nexus_models_store::types::DownloadState;
+use nexus_models_store::downloads::InstalledArtifactRecord;
+use nexus_models_store::ids::{ArtifactId, FamilyId, JobId};
+use nexus_models_store::normalize::classify::classify_format;
+use nexus_models_store::types::{DependencyRole, DownloadState};
 use tower::ServiceExt;
 
-use crate::common::{StubHf, gguf_result, harness_with};
+use crate::common::{StubHf, TestHarness, gguf_result, harness_with};
 
 async fn call(
     state: nexus_api::AppState,
@@ -308,4 +311,79 @@ async fn t_j8_startup_rehydration_flips_downloading_to_paused() {
             .contains("host restart"),
         "error_reason should explain the rehydration"
     );
+}
+
+async fn record_installed(harness: &TestHarness, artifact_id: &str, filename: &str) {
+    let job_id = JobId::from_uuid(uuid::Uuid::new_v4());
+    let dir = harness.orchestrator.sink_root().join(job_id.to_string());
+    tokio::fs::create_dir_all(&dir).await.unwrap();
+    tokio::fs::write(dir.join(filename), b"weights")
+        .await
+        .unwrap();
+    harness
+        .install_map
+        .record(InstalledArtifactRecord {
+            artifact_id: ArtifactId::from(artifact_id.to_owned()),
+            family_id: FamilyId::from(format!("upload:{filename}")),
+            variant_id: None,
+            format: classify_format(filename),
+            role: DependencyRole::Primary,
+            source_provider: "upload".to_owned(),
+            source_repo: filename.to_owned(),
+            source_revision: None,
+            filename: filename.to_owned(),
+            job_id,
+            sha256: None,
+            size_bytes: Some(7),
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn delete_installed_removes_file_and_row() {
+    let harness = harness_with(StubHf::with_results(vec![])).await;
+    let artifact_id = "test-delete-art-1";
+    record_installed(&harness, artifact_id, "m.safetensors").await;
+    assert!(
+        harness
+            .install_map
+            .find_by_artifact(&ArtifactId::from(artifact_id.to_owned()))
+            .await
+            .unwrap()
+            .is_some(),
+        "row present before delete"
+    );
+
+    let (status, body) = call(
+        harness.state.clone(),
+        "DELETE",
+        &format!("/api/v1/model-store/installed/{artifact_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+
+    assert!(
+        harness
+            .install_map
+            .find_by_artifact(&ArtifactId::from(artifact_id.to_owned()))
+            .await
+            .unwrap()
+            .is_none(),
+        "row removed after delete"
+    );
+}
+
+#[tokio::test]
+async fn delete_installed_unknown_artifact_returns_404() {
+    let harness = harness_with(StubHf::with_results(vec![])).await;
+    let (status, _) = call(
+        harness.state,
+        "DELETE",
+        "/api/v1/model-store/installed/does-not-exist",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

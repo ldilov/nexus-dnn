@@ -60,6 +60,7 @@ export interface ModelsSearchUIProps {
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
   onAuthRequired: (family: ModelFamily) => void;
+  onDelete: (artifactId: string, label: string) => void;
   onResolveUrl: (url: string) => void;
   onUpload: (file: File) => void;
   onRetry: () => void;
@@ -107,6 +108,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     onPause,
     onResume,
     onAuthRequired,
+    onDelete,
     onResolveUrl,
     onUpload,
     uploading,
@@ -227,6 +229,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
                     onPause={onPause}
                     onResume={onResume}
                     onAuthRequired={onAuthRequired}
+                    onDelete={onDelete}
                   />
                 ))}
               </div>
@@ -271,6 +274,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
                 onPause={onPause}
                 onResume={onResume}
                 onAuthRequired={onAuthRequired}
+                onDelete={onDelete}
               />
             </div>
           )}

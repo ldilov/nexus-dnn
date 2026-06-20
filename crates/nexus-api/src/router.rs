@@ -468,6 +468,10 @@ pub fn build(state: AppState) -> Router {
             get(handlers::model_store::downloads::get_download_status),
         )
         .route(
+            "/model-store/installed/{artifactId}",
+            axum::routing::delete(handlers::model_store::installed::delete_installed),
+        )
+        .route(
             "/model-store/downloads/{jobId}/pause",
             post(handlers::model_store::downloads::pause_download),
         )
