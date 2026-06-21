@@ -18,6 +18,28 @@ def test_manifest_declares_svi2_runtimes():
     assert {"gpu.compute", "huggingface.install", "model.registry.read", "storage.schema_contribute"} <= caps
 
 
+def test_manifest_declares_nvfp4_runtime_with_versions_file():
+    m = _manifest()
+    rt = next(
+        (r for r in m["backend_runtimes"] if r["runtime_id"].endswith("rtx50-nvfp4")), None
+    )
+    assert rt is not None
+    assert rt["version_manifest"] == "backends/rtx50-nvfp4/versions.yaml"
+    assert "nvfp4" in rt["capability_tags"]
+    assert (ROOT / rt["version_manifest"]).exists()
+
+
+def test_nvfp4_not_in_always_on_dependency_graph():
+    # NVFP4 weights are optional (fetched only when the rtx50-nvfp4 runtime is
+    # provisioned) — they must NOT be a required model_artifact step.
+    families = {
+        s["spec"]["family_id"]
+        for s in _manifest()["dependencies"]["steps"]
+        if s["type"] == "model_artifact"
+    }
+    assert "huggingface:lightx2v/Wan2.2-NVFP4-Sparse" not in families
+
+
 def test_fake_versions_empty_artifacts():
     v = yaml.safe_load((ROOT / "backends/fake/versions.yaml").read_text())
     assert v["versions"][0]["artifacts"] == []
