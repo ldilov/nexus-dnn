@@ -71,6 +71,24 @@ def test_user_lora_failures_passes_applied_lora():
     assert _user_lora_failures(audit) == []
 
 
+def test_user_lora_failures_allows_partial_match():
+    # lightx2v: 406 wrapped, 82 unmatched (k_img/v_img) — `missing` is a LIST of
+    # unmatched module names, NOT a missing file. Must not be a failure.
+    audit = {
+        "high_lora": {
+            "user": [
+                {
+                    "path": "/x/lightx2v.safetensors",
+                    "wrapped_count": 406,
+                    "missing_count": 82,
+                    "missing": ["blocks.0.cross_attn.k_img", "blocks.0.cross_attn.v_img"],
+                }
+            ]
+        }
+    }
+    assert _user_lora_failures(audit) == []
+
+
 def test_user_lora_failures_ignores_non_dict_audit():
     assert _user_lora_failures(None) == []
     assert _user_lora_failures({"high_lora": {}}) == []
