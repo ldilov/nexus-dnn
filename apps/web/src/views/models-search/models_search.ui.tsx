@@ -173,15 +173,17 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
         degraded={degraded}
       />
 
-      <DownloadedPanel
-        artifacts={installedArtifacts}
-        loading={installedLoading}
-        error={installedError}
-        truncated={installedTruncated}
-        deletingId={deletingId}
-        onDelete={onDeleteInstalled}
-        onRetry={onRefreshInstalled}
-      />
+      {params.installed === "installed" && (
+        <DownloadedPanel
+          artifacts={installedArtifacts}
+          loading={installedLoading}
+          error={installedError}
+          truncated={installedTruncated}
+          deletingId={deletingId}
+          onDelete={onDeleteInstalled}
+          onRetry={onRefreshInstalled}
+        />
+      )}
 
       {!isFromUrl && (
         <>
