@@ -6,6 +6,11 @@ const pulse = keyframes({
   "50%": { opacity: 0.75 },
 });
 
+const uploadSlide = keyframes({
+  "0%": { transform: "translateX(-100%)" },
+  "100%": { transform: "translateX(250%)" },
+});
+
 export const page = style({
   display: "flex",
   flexDirection: "column",
@@ -443,3 +448,80 @@ export const sourceSelect = style([
   chip,
   { cursor: "pointer", paddingRight: "1.5rem" },
 ]);
+
+export const uploadList = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.density.d2,
+});
+
+export const uploadRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.density.d3,
+  paddingBlock: vars.density.d2,
+  paddingInline: vars.density.d3,
+  background: vars.color.bg.lowest,
+  borderRadius: vars.radius.control,
+});
+
+export const uploadName = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.primary,
+  // audit-allow: px — fixed filename column so the bar never reflows mid-upload
+  maxWidth: "240px",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  flexShrink: 0,
+});
+
+export const uploadBar = style({
+  position: "relative",
+  flex: 1,
+  minWidth: 0,
+  // audit-allow: px — progress bar height matches DownloadProgress geometry
+  height: "6px",
+  background: vars.color.bg.elevated,
+  borderRadius: vars.radius.full,
+  overflow: "hidden",
+});
+
+export const uploadFill = style({
+  height: "100%",
+  background: vars.color.accent.primary,
+  borderRadius: vars.radius.full,
+  transition: `width ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+});
+
+export const uploadFillIndeterminate = style({
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  // audit-allow: % — indeterminate sweep segment is a fraction of the track
+  width: "40%",
+  background: vars.color.accent.primary,
+  borderRadius: vars.radius.full,
+  animation: `${uploadSlide} 1.2s ${vars.motion.easingDefault} infinite`,
+});
+
+export const uploadCounter = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  color: vars.color.text.muted,
+  fontVariantNumeric: "tabular-nums",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+});
+
+export const uploadError = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  color: vars.color.warning.text,
+  flex: 1,
+  minWidth: 0,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+});

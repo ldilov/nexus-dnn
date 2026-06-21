@@ -6,6 +6,11 @@ const queuedPulse = keyframes({
   "50%": { opacity: 1 },
 });
 
+const indeterminateSlide = keyframes({
+  "0%": { transform: "translateX(-100%)" },
+  "100%": { transform: "translateX(250%)" },
+});
+
 export const wrap = style({
   display: "flex",
   flexDirection: "column",
@@ -64,6 +69,38 @@ export const fillPaused = style({
 
 export const fillFailed = style({
   background: vars.color.error.base,
+});
+
+export const fillIndeterminate = style({
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  // audit-allow: % — indeterminate sweep segment is a fraction of the track, not a token
+  width: "40%",
+  background: vars.color.accent.primary,
+  borderRadius: vars.radius.full,
+  animation: `${indeterminateSlide} 1.2s ${vars.motion.easingDefault} infinite`,
+});
+
+export const meta = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.density.d2,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  letterSpacing: "0.04em",
+  color: vars.color.text.muted,
+  fontVariantNumeric: "tabular-nums",
+});
+
+export const metaSpeed = style({
+  whiteSpace: "nowrap",
+});
+
+export const metaEta = style({
+  whiteSpace: "nowrap",
+  color: vars.color.accent.secondary,
 });
 
 export const row = style({

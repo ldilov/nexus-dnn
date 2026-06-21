@@ -1,5 +1,9 @@
 import { useState } from "react";
-import type { ParsedSearchParams } from "../../../services/model_store";
+import type {
+  ActiveUpload,
+  ParsedSearchParams,
+} from "../../../services/model_store";
+import { formatSize } from "./DownloadProgress";
 import * as s from "../models_search.css";
 
 interface FilterBarProps {
@@ -11,9 +15,73 @@ interface FilterBarProps {
   onClearAll: () => void;
   onResolveUrl: (url: string) => void;
   onUpload: (file: File) => void;
+  onCancelUpload: (id: string) => void;
   resolving: boolean;
-  uploading: boolean;
+  uploads: Record<string, ActiveUpload>;
   degraded: boolean;
+}
+
+function UploadRow({
+  upload,
+  onCancel,
+}: {
+  upload: ActiveUpload;
+  onCancel: (id: string) => void;
+}) {
+  const isError = upload.status === "error";
+  const determinate = upload.pct !== null;
+  const counter =
+    upload.total && upload.total > 0
+      ? `${formatSize(upload.loaded)} / ${formatSize(upload.total)}${
+          upload.pct !== null ? ` · ${upload.pct}%` : ""
+        }`
+      : upload.loaded > 0
+        ? `${formatSize(upload.loaded)} uploaded`
+        : "starting…";
+  const ariaLabel = isError
+    ? `Upload of ${upload.filename} failed`
+    : determinate
+      ? `Uploading ${upload.filename}, ${upload.pct} percent`
+      : `Uploading ${upload.filename}, size unknown`;
+
+  return (
+    <div className={s.uploadRow} role="status" aria-label={ariaLabel}>
+      <span className={s.uploadName} title={upload.filename}>
+        {upload.filename}
+      </span>
+      {isError ? (
+        <span className={s.uploadError}>{upload.error ?? "upload failed"}</span>
+      ) : (
+        <>
+          <div
+            className={s.uploadBar}
+            role="progressbar"
+            aria-valuemin={determinate ? 0 : undefined}
+            aria-valuemax={determinate ? 100 : undefined}
+            aria-valuenow={determinate ? (upload.pct ?? undefined) : undefined}
+          >
+            <div
+              className={determinate ? s.uploadFill : s.uploadFillIndeterminate}
+              style={determinate ? { width: `${upload.pct}%` } : undefined}
+            />
+          </div>
+          <span className={s.uploadCounter}>{counter}</span>
+        </>
+      )}
+      <button
+        type="button"
+        className={s.chip}
+        aria-label={
+          isError
+            ? `Dismiss failed upload ${upload.filename}`
+            : `Cancel upload ${upload.filename}`
+        }
+        onClick={() => onCancel(upload.id)}
+      >
+        {isError ? "Dismiss" : "Cancel"}
+      </button>
+    </div>
+  );
 }
 
 export function FilterBar({
@@ -25,13 +93,16 @@ export function FilterBar({
   onClearAll,
   onResolveUrl,
   onUpload,
+  onCancelUpload,
   resolving,
-  uploading,
+  uploads,
   degraded,
 }: FilterBarProps) {
   const [url, setUrl] = useState("");
   const showClear = params.installed !== "any" || params.q.trim().length > 0;
   const isFromUrl = params.source === "from_url";
+  const uploadList = Object.values(uploads);
+  const anyUploading = uploadList.some((u) => u.status === "uploading");
   return (
     <div className={s.filterBar} role="search" aria-label="Model filters">
       <div className={s.filterRow}>
@@ -129,12 +200,11 @@ export function FilterBar({
             >
               {resolving ? "Resolving…" : "Resolve"}
             </button>
-            <label className={uploading ? s.chip : `${s.chip} ${s.chipActive}`}>
-              {uploading ? "Uploading…" : "Upload file"}
+            <label className={`${s.chip} ${s.chipActive}`}>
+              {anyUploading ? "Uploading…" : "Upload file"}
               <input
                 type="file"
                 accept=".safetensors,.gguf,.ckpt,.pt,.pth,.bin"
-                disabled={uploading}
                 className={s.screenReaderOnly}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -146,6 +216,17 @@ export function FilterBar({
           </>
         )}
       </div>
+      {uploadList.length > 0 && (
+        <div className={s.uploadList} aria-label="Active uploads">
+          {uploadList.map((upload) => (
+            <UploadRow
+              key={upload.id}
+              upload={upload}
+              onCancel={onCancelUpload}
+            />
+          ))}
+        </div>
+      )}
       {!isFromUrl && degraded && (
         <div className={s.bannerDegraded} role="status">
           <span className="material-symbols-outlined" aria-hidden="true">

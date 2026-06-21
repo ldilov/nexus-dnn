@@ -1,15 +1,41 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
-use nexus_models_store::downloads::InstalledArtifactRow;
+use nexus_models_store::downloads::{InstallMap, InstalledArtifactRow};
 use nexus_models_store::ids::ArtifactId;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
 
 const MAX_ROWS: usize = 500;
+
+/// One-shot guard: the O(files) sink reconcile runs once per process the first
+/// time `GET /model-store/installed` is served, so later listings stay cheap
+/// (just `list_all` + truncation). The `POST .../models/revalidate` route
+/// remains the explicit way to re-run a reconcile on demand.
+static RECONCILED_ONCE: AtomicBool = AtomicBool::new(false);
+
+/// Reconcile the install map with the on-disk sink at most once per process so
+/// orphaned-on-disk files become listed AND deletable, then keep listing O(rows).
+async fn reconcile_once(install_map: &InstallMap, sink_root: Option<&std::path::Path>) {
+    let Some(sink_root) = sink_root else {
+        return;
+    };
+    if RECONCILED_ONCE.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    if let Err(e) = install_map.reconcile_installed_with_sink(sink_root).await {
+        tracing::warn!(
+            target: "model_store",
+            error = %e,
+            "get_installed: sink reconcile failed — listing install-map rows as-is"
+        );
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
@@ -79,6 +105,8 @@ pub async fn get_installed(State(state): State<AppState>) -> Response {
         .download_orchestrator
         .as_ref()
         .map(|o| o.sink_root().to_path_buf());
+
+    reconcile_once(install_map, sink_root.as_deref()).await;
 
     let rows = match install_map.list_all(MAX_ROWS + 1).await {
         Ok(r) => r,
@@ -227,5 +255,130 @@ mod tests {
     fn install_path_absent_without_sink_root() {
         let dto = InstalledArtifactDto::from_row(row(), None);
         assert!(dto.install_path.is_none());
+    }
+
+    use std::sync::Arc;
+
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    /// The reconcile guard is a process-global atomic; serialize the tests that
+    /// reset and observe it so they don't race within the test binary.
+    static GUARD_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Resets the process-global reconcile guard on drop so a panicking test
+    /// can't leak `true` into the next serialized test. Declared AFTER the
+    /// GUARD_LOCK guard so it resets the atomic before the lock is released.
+    struct ResetGuard;
+    impl Drop for ResetGuard {
+        fn drop(&mut self) {
+            RECONCILED_ONCE.store(false, Ordering::SeqCst);
+        }
+    }
+
+    async fn model_store_pool() -> Arc<SqlitePool> {
+        let opts = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        for migration in [
+            include_str!("../../../../../migrations/014_model_store_installed_artifacts.sql"),
+            include_str!(
+                "../../../../../migrations/015_installed_artifact_extraction_metadata.sql"
+            ),
+            include_str!("../../../../../migrations/021_installed_artifact_moe_metadata.sql"),
+            include_str!("../../../../../migrations/022_model_store_artifact_refs.sql"),
+            include_str!("../../../../../migrations/023_installed_artifact_role.sql"),
+        ] {
+            for stmt in migration.split(';') {
+                let trimmed = stmt.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let _ = sqlx::query(trimmed).execute(&pool).await;
+            }
+        }
+        Arc::new(pool)
+    }
+
+    /// `reconcile_once` adopts a sidecar-less orphan placed at
+    /// `<sink_root>/<job_id>/<file>` so a later `list_all` would surface it AND
+    /// it is resolvable by the artifact-id-keyed delete path.
+    #[tokio::test]
+    async fn reconcile_once_adopts_orphaned_on_disk_file() {
+        let _guard = GUARD_LOCK.lock().await;
+        let _reset = ResetGuard;
+        RECONCILED_ONCE.store(false, Ordering::SeqCst);
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let map = InstallMap::new(model_store_pool().await);
+
+        let job = "00000000-0000-7000-8000-0000000000a1";
+        let dir = sink_root.join(job);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("dropped.gguf"), b"on-disk-weights")
+            .await
+            .unwrap();
+
+        reconcile_once(&map, Some(sink_root)).await;
+
+        let rows = map.list_all(MAX_ROWS).await.unwrap();
+        assert_eq!(rows.len(), 1, "orphan adopted into the listing");
+        let row = &rows[0];
+        assert_eq!(row.artifact_id, format!("{job}#dropped.gguf"));
+        assert_eq!(row.job_id, job);
+
+        let found = map
+            .find_by_artifact(&ArtifactId::from(row.artifact_id.clone()))
+            .await
+            .unwrap();
+        assert!(found.is_some(), "stable artifact id resolves for delete");
+    }
+
+    /// The reconcile runs at most once per process: after the first call sets
+    /// the guard, a second call is a no-op even though a new orphan appeared.
+    #[tokio::test]
+    async fn reconcile_once_runs_at_most_once_per_process() {
+        let _guard = GUARD_LOCK.lock().await;
+        let _reset = ResetGuard;
+        RECONCILED_ONCE.store(false, Ordering::SeqCst);
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let map = InstallMap::new(model_store_pool().await);
+
+        // First call with an empty sink trips the guard.
+        reconcile_once(&map, Some(sink_root)).await;
+
+        // Now an orphan appears, but the guard is already set — no adoption.
+        let job = "00000000-0000-7000-8000-0000000000a2";
+        let dir = sink_root.join(job);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("late.gguf"), b"weights")
+            .await
+            .unwrap();
+        reconcile_once(&map, Some(sink_root)).await;
+
+        assert!(
+            map.list_all(MAX_ROWS).await.unwrap().is_empty(),
+            "second reconcile is a no-op (explicit revalidate re-runs it)"
+        );
+    }
+
+    /// With no sink root configured, reconcile is a no-op and never trips the
+    /// once-guard (so a later configured call still reconciles).
+    #[tokio::test]
+    async fn reconcile_once_is_noop_without_sink_root() {
+        let _guard = GUARD_LOCK.lock().await;
+        let _reset = ResetGuard;
+        RECONCILED_ONCE.store(false, Ordering::SeqCst);
+        let map = InstallMap::new(model_store_pool().await);
+        reconcile_once(&map, None).await;
+        assert!(
+            !RECONCILED_ONCE.load(Ordering::SeqCst),
+            "missing sink root must not consume the one-shot guard"
+        );
     }
 }

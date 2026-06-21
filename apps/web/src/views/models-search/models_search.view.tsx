@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useLoaderData,
   useLocation,
@@ -13,6 +13,7 @@ import {
   directTargetFromFamily,
   fetchBackends,
   fetchDownloadStatus,
+  fetchInstalled,
   fetchSearch,
   isTerminalState,
   parseSearchParams,
@@ -21,7 +22,7 @@ import {
   resolveUrl,
   resumeDownload,
   serializeSearchParams,
-  uploadModel,
+  uploadModelWithProgress,
   type BackendCapability,
   type DownloadJob,
   type DownloadState,
@@ -29,12 +30,16 @@ import {
   type ParsedSearchParams,
   type SearchPage,
 } from "../../services/model_store";
-import { dispatchModelsChanged } from "../../services/model_events";
+import {
+  dispatchModelsChanged,
+  subscribeModelsChanged,
+} from "../../services/model_events";
 import { ModelsSearchUI } from "./models_search.ui";
 import type {
   DownloadKind,
   ModelOnDiskIdentity,
 } from "./components/ModelCard";
+import type { ActiveUpload } from "../../services/model_store";
 
 export interface ModelsSearchLoaderData {
   params: ParsedSearchParams;
@@ -99,12 +104,52 @@ export function ModelsSearchView() {
   const [jobVariantMap, setJobVariantMap] = useState<Record<string, string>>({});
   const [resolved, setResolved] = useState<ModelFamily | null>(null);
   const [resolving, setResolving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploads, setUploads] = useState<Record<string, ActiveUpload>>({});
+  const uploadCancels = useRef<Record<string, () => void>>({});
   const [resolveError, setResolveError] = useState<{ message: string } | null>(null);
+  const [installedSignal, setInstalledSignal] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     setQuery(loaderData.params.q);
   }, [loaderData.params.q]);
+
+  useEffect(() => {
+    return subscribeModelsChanged(() => {
+      setInstalledSignal((n) => n + 1);
+    });
+  }, []);
+
+  useEffect(() => {
+    const cancels = uploadCancels.current;
+    return () => {
+      for (const cancel of Object.values(cancels)) cancel();
+    };
+  }, []);
+
+  const installed = useSWR(
+    `model-store/installed:${installedSignal}`,
+    async () => {
+      const index = await fetchInstalled();
+      return {
+        artifacts: index.installed,
+        truncated: index.truncated,
+      };
+    },
+  );
+
+  const refreshInstalled = useCallback(() => {
+    setInstalledSignal((n) => n + 1);
+  }, []);
+
+  const installedError = installed.error
+    ? {
+        message:
+          installed.error instanceof Error
+            ? installed.error.message
+            : "Could not load downloaded models",
+      }
+    : null;
 
   const mutateParams = useCallback(
     (patch: Partial<ParsedSearchParams>) => {
@@ -443,21 +488,82 @@ export function ModelsSearchView() {
           setResolving(false);
         }
       },
-      onUpload: async (file: File) => {
-        setUploading(true);
+      onUpload: (file: File) => {
         setResolveError(null);
-        try {
-          await uploadModel(file);
-          dispatchModelsChanged();
-          navigate(0);
-        } catch (e) {
-          setResolveError({
-            message: e instanceof Error ? e.message : "upload failed",
+        const id =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        setUploads((prev) => ({
+          ...prev,
+          [id]: {
+            id,
+            filename: file.name,
+            pct: null,
+            loaded: 0,
+            total: file.size > 0 ? file.size : null,
+            status: "uploading",
+          },
+        }));
+
+        const clearUpload = () => {
+          delete uploadCancels.current[id];
+          setUploads((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
           });
-        } finally {
-          setUploading(false);
-        }
+        };
+
+        const handle = uploadModelWithProgress(file, {
+          onProgress: ({ loaded, total, pct }) => {
+            setUploads((prev) => {
+              const cur = prev[id];
+              if (!cur || cur.status !== "uploading") return prev;
+              return { ...prev, [id]: { ...cur, loaded, total, pct } };
+            });
+          },
+        });
+        uploadCancels.current[id] = handle.cancel;
+
+        const run = async () => {
+          try {
+            await handle.promise;
+            clearUpload();
+            dispatchModelsChanged();
+            refreshInstalled();
+            toast.success(`Uploaded "${file.name}"`);
+          } catch (e: unknown) {
+            delete uploadCancels.current[id];
+            const message = e instanceof Error ? e.message : "upload failed";
+            if (message === "upload aborted") {
+              clearUpload();
+              return;
+            }
+            setUploads((prev) => {
+              const cur = prev[id];
+              if (!cur) return prev;
+              return { ...prev, [id]: { ...cur, status: "error", error: message } };
+            });
+            toast.error(message);
+          }
+        };
+        void run();
       },
+      onCancelUpload: (id: string) => {
+        const cancel = uploadCancels.current[id];
+        if (cancel) {
+          cancel();
+          return;
+        }
+        setUploads((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      },
+      // Catalog/ModelCard delete: full reload to resync the grid. The panel's
+      // onDeleteInstalled (below) does a soft SWR refresh + deletingId tracking.
       onDelete: async (artifactId: string, label: string) => {
         if (
           !window.confirm(
@@ -474,6 +580,27 @@ export function ModelsSearchView() {
           toast.error(e instanceof Error ? e.message : "could not delete model");
         }
       },
+      onDeleteInstalled: async (artifactId: string, label: string) => {
+        if (
+          !window.confirm(
+            `Delete "${label}"? This permanently removes the downloaded files from disk.`,
+          )
+        ) {
+          return;
+        }
+        setDeletingId(artifactId);
+        try {
+          await deleteInstalled(artifactId);
+          dispatchModelsChanged();
+          refreshInstalled();
+          toast.success(`Deleted "${label}"`);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "could not delete model");
+        } finally {
+          setDeletingId(null);
+        }
+      },
+      onRefreshInstalled: refreshInstalled,
       onSortChange: (sort: ParsedSearchParams["sort"]) =>
         mutateParams({ sort, page: 1 }),
       onViewChange: (view: "grid" | "list") => mutateParams({ view }),
@@ -501,6 +628,7 @@ export function ModelsSearchView() {
       onPause,
       onResume,
       onAuthRequired,
+      refreshInstalled,
       location.pathname,
     ],
   );
@@ -516,8 +644,13 @@ export function ModelsSearchView() {
       degraded={loaderData.backendsDegraded}
       resolved={resolved}
       resolving={resolving}
-      uploading={uploading}
+      uploads={uploads}
       resolveError={resolveError}
+      installedArtifacts={installed.data?.artifacts ?? null}
+      installedLoading={installed.isLoading}
+      installedError={installedError}
+      installedTruncated={installed.data?.truncated ?? false}
+      deletingId={deletingId}
       jobStateByVariant={jobStateByVariant}
       jobIdByVariant={jobIdByVariant}
       jobByVariant={jobByVariant}

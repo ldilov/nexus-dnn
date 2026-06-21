@@ -285,15 +285,15 @@ pub async fn resolve_url(
 }
 
 fn extract_filename(url: &str, headers: &reqwest::header::HeaderMap) -> String {
-    if let Some(cd) = headers.get(reqwest::header::CONTENT_DISPOSITION) {
-        if let Ok(cd_str) = cd.to_str() {
-            for part in cd_str.split(';') {
-                let part = part.trim();
-                if let Some(rest) = part.strip_prefix("filename=") {
-                    let name = rest.trim_matches('"').trim();
-                    if !name.is_empty() {
-                        return name.to_owned();
-                    }
+    if let Some(cd) = headers.get(reqwest::header::CONTENT_DISPOSITION)
+        && let Ok(cd_str) = cd.to_str()
+    {
+        for part in cd_str.split(';') {
+            let part = part.trim();
+            if let Some(rest) = part.strip_prefix("filename=") {
+                let name = rest.trim_matches('"').trim();
+                if !name.is_empty() {
+                    return name.to_owned();
                 }
             }
         }
@@ -327,6 +327,19 @@ mod tests {
         assert_eq!(family.artifacts[0].sha256, None);
         assert_eq!(family.artifacts[0].format, Format::Gguf);
         assert!(family.variants[0].is_default);
+    }
+
+    /// BUG-3 backend: a HEAD Content-Length surfaced by the resolver must
+    /// land on the artifact's `size_bytes`, which becomes the download
+    /// target's `expected_bytes` so the UI can render a real percent.
+    #[test]
+    fn direct_family_threads_head_content_length_into_size_bytes() {
+        let meta = DirectHeadMeta {
+            filename: "model.safetensors".to_owned(),
+            size_bytes: Some(123_456_789),
+        };
+        let family = build_direct_family("https://example.com/model.safetensors", &meta);
+        assert_eq!(family.artifacts[0].size_bytes, Some(123_456_789));
     }
 
     #[test]

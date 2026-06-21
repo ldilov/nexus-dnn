@@ -11,6 +11,7 @@ pub mod store;
 pub use auth::{TokenEvent, TokenStore};
 pub use install_map::{
     GcOutcome, InstallMap, InstalledArtifactRecord, InstalledArtifactRow, PruneReport,
+    ReconcileReport,
 };
 pub use legibility::{IndexEntry, LegibilityIndex, ManifestSidecar};
 pub use orchestrator::DownloadOrchestrator;

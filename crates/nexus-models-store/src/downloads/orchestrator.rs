@@ -448,14 +448,21 @@ impl DownloadOrchestrator {
             response.content_length()
         };
 
-        if let Some(file_size) = advertised_total {
+        // Backfill the size the resolver could not supply; the total is the
+        // SUM of every target's expected size, monotonic so a good value never drops.
+        if let Some(file_size) = backfillable_size(advertised_total) {
             if target.expected_bytes.is_none() {
                 let _ = self
                     .inner
                     .store
-                    .raise_total_bytes(&job.job_id, file_size)
+                    .raise_target_expected_bytes(&job.job_id, &target.artifact_id, file_size)
                     .await;
             }
+            let _ = self
+                .inner
+                .store
+                .recompute_total_from_expected_bytes(&job.job_id)
+                .await;
         }
 
         let mut stream = response.bytes_stream();
@@ -545,13 +552,12 @@ impl DownloadOrchestrator {
 
         if let (Some(computed), Some(expected)) =
             (computed_sha.as_deref(), target.sha256.as_deref())
+            && !sha_matches(expected, computed)
         {
-            if !sha_matches(expected, computed) {
-                return Err(TargetFailure::Upstream(format!(
-                    "checksum mismatch for {}: expected {expected}, got {computed}",
-                    target.filename
-                )));
-            }
+            return Err(TargetFailure::Upstream(format!(
+                "checksum mismatch for {}: expected {expected}, got {computed}",
+                target.filename
+            )));
         }
 
         Ok(computed_sha)
@@ -564,7 +570,11 @@ fn token_for_url(
     civitai_token: &Option<String>,
 ) -> Option<String> {
     let after_scheme = url.split("://").nth(1).unwrap_or(url);
-    let host_with_port = after_scheme.split('/').next().unwrap_or("").to_ascii_lowercase();
+    let host_with_port = after_scheme
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let host = host_with_port
         .find('@')
         .map(|i| &host_with_port[i + 1..])
@@ -596,6 +606,13 @@ fn parse_content_range_total(value: &str) -> Option<u64> {
         return None;
     }
     total.parse::<u64>().ok()
+}
+
+/// The size to backfill into `expected_bytes` / `total_bytes` from an
+/// upstream-advertised length, or `None` when the server gave us nothing
+/// usable. A zero advertised size is treated as unknown — never fabricated.
+fn backfillable_size(advertised: Option<u64>) -> Option<u64> {
+    advertised.filter(|&n| n > 0)
 }
 
 /// Verdict on whether a finished transfer received every byte it should have.
@@ -786,6 +803,12 @@ mod tests {
     use std::str::FromStr;
 
     async fn build_orchestrator(sink_root: PathBuf) -> DownloadOrchestrator {
+        build_orchestrator_with_store(sink_root).await.0
+    }
+
+    /// Like [`build_orchestrator`] but also returns a [`JobStore`] sharing the
+    /// same pool, so a test can create + poll a real job end-to-end.
+    async fn build_orchestrator_with_store(sink_root: PathBuf) -> (DownloadOrchestrator, JobStore) {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
@@ -799,14 +822,27 @@ mod tests {
         .await
         .unwrap();
         let pool = Arc::new(pool);
-        DownloadOrchestrator::new(
-            JobStore::new(pool.clone()),
+        let store = JobStore::new(pool.clone());
+        let orch = DownloadOrchestrator::new(
+            store.clone(),
             InstallMap::new(pool),
             sink_root,
             reqwest::Client::new(),
             TokenStore::new(None),
             TokenStore::new(None),
-        )
+        );
+        (orch, store)
+    }
+
+    async fn poll_until_terminal(store: &JobStore, job_id: JobId) -> PersistedJob {
+        for _ in 0..200 {
+            let job = store.get(&job_id).await.unwrap().unwrap();
+            if job.state.is_terminal() {
+                return job;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("job {job_id} did not reach a terminal state in time");
     }
 
     fn sample_job(job_id: JobId) -> PersistedJob {
@@ -874,6 +910,149 @@ mod tests {
         let entry = index.get(&job_id.to_string()).expect("index entry present");
         assert_eq!(entry.family_id, "huggingface:acme/model");
         assert_eq!(entry.repo, "acme/model");
+    }
+
+    /// BUG-3 backend: a target created without a known size still gets its
+    /// `expected_bytes` and the job `total_bytes` backfilled from the upstream
+    /// `Content-Length`, so the UI can render a real percent. progress_bytes
+    /// must equal the (now-known) total once the stream completes.
+    #[tokio::test]
+    async fn content_length_backfills_total_and_expected_bytes() {
+        use crate::downloads::store::{CreateJobParams, JobTargetInput};
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let body = vec![7u8; 4096];
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let (orch, store) = build_orchestrator_with_store(tmp.path().to_path_buf()).await;
+
+        let artifact_id = ArtifactId::from("direct_url:m.bin#0");
+        let params = CreateJobParams::builder(
+            crate::ids::FamilyId::from("direct_url:m.bin"),
+            "direct_url",
+            "m.bin",
+            RequestedKind::Primary,
+        )
+        .target(JobTargetInput {
+            artifact_id: artifact_id.clone(),
+            filename: "m.bin".into(),
+            role: DependencyRole::Primary,
+            download_url: format!("{}/m.bin", server.uri()),
+            expected_bytes: None,
+            sha256: None,
+        })
+        .build();
+
+        let job = store.create(params).await.unwrap();
+        assert_eq!(job.total_bytes, None, "no size known at create time");
+        orch.enqueue(job.job_id).await;
+
+        let finished = poll_until_terminal(&store, job.job_id).await;
+        assert_eq!(finished.state, DownloadState::Downloaded);
+        assert_eq!(
+            finished.total_bytes,
+            Some(body.len() as u64),
+            "Content-Length must backfill the job total_bytes"
+        );
+        assert_eq!(
+            finished.targets[0].expected_bytes,
+            Some(body.len() as u64),
+            "Content-Length must backfill the target expected_bytes"
+        );
+        assert_eq!(
+            finished.progress_bytes,
+            body.len() as u64,
+            "progress must reach the now-known total"
+        );
+    }
+
+    /// Multi-target end-to-end: one target's size is known at create and the
+    /// other's is discovered from Content-Length while streaming. The job
+    /// total_bytes must reach the SUM of both, never stall at the single
+    /// larger file — the exact gap a single-file max-raise would leave.
+    #[tokio::test]
+    async fn content_length_backfill_sums_across_two_targets() {
+        use crate::downloads::store::{CreateJobParams, JobTargetInput};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let known = vec![1u8; 1000];
+        let discovered = vec![2u8; 4096];
+        Mock::given(method("GET"))
+            .and(path("/a.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(known.clone()))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/b.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(discovered.clone()))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let (orch, store) = build_orchestrator_with_store(tmp.path().to_path_buf()).await;
+
+        let params = CreateJobParams::builder(
+            crate::ids::FamilyId::from("direct_url:bundle"),
+            "direct_url",
+            "bundle",
+            RequestedKind::Bundle,
+        )
+        .include_dependencies(true)
+        .target(JobTargetInput {
+            artifact_id: ArtifactId::from("direct_url:bundle#a"),
+            filename: "a.bin".into(),
+            role: DependencyRole::Primary,
+            download_url: format!("{}/a.bin", server.uri()),
+            expected_bytes: Some(known.len() as u64),
+            sha256: None,
+        })
+        .target(JobTargetInput {
+            artifact_id: ArtifactId::from("direct_url:bundle#b"),
+            filename: "b.bin".into(),
+            role: DependencyRole::Vae,
+            download_url: format!("{}/b.bin", server.uri()),
+            expected_bytes: None,
+            sha256: None,
+        })
+        .build();
+
+        let job = store.create(params).await.unwrap();
+        assert_eq!(
+            job.total_bytes,
+            Some(known.len() as u64),
+            "only the one known size is summed at create time"
+        );
+        orch.enqueue(job.job_id).await;
+
+        let finished = poll_until_terminal(&store, job.job_id).await;
+        assert_eq!(finished.state, DownloadState::Downloaded);
+        let expected_total = (known.len() + discovered.len()) as u64;
+        assert_eq!(
+            finished.total_bytes,
+            Some(expected_total),
+            "total_bytes must sum both targets' sizes after backfill"
+        );
+        assert_eq!(
+            finished.progress_bytes, expected_total,
+            "progress must reach the now-known summed total"
+        );
+    }
+
+    /// When the upstream advertises no usable size (absent header, or a
+    /// zero length), nothing is backfilled — the indeterminate-bar path.
+    #[test]
+    fn unknown_or_zero_advertised_size_is_not_backfilled() {
+        assert_eq!(backfillable_size(None), None);
+        assert_eq!(backfillable_size(Some(0)), None);
+        assert_eq!(backfillable_size(Some(4096)), Some(4096));
     }
 
     #[test]
@@ -1005,7 +1184,10 @@ mod token_select_tests {
     fn lookalike_hosts_get_no_token() {
         let hf = Some("HF".to_string());
         let cv = Some("CV".to_string());
-        assert_eq!(token_for_url("https://nothuggingface.co/m.gguf", &hf, &cv), None);
+        assert_eq!(
+            token_for_url("https://nothuggingface.co/m.gguf", &hf, &cv),
+            None
+        );
         assert_eq!(
             token_for_url("https://huggingface.co.evil.test/m.gguf", &hf, &cv),
             None

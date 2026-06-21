@@ -609,6 +609,182 @@ impl InstallMap {
         Ok(report)
     }
 
+    /// Make the install map authoritative against the on-disk sink so that
+    /// `GET /model-store/installed` reflects REAL files and every listed item is
+    /// deletable. A two-then-one reconcile that REUSES the existing machinery:
+    ///
+    /// 1. [`Self::prune_missing`] — drop rows whose file vanished or truncated.
+    /// 2. [`Self::backfill_install_map_from_sink`] — adopt sidecar-described files
+    ///    (preserving the `{family_id}#{filename}` artifact-id form).
+    /// 3. [`Self::adopt_orphan_sink_files`] — adopt any remaining on-disk file
+    ///    (incl. sidecar-less job dirs) with a STABLE `job_id`-derived artifact
+    ///    id so the existing artifact-id-keyed DELETE resolves it.
+    ///
+    /// Idempotent and traversal-safe (only paths under `sink_root`). O(files):
+    /// each file is `metadata()`d once and a `find_by_artifact` keys the row.
+    pub async fn reconcile_installed_with_sink(
+        &self,
+        sink_root: &std::path::Path,
+    ) -> JobStoreResult<ReconcileReport> {
+        let prune = self.prune_missing(sink_root).await?;
+        let backfill = self.backfill_install_map_from_sink(sink_root).await?;
+        let adopted = self.adopt_orphan_sink_files(sink_root).await?;
+        tracing::info!(
+            target: "model_store",
+            checked = prune.checked,
+            pruned = prune.pruned,
+            backfilled = backfill.recorded,
+            adopted_orphans = adopted,
+            "reconcile: install-map synced with sink"
+        );
+        Ok(ReconcileReport {
+            checked: prune.checked,
+            pruned: prune.pruned,
+            backfilled: backfill.recorded,
+            adopted_orphans: adopted,
+        })
+    }
+
+    /// Adopt on-disk sink files that survived the sidecar-driven backfill with
+    /// no row — including job dirs that have NO sidecar at all (the gap the
+    /// backfill leaves). Each adopted file gets a STABLE, deterministic
+    /// artifact_id `{job_id}#{filename}`, derived purely from the on-disk path,
+    /// so the artifact-id-keyed `DELETE /model-store/installed/{id}` resolves it
+    /// and GCs the whole `<sink_root>/<job_id>/` dir.
+    ///
+    /// Returns the count of newly-recorded rows. Byte-safe and traversal-safe:
+    /// it only stats plain files directly under each `<sink_root>/<job_id>/`,
+    /// never recurses, never adopts the legibility sidecars, and skips zero-size
+    /// files. Idempotent — a second run records nothing.
+    pub async fn adopt_orphan_sink_files(
+        &self,
+        sink_root: &std::path::Path,
+    ) -> JobStoreResult<usize> {
+        let mut adopted = 0usize;
+        let mut dir = match tokio::fs::read_dir(sink_root).await {
+            Ok(d) => d,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e.into()),
+        };
+
+        while let Some(entry) = dir.next_entry().await? {
+            // A plain dir only — never a symlink or (Windows) directory junction,
+            // which `is_dir()` reports true for and could walk outside the sink.
+            match entry.file_type().await {
+                Ok(t) if t.is_dir() && !t.is_symlink() => {}
+                _ => continue,
+            }
+            let job_path = entry.path();
+            let Some(job_id_str) = job_path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let Ok(uuid) = uuid::Uuid::parse_str(job_id_str) else {
+                continue;
+            };
+            let manifest = read_sidecar(&job_path).await;
+            adopted += self
+                .adopt_orphans_in_job(sink_root, job_id_str, uuid, manifest.as_ref())
+                .await?;
+        }
+
+        Ok(adopted)
+    }
+
+    /// Stat every plain file directly under one `<sink_root>/<job_id>/` dir and
+    /// record a row for any (size>0) file that still lacks one. The sidecar, when
+    /// present, supplies `family_id`/`source_repo`; otherwise host-owned generic
+    /// placeholders are derived from the on-disk path (no extension-id literals).
+    async fn adopt_orphans_in_job(
+        &self,
+        sink_root: &std::path::Path,
+        job_id_str: &str,
+        uuid: uuid::Uuid,
+        manifest: Option<&crate::downloads::legibility::ManifestSidecar>,
+    ) -> JobStoreResult<usize> {
+        let job_dir = sink_root.join(job_id_str);
+        let mut files = match tokio::fs::read_dir(&job_dir).await {
+            Ok(d) => d,
+            Err(_) => return Ok(0),
+        };
+        let job_id = JobId::from_uuid(uuid);
+        let mut adopted = 0usize;
+        while let Some(file_entry) = files.next_entry().await? {
+            // Skip non-files AND symlinks: on Windows `is_file()` follows a
+            // symlink, so a link could adopt bytes outside the sink (traversal).
+            match file_entry.file_type().await {
+                Ok(t) if t.is_file() && !t.is_symlink() => {}
+                _ => continue,
+            }
+            let Some(filename) = file_entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if is_legibility_sidecar(&filename) {
+                continue;
+            }
+            // symlink_metadata (non-following) mirrors backfill_install_map_from_sink;
+            // belt-and-suspenders with the file_type symlink check above.
+            let meta = match tokio::fs::symlink_metadata(file_entry.path()).await {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if meta.file_type().is_symlink() || meta.len() == 0 {
+                continue;
+            }
+
+            // STABLE id from the on-disk path so DELETE-by-artifact-id resolves
+            // it; never collides with the sidecar form `{family_id}#{filename}`.
+            let artifact_id = ArtifactId::from(format!("{job_id_str}#{filename}"));
+            if self.find_by_artifact(&artifact_id).await?.is_some() {
+                continue;
+            }
+            // A sidecar-declared file already adopted by the backfill carries the
+            // `{family_id}#{filename}` id — don't double-record it here.
+            if let Some(m) = manifest {
+                let backfill_id = ArtifactId::from(format!("{}#{filename}", m.family_id));
+                if self.find_by_artifact(&backfill_id).await?.is_some() {
+                    continue;
+                }
+            }
+
+            let (family_id, source_repo, provider) = match manifest {
+                Some(m) => (
+                    m.family_id.clone(),
+                    m.source_repo.clone(),
+                    provider_from_family(&m.family_id),
+                ),
+                None => (
+                    format!("store:{job_id_str}"),
+                    filename.clone(),
+                    "store".to_owned(),
+                ),
+            };
+            self.record(InstalledArtifactRecord {
+                artifact_id,
+                family_id: FamilyId::from(family_id),
+                variant_id: None,
+                format: crate::normalize::classify::classify_format(&filename),
+                role: DependencyRole::Other,
+                source_provider: provider,
+                source_repo,
+                source_revision: None,
+                filename: filename.clone(),
+                job_id,
+                sha256: None,
+                size_bytes: Some(meta.len()),
+            })
+            .await?;
+            adopted += 1;
+            tracing::info!(
+                target: "model_store",
+                job_id = %job_id_str,
+                filename = %filename,
+                size_bytes = meta.len(),
+                "reconcile: adopted undeclared sink file into install map"
+            );
+        }
+        Ok(adopted)
+    }
+
     /// Re-record any present-on-disk file declared by one job's sidecar that
     /// lacks a row. Files the sidecar declares but that are absent (or zero
     /// size) on disk are left alone — backfill adopts bytes, never fabricates.
@@ -648,10 +824,16 @@ impl InstallMap {
             }
 
             let path = sink_root.join(job_id_str).join(fname);
-            let size = match tokio::fs::metadata(&path).await {
-                Ok(meta) => meta.len(),
+            // `symlink_metadata` does NOT follow links, so a symlink declared as
+            // a normal-named sidecar entry can't adopt bytes outside the sink.
+            let meta = match tokio::fs::symlink_metadata(&path).await {
+                Ok(meta) => meta,
                 Err(_) => continue,
             };
+            if meta.file_type().is_symlink() || !meta.is_file() {
+                continue;
+            }
+            let size = meta.len();
             if size == 0 {
                 continue;
             }
@@ -691,6 +873,15 @@ impl InstallMap {
     }
 }
 
+/// True when `filename` is one of the legibility bookkeeping files written
+/// alongside the weights (the per-job sidecar). The top-level `index.json`
+/// lives at the sink root, not inside a job dir, so it never reaches here, but
+/// guard the name anyway for robustness.
+fn is_legibility_sidecar(filename: &str) -> bool {
+    filename == crate::downloads::legibility::MANIFEST_FILENAME
+        || filename == crate::downloads::legibility::INDEX_FILENAME
+}
+
 /// Read and parse `<job_path>/manifest.json`. Returns `None` when the sidecar
 /// is absent or unparseable so the caller can skip the job without failing.
 async fn read_sidecar(
@@ -715,6 +906,22 @@ fn provider_from_family(family_id: &str) -> String {
             "huggingface".to_owned()
         }
     }
+}
+
+/// Result of [`InstallMap::reconcile_installed_with_sink`] — the combined
+/// prune + sidecar-backfill + orphan-adopt sweep that makes the install map
+/// authoritative against the on-disk sink.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReconcileReport {
+    /// Rows inspected against disk during the prune phase.
+    pub checked: usize,
+    /// Rows pruned because their file vanished or was truncated.
+    pub pruned: usize,
+    /// Sidecar-declared on-disk files adopted by the backfill phase.
+    pub backfilled: usize,
+    /// Undeclared / sidecar-less on-disk files adopted with a `job_id`-derived
+    /// stable artifact id.
+    pub adopted_orphans: usize,
 }
 
 /// Result of [`InstallMap::prune_missing`] — a revalidate sweep summary.
@@ -2121,6 +2328,367 @@ mod tests {
             index.get(JOB_A).is_none(),
             "index entry pruned on truncation prune"
         );
+    }
+
+    /// A raw file dropped at `<sink_root>/<job_id>/<file>` with NO sidecar and
+    /// NO row is adopted with a STABLE `{job_id}#{filename}` artifact id, so it
+    /// becomes listable AND resolvable by the artifact-id-keyed delete path.
+    #[tokio::test]
+    async fn adopt_orphan_records_sidecar_less_on_disk_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("orphan.gguf"), b"real-weights")
+            .await
+            .unwrap();
+
+        let adopted = map.adopt_orphan_sink_files(sink_root).await.unwrap();
+        assert_eq!(adopted, 1, "the sidecar-less orphan is adopted");
+
+        let row = map
+            .find_by_artifact(&ArtifactId::from(format!("{JOB_A}#orphan.gguf")))
+            .await
+            .unwrap()
+            .expect("adopt recorded a row keyed by job_id#filename");
+        assert_eq!(row.job_id, JOB_A, "row carries the sink dir's job_id");
+        assert_eq!(row.filename, "orphan.gguf");
+        assert_eq!(row.size_bytes, Some(b"real-weights".len() as u64));
+        assert_eq!(row.format, "gguf");
+    }
+
+    /// `adopt_orphan_sink_files` is idempotent — a second pass records nothing
+    /// because the row from the first pass already covers the file.
+    #[tokio::test]
+    async fn adopt_orphan_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("orphan.gguf"), b"weights")
+            .await
+            .unwrap();
+
+        assert_eq!(map.adopt_orphan_sink_files(sink_root).await.unwrap(), 1);
+        assert_eq!(
+            map.adopt_orphan_sink_files(sink_root).await.unwrap(),
+            0,
+            "second pass adopts nothing"
+        );
+    }
+
+    /// The legibility sidecars are bookkeeping, never weights — adopt never
+    /// records a row for `manifest.json` even though it is a non-empty file.
+    #[tokio::test]
+    async fn adopt_orphan_skips_sidecar_and_zero_size_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        // A real (non-empty) sidecar — must be ignored.
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec![],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        crate::downloads::legibility::write_manifest(sink_root, JOB_A, &manifest)
+            .await
+            .unwrap();
+        // A zero-size weight file — not a real install.
+        tokio::fs::write(dir.join("empty.safetensors"), b"")
+            .await
+            .unwrap();
+
+        let adopted = map.adopt_orphan_sink_files(sink_root).await.unwrap();
+        assert_eq!(adopted, 0, "sidecar + zero-size file both skipped");
+    }
+
+    /// A job dir whose name is not a UUID is left untouched — adopt only walks
+    /// canonical `<sink_root>/<job_uuid>/` dirs and never stats outside them.
+    #[tokio::test]
+    async fn adopt_orphan_ignores_non_uuid_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let bad = sink_root.join("not-a-uuid");
+        tokio::fs::create_dir_all(&bad).await.unwrap();
+        tokio::fs::write(bad.join("x.gguf"), b"weights")
+            .await
+            .unwrap();
+
+        let adopted = map.adopt_orphan_sink_files(sink_root).await.unwrap();
+        assert_eq!(adopted, 0, "non-uuid dirs are not adopted");
+    }
+
+    /// Adopt only reads plain files directly under a job dir — it never recurses
+    /// into nested dirs, so bytes outside the canonical layout can't be reached.
+    #[tokio::test]
+    async fn adopt_orphan_does_not_recurse_into_nested_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let nested = sink_root.join(JOB_A).join("sub");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+        tokio::fs::write(nested.join("deep.gguf"), b"weights")
+            .await
+            .unwrap();
+
+        let adopted = map.adopt_orphan_sink_files(sink_root).await.unwrap();
+        assert_eq!(adopted, 0, "nested files are not adopted (no recursion)");
+    }
+
+    /// An adopted orphan is GC-deletable via the same job_id-keyed path the
+    /// `DELETE /model-store/installed/{artifact_id}` handler uses: look the row
+    /// up by its stable artifact id, then GC its `job_id` removes the file.
+    #[tokio::test]
+    async fn adopted_orphan_is_deletable_by_artifact_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let payload = b"deletable-weights";
+        tokio::fs::write(dir.join("orphan.gguf"), payload)
+            .await
+            .unwrap();
+
+        map.adopt_orphan_sink_files(sink_root).await.unwrap();
+        let row = map
+            .find_by_artifact(&ArtifactId::from(format!("{JOB_A}#orphan.gguf")))
+            .await
+            .unwrap()
+            .expect("row present after adopt");
+
+        let outcome = map
+            .gc_artifact_if_unreferenced(&row.job_id, sink_root)
+            .await
+            .unwrap();
+        assert!(outcome.deleted, "unreferenced adopted orphan is deletable");
+        assert_eq!(outcome.freed_bytes, payload.len() as u64);
+        assert!(!sink_root.join(JOB_A).exists(), "file removed from disk");
+        assert!(
+            map.find_by_artifact(&ArtifactId::from(format!("{JOB_A}#orphan.gguf")))
+                .await
+                .unwrap()
+                .is_none(),
+            "row gone after delete"
+        );
+    }
+
+    /// Create a file symlink at `link` pointing to `target`. Returns `false`
+    /// when the platform refuses (Windows without the privilege), so the caller
+    /// can skip the test rather than fail on an unsupported environment.
+    #[cfg(unix)]
+    fn try_symlink_file(target: &std::path::Path, link: &std::path::Path) -> bool {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+    #[cfg(windows)]
+    fn try_symlink_file(target: &std::path::Path, link: &std::path::Path) -> bool {
+        std::os::windows::fs::symlink_file(target, link).is_ok()
+    }
+
+    /// Traversal safety: a symlink inside a job dir pointing at a file OUTSIDE
+    /// the sink is NEVER adopted (on Windows `is_file()` follows the link, so
+    /// the explicit symlink check is what closes the escape). The target's bytes
+    /// stay un-adopted and the real file outside the sink is left untouched.
+    #[tokio::test]
+    async fn adopt_orphan_never_follows_symlink_outside_sink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().join("sink");
+        tokio::fs::create_dir_all(&sink_root).await.unwrap();
+        // A real secret file one level ABOVE the sink.
+        let secret = tmp.path().join("secret.gguf");
+        tokio::fs::write(&secret, b"do-not-adopt-via-symlink")
+            .await
+            .unwrap();
+
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let link = dir.join("link.gguf");
+        if !try_symlink_file(&secret, &link) {
+            eprintln!("symlink creation unsupported on this host — skipping");
+            return;
+        }
+
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let adopted = map.adopt_orphan_sink_files(&sink_root).await.unwrap();
+        assert_eq!(adopted, 0, "symlink-to-outside-sink must not be adopted");
+        assert!(
+            map.find_by_artifact(&ArtifactId::from(format!("{JOB_A}#link.gguf")))
+                .await
+                .unwrap()
+                .is_none(),
+            "no row recorded for the escaping symlink"
+        );
+        assert!(secret.exists(), "the out-of-sink target is left untouched");
+    }
+
+    /// Create a directory symlink/junction at `link` pointing to `target`.
+    /// Returns `false` when the platform refuses, so the caller can skip rather
+    /// than fail on an unsupported environment.
+    #[cfg(unix)]
+    fn try_symlink_dir(target: &std::path::Path, link: &std::path::Path) -> bool {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+    #[cfg(windows)]
+    fn try_symlink_dir(target: &std::path::Path, link: &std::path::Path) -> bool {
+        std::os::windows::fs::symlink_dir(target, link).is_ok()
+    }
+
+    /// Traversal safety at the JOB-DIR level: a UUID-named symlink/junction
+    /// under the sink root that points at a dir of real files OUTSIDE the sink
+    /// is NEVER walked (on Windows a directory junction reports `is_dir()` true,
+    /// so the explicit `!is_symlink()` guard is what closes the escape).
+    #[tokio::test]
+    async fn adopt_orphan_never_walks_symlinked_job_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().join("sink");
+        tokio::fs::create_dir_all(&sink_root).await.unwrap();
+        // A real dir of "secret" weights OUTSIDE the sink.
+        let outside = tmp.path().join("outside");
+        tokio::fs::create_dir_all(&outside).await.unwrap();
+        tokio::fs::write(outside.join("secret.gguf"), b"do-not-adopt-via-junction")
+            .await
+            .unwrap();
+
+        // A UUID-named link under the sink root pointing at the outside dir.
+        let link = sink_root.join(JOB_A);
+        if !try_symlink_dir(&outside, &link) {
+            eprintln!("dir symlink creation unsupported on this host — skipping");
+            return;
+        }
+
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let adopted = map.adopt_orphan_sink_files(&sink_root).await.unwrap();
+        assert_eq!(adopted, 0, "symlinked job dir must not be walked");
+        assert!(
+            map.find_by_artifact(&ArtifactId::from(format!("{JOB_A}#secret.gguf")))
+                .await
+                .unwrap()
+                .is_none(),
+            "no row recorded for the escaping job-dir symlink"
+        );
+        assert!(
+            outside.join("secret.gguf").exists(),
+            "the out-of-sink target is left untouched"
+        );
+    }
+
+    /// Backfill traversal safety: a sidecar declares a normal-named entry that
+    /// is actually a symlink to a file OUTSIDE the sink — `symlink_metadata`
+    /// refuses to follow it, so no row is recorded and the target is untouched.
+    #[tokio::test]
+    async fn backfill_never_follows_symlink_outside_sink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().join("sink");
+        tokio::fs::create_dir_all(&sink_root).await.unwrap();
+        let secret = tmp.path().join("secret.safetensors");
+        tokio::fs::write(&secret, b"do-not-adopt-via-symlink")
+            .await
+            .unwrap();
+
+        let dir = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let link = dir.join("weights.safetensors");
+        if !try_symlink_file(&secret, &link) {
+            eprintln!("symlink creation unsupported on this host — skipping");
+            return;
+        }
+        let manifest = crate::downloads::legibility::ManifestSidecar {
+            family_id: "huggingface:Owner/Repo".into(),
+            source_repo: "Owner/Repo".into(),
+            accelerator: None,
+            files: vec!["weights.safetensors".into()],
+            created_at: "2026-06-16T00:00:00Z".into(),
+        };
+        crate::downloads::legibility::write_manifest(&sink_root, JOB_A, &manifest)
+            .await
+            .unwrap();
+
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let report = map
+            .backfill_install_map_from_sink(&sink_root)
+            .await
+            .unwrap();
+        assert_eq!(report.recorded, 0, "symlink-declared file must not adopt");
+        assert!(
+            map.find_by_artifact(&ArtifactId::from(
+                "huggingface:Owner/Repo#weights.safetensors"
+            ))
+            .await
+            .unwrap()
+            .is_none(),
+            "no row recorded for the escaping symlink"
+        );
+        assert!(secret.exists(), "the out-of-sink target is left untouched");
+    }
+
+    /// `reconcile_installed_with_sink` is the single authority: it prunes a
+    /// vanished row, backfills a sidecar-declared orphan, AND adopts a
+    /// sidecar-less orphan — all in one idempotent sweep.
+    #[tokio::test]
+    async fn reconcile_prunes_backfills_and_adopts_in_one_sweep() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        // (a) A row whose file vanished — should be pruned.
+        let job_gone = "00000000-0000-7000-8000-00000000000d";
+        seed_install(&map, sink_root, "hf:a/gone", job_gone, "gone.gguf", b"w").await;
+        tokio::fs::remove_dir_all(sink_root.join(job_gone))
+            .await
+            .unwrap();
+
+        // (b) A sidecar-declared orphan file (no row) — backfill adopts it.
+        let job_sidecar = "00000000-0000-7000-8000-00000000000e";
+        seed_orphan_sink_job(
+            sink_root,
+            "huggingface:Owner/Repo",
+            job_sidecar,
+            &[("declared.safetensors", b"declared-weights")],
+        )
+        .await;
+
+        // (c) A sidecar-less raw file (no row) — orphan-adopt records it.
+        let dir_raw = sink_root.join(JOB_A);
+        tokio::fs::create_dir_all(&dir_raw).await.unwrap();
+        tokio::fs::write(dir_raw.join("raw.gguf"), b"raw-weights")
+            .await
+            .unwrap();
+
+        let report = map.reconcile_installed_with_sink(sink_root).await.unwrap();
+        assert_eq!(report.pruned, 1, "vanished row pruned");
+        assert_eq!(report.backfilled, 1, "sidecar-declared orphan backfilled");
+        assert_eq!(report.adopted_orphans, 1, "sidecar-less raw file adopted");
+
+        // All three end states are consistent and the listing reflects them.
+        let rows = map.list_all(usize::MAX).await.unwrap();
+        let ids: Vec<&str> = rows.iter().map(|r| r.artifact_id.as_str()).collect();
+        assert!(ids.contains(&"huggingface:Owner/Repo#declared.safetensors"));
+        assert!(ids.contains(&format!("{JOB_A}#raw.gguf").as_str()));
+        assert!(!ids.iter().any(|id| id.contains("gone")));
+
+        // Idempotent: a second sweep changes nothing.
+        let again = map.reconcile_installed_with_sink(sink_root).await.unwrap();
+        assert_eq!(again.pruned, 0);
+        assert_eq!(again.backfilled, 0);
+        assert_eq!(again.adopted_orphans, 0);
     }
 
     /// Truncation prune also drops the row's artifact-refs (no orphan refs).

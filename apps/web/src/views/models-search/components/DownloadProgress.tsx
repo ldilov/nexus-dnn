@@ -1,7 +1,9 @@
 import type { DownloadState } from "../../../services/model_store";
 import * as s from "./DownloadProgress.css";
+import { useTransferRate } from "./use_transfer_rate";
 
-function formatSize(bytes: number | null | undefined): string {
+/** Render a byte count in binary units, e.g. `1.5 GB`. `—` when unknown/zero. */
+export function formatSize(bytes: number | null | undefined): string {
   if (
     bytes === null ||
     bytes === undefined ||
@@ -25,12 +27,35 @@ function computePercent(progress: number, total: number | null): number | null {
   return Math.min(100, Math.max(0, (progress / total) * 100));
 }
 
+/** Render a smoothed transfer speed, e.g. `12.4 MB/s`. Empty when unknown. */
+export function formatSpeed(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return "";
+  return `${formatSize(bytesPerSecond)}/s`;
+}
+
+/** Render a coarse ETA, e.g. `3s`, `4m 05s`, `1h 02m`. Empty when null. */
+export function formatEta(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "";
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  if (total < 3600) {
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return `${m}m ${String(sec).padStart(2, "0")}s`;
+  }
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 interface DownloadProgressProps {
   state: Extract<DownloadState, "queued" | "downloading" | "paused">;
   progressBytes: number;
   totalBytes: number | null;
   onPause?: () => void;
   onResume?: () => void;
+  /** Optional sampler reset key (e.g. job id); resets speed/ETA across jobs. */
+  jobId?: string;
 }
 
 export function DownloadProgress({
@@ -39,9 +64,13 @@ export function DownloadProgress({
   totalBytes,
   onPause,
   onResume,
+  jobId,
 }: DownloadProgressProps) {
+  const rate = useTransferRate(progressBytes, totalBytes, jobId);
   const pct = computePercent(progressBytes, totalBytes);
   const pctLabel = pct !== null ? Math.round(pct) : null;
+  const isDeterminate = pct !== null;
+  const isMoving = state === "downloading";
   const fillCls =
     state === "paused" ? `${s.fill} ${s.fillPaused}` : s.fill;
   const labelCls = state === "paused" ? `${s.label} ${s.labelDim}` : s.label;
@@ -55,12 +84,22 @@ export function DownloadProgress({
         ? `${formatSize(progressBytes)} downloaded`
         : "starting…";
 
+  const speedLabel = isMoving ? formatSpeed(rate.speedBps) : "";
+  const etaLabel = isMoving ? formatEta(rate.etaSeconds) : "";
+  const showMeta = speedLabel !== "" || etaLabel !== "";
+
+  const indeterminate = !isDeterminate && state !== "paused";
+
   const ariaLabel =
     state === "queued"
       ? "Download queued"
       : state === "paused"
-        ? `Download paused at ${pctLabel ?? 0} percent`
-        : `Downloading, ${pctLabel ?? 0} percent`;
+        ? isDeterminate
+          ? `Download paused at ${pctLabel} percent`
+          : "Download paused"
+        : isDeterminate
+          ? `Downloading, ${pctLabel} percent`
+          : "Downloading, size unknown";
 
   if (state === "queued") {
     return (
@@ -87,15 +126,27 @@ export function DownloadProgress({
           className={s.bar}
           role="progressbar"
           aria-label={ariaLabel}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pctLabel ?? 0}
+          aria-valuemin={isDeterminate ? 0 : undefined}
+          aria-valuemax={isDeterminate ? 100 : undefined}
+          aria-valuenow={isDeterminate ? (pctLabel ?? undefined) : undefined}
         >
-          <div
-            className={fillCls}
-            style={{ width: pct !== null ? `${pct}%` : "8%" }}
-          />
+          {indeterminate ? (
+            <div className={s.fillIndeterminate} />
+          ) : (
+            <div
+              className={fillCls}
+              style={{ width: pct !== null ? `${pct}%` : "8%" }}
+            />
+          )}
         </div>
+        {showMeta && (
+          <div className={s.meta}>
+            <span className={s.metaSpeed}>{speedLabel}</span>
+            {etaLabel !== "" && (
+              <span className={s.metaEta}>{etaLabel} left</span>
+            )}
+          </div>
+        )}
       </div>
       {state === "downloading" && onPause && (
         <button

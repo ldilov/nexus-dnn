@@ -1,13 +1,16 @@
 //! `POST /api/v1/host/models/revalidate` — spec 054 G2.
 //!
-//! Host-owned, generic model-store maintenance — a two-way reconcile between
-//! the install-map rows and the download sink on disk:
-//! * **prune** rows whose on-disk file vanished (via [`InstallMap::prune_missing`]), and
-//! * **backfill** rows for sink bytes whose rows were lost (via
-//!   [`InstallMap::backfill_install_map_from_sink`]).
+//! Host-owned, generic model-store maintenance — a reconcile between the
+//! install-map rows and the download sink on disk via
+//! [`InstallMap::reconcile_installed_with_sink`]:
+//! * **prune** rows whose on-disk file vanished or truncated,
+//! * **backfill** rows for sidecar-described sink bytes whose rows were lost, and
+//! * **adopt** any remaining undeclared / sidecar-less on-disk file with a
+//!   stable `job_id`-derived artifact id so it is listable AND deletable.
 //!
-//! Returns `{ checked, pruned, recorded }`. Keyed by no extension id — operates
-//! only on host-owned model store rows + the host-owned download sink.
+//! Returns `{ checked, pruned, recorded }` (`recorded` = backfilled + adopted).
+//! Keyed by no extension id — operates only on host-owned model store rows +
+//! the host-owned download sink.
 
 use axum::Json;
 use axum::extract::State;
@@ -43,11 +46,7 @@ pub async fn revalidate_models(State(state): State<AppState>) -> Response {
     };
 
     let sink_root = orchestrator.sink_root();
-    let prune = match install_map.prune_missing(sink_root).await {
-        Ok(report) => report,
-        Err(err) => return revalidate_error(err),
-    };
-    let backfill = match install_map.backfill_install_map_from_sink(sink_root).await {
+    let report = match install_map.reconcile_installed_with_sink(sink_root).await {
         Ok(report) => report,
         Err(err) => return revalidate_error(err),
     };
@@ -55,9 +54,9 @@ pub async fn revalidate_models(State(state): State<AppState>) -> Response {
     (
         StatusCode::OK,
         Json(RevalidateResponse {
-            checked: prune.checked,
-            pruned: prune.pruned,
-            recorded: backfill.recorded,
+            checked: report.checked,
+            pruned: report.pruned,
+            recorded: report.backfilled + report.adopted_orphans,
         }),
     )
         .into_response()

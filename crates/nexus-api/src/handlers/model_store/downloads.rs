@@ -386,7 +386,9 @@ pub async fn create_download(
                     }))
                     .into_response();
                 }
-                Err(e) => return ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
+                Err(e) => {
+                    return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
+                }
             },
             Err(e) => return ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
         };

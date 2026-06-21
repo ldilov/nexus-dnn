@@ -1,4 +1,5 @@
 import type {
+  ActiveUpload,
   BackendCapability,
   DownloadJob,
   DownloadState,
@@ -7,6 +8,10 @@ import type {
   SearchPage,
 } from "../../services/model_store";
 import { FilterBar } from "./components/FilterBar";
+import {
+  DownloadedPanel,
+  type DownloadedArtifact,
+} from "./components/DownloadedPanel";
 import {
   ModelCard,
   type DownloadKind,
@@ -34,8 +39,13 @@ export interface ModelsSearchUIProps {
   degraded: boolean;
   resolved: ModelFamily | null;
   resolving: boolean;
-  uploading: boolean;
+  uploads: Record<string, ActiveUpload>;
   resolveError: { message: string } | null;
+  installedArtifacts: DownloadedArtifact[] | null;
+  installedLoading: boolean;
+  installedError: { message: string } | null;
+  installedTruncated: boolean;
+  deletingId: string | null;
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
   jobByVariant: Record<string, DownloadJob | undefined>;
@@ -61,8 +71,11 @@ export interface ModelsSearchUIProps {
   onResume: (jobId: string) => void;
   onAuthRequired: (family: ModelFamily) => void;
   onDelete: (artifactId: string, label: string) => void;
+  onDeleteInstalled: (artifactId: string, label: string) => void;
+  onRefreshInstalled: () => void;
   onResolveUrl: (url: string) => void;
   onUpload: (file: File) => void;
+  onCancelUpload: (id: string) => void;
   onRetry: () => void;
   onRevalidated: () => void;
 }
@@ -84,6 +97,11 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     resolved,
     resolving,
     resolveError,
+    installedArtifacts,
+    installedLoading,
+    installedError,
+    installedTruncated,
+    deletingId,
     jobStateByVariant,
     jobIdByVariant,
     jobByVariant,
@@ -109,9 +127,12 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     onResume,
     onAuthRequired,
     onDelete,
+    onDeleteInstalled,
+    onRefreshInstalled,
     onResolveUrl,
     onUpload,
-    uploading,
+    onCancelUpload,
+    uploads,
     onRetry,
     onRevalidated,
   } = props;
@@ -146,9 +167,20 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
         onClearAll={onClearAll}
         onResolveUrl={onResolveUrl}
         onUpload={onUpload}
+        onCancelUpload={onCancelUpload}
         resolving={resolving}
-        uploading={uploading}
+        uploads={uploads}
         degraded={degraded}
+      />
+
+      <DownloadedPanel
+        artifacts={installedArtifacts}
+        loading={installedLoading}
+        error={installedError}
+        truncated={installedTruncated}
+        deletingId={deletingId}
+        onDelete={onDeleteInstalled}
+        onRetry={onRefreshInstalled}
       />
 
       {!isFromUrl && (

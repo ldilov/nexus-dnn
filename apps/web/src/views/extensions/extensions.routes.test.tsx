@@ -31,7 +31,7 @@ vi.mock("../../components/extension-gate", () => ({
 }));
 
 vi.mock("../../root_layout", () => ({
-  useRootOutletContext: () => ({ refreshLayouts: () => {} }),
+  useRootOutletContext: () => ({ refreshLayouts: () => {}, extensionLayouts: [] }),
 }));
 
 import { ExtensionLayoutRoute } from "./extensions.routes";

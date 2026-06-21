@@ -377,6 +377,8 @@ export interface InstalledArtifact {
   source_repo: string;
   source_revision: string | null;
   installed_at: string;
+  /** Absolute on-disk path under `sink_root`; null when no sink configured. */
+  install_path?: string | null;
 }
 
 export interface InstalledIndex {
@@ -418,16 +420,166 @@ export interface UploadResult {
   install_path: string;
 }
 
+export type UploadStatus = "uploading" | "error";
+
 /**
- * Import a local weight file directly into the model store. Streams the file as
- * multipart/form-data; the browser sets the boundary content-type, so no header
- * is passed. Progress is not reported (fetch can't observe upload bytes) — the
- * caller shows a spinner.
+ * UI-facing per-upload record. The view keys these by a client-generated id so
+ * concurrent uploads stay independent and each settles its own row. `error`
+ * rows linger so the user sees the reason; `uploading` rows clear on success.
  */
-export function uploadModel(file: File, signal?: AbortSignal): Promise<UploadResult> {
-  const form = new FormData();
-  form.append("file", file, file.name);
-  return apiFetch("/model-store/upload", { method: "POST", body: form, signal });
+export interface ActiveUpload {
+  id: string;
+  filename: string;
+  /** 0–100 when the total is known, else null (indeterminate bar). */
+  pct: number | null;
+  loaded: number;
+  total: number | null;
+  status: UploadStatus;
+  error?: string;
+}
+
+export interface UploadProgress {
+  /** Bytes sent so far. */
+  loaded: number;
+  /** Total bytes to send, or null when the browser can't compute it. */
+  total: number | null;
+  /** 0–100 when a total is known, else null (caller shows indeterminate). */
+  pct: number | null;
+}
+
+export interface UploadHandle {
+  /** Resolves with the install result, or rejects on error/abort/timeout. */
+  promise: Promise<UploadResult>;
+  /** Abort the in-flight upload; settles the promise via the abort path. */
+  cancel: () => void;
+}
+
+export interface UploadOptions {
+  /** Fired on every upload-byte tick with cumulative progress. */
+  onProgress?: (progress: UploadProgress) => void;
+  /** External cancellation; aborts the XHR when fired. */
+  signal?: AbortSignal;
+  /** Hard ceiling in ms before `ontimeout` fires (0 disables). */
+  timeoutMs?: number;
+}
+
+const UPLOAD_BASE_URL = "/api/v1";
+/** Default 30 min ceiling so a stalled connection can never hang the UI forever. */
+const DEFAULT_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
+
+class UploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UploadError";
+  }
+}
+
+/**
+ * Extract the `UploadResult` from a host envelope (`{ meta, data, error }`) or
+ * a bare object, mirroring `apiFetch`. Throws on an error envelope.
+ */
+function unwrapUploadResponse(raw: string): UploadResult {
+  const body = JSON.parse(raw) as unknown;
+  if (body !== null && typeof body === "object") {
+    const obj = body as Record<string, unknown>;
+    if ("error" in obj && obj.error) {
+      const err = obj.error as { message?: string };
+      throw new UploadError(err.message ?? "upload failed");
+    }
+    if ("data" in obj && obj.data) {
+      return obj.data as UploadResult;
+    }
+    if ("meta" in obj) {
+      throw new UploadError("unexpected upload response shape");
+    }
+  }
+  return body as UploadResult;
+}
+
+/**
+ * Upload a weight file via `XMLHttpRequest` so the UI can observe upload bytes
+ * and cancel mid-flight. Unlike `fetch`, XHR exposes `upload.onprogress`.
+ *
+ * Every terminal path (`onload`, `onerror`, `onabort`, `ontimeout`) settles the
+ * returned promise exactly once, so the caller's per-upload state can never
+ * hang in an "uploading" limbo (BUG 1). The multipart field name stays "file"
+ * and no `Content-Type` is set — the browser supplies the multipart boundary.
+ */
+export function uploadModelWithProgress(
+  file: File,
+  options?: UploadOptions,
+): UploadHandle {
+  const xhr = new XMLHttpRequest();
+  const cancel = () => xhr.abort();
+
+  const promise = new Promise<UploadResult>((resolve, reject) => {
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (options?.signal) {
+        options.signal.removeEventListener("abort", cancel);
+      }
+      fn();
+    };
+
+    if (options?.signal) {
+      options.signal.addEventListener("abort", cancel);
+      if (options.signal.aborted) {
+        settled = true;
+        options.signal.removeEventListener("abort", cancel);
+        reject(new UploadError("upload aborted"));
+        return;
+      }
+    }
+
+    xhr.upload.onprogress = (e: ProgressEvent) => {
+      if (!options?.onProgress) return;
+      const total = e.lengthComputable ? e.total : null;
+      const pct =
+        total && total > 0
+          ? Math.min(100, Math.max(0, Math.round((e.loaded / total) * 100)))
+          : null;
+      options.onProgress({ loaded: e.loaded, total, pct });
+    };
+
+    xhr.onload = () =>
+      settle(() => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(unwrapUploadResponse(xhr.responseText));
+          } catch (e) {
+            reject(e instanceof Error ? e : new UploadError("upload failed"));
+          }
+          return;
+        }
+        let message = `upload failed (HTTP ${xhr.status})`;
+        try {
+          const body = JSON.parse(xhr.responseText) as {
+            error?: { message?: string };
+          };
+          if (body?.error?.message) message = body.error.message;
+        } catch {
+          /* non-JSON error body — keep the status-coded message */
+        }
+        reject(new UploadError(message));
+      });
+
+    xhr.onerror = () =>
+      settle(() => reject(new UploadError("upload network error")));
+    xhr.onabort = () =>
+      settle(() => reject(new UploadError("upload aborted")));
+    xhr.ontimeout = () =>
+      settle(() => reject(new UploadError("upload timed out")));
+
+    const form = new FormData();
+    form.append("file", file, file.name);
+    xhr.open("POST", `${UPLOAD_BASE_URL}/model-store/upload`);
+    xhr.timeout = options?.timeoutMs ?? DEFAULT_UPLOAD_TIMEOUT_MS;
+    xhr.send(form);
+  });
+
+  return { promise, cancel };
 }
 
 export interface CreateDownloadBody {

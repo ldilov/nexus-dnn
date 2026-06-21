@@ -607,6 +607,54 @@ impl JobStore {
         Ok(())
     }
 
+    /// Raise a target's `expected_bytes` to `bytes` if it is currently
+    /// absent or smaller — monotonic max, mirroring [`Self::raise_total_bytes`]
+    /// at the per-artifact level so a Content-Length discovered mid-stream
+    /// backfills the size the resolver could not supply.
+    pub async fn raise_target_expected_bytes(
+        &self,
+        id: &JobId,
+        artifact_id: &ArtifactId,
+        bytes: u64,
+    ) -> JobStoreResult<()> {
+        let value = i64::try_from(bytes).unwrap_or(i64::MAX);
+        sqlx::query(
+            "UPDATE download_job_artifacts
+                SET expected_bytes = MAX(COALESCE(expected_bytes, 0), ?3)
+                WHERE job_id = ?1 AND artifact_id = ?2",
+        )
+        .bind(id.to_string())
+        .bind(artifact_id.as_str())
+        .bind(value)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
+    /// Recompute `total_bytes` as the sum of every target's known
+    /// `expected_bytes`, raising monotonically. Unlike [`Self::raise_total_bytes`]
+    /// (a single-file max), this keeps a multi-target bundle's total correct when
+    /// one file's size is discovered from Content-Length after another's was
+    /// already known. A sum of zero (no target size known yet) leaves the total
+    /// untouched, preserving the indeterminate-bar path.
+    pub async fn recompute_total_from_expected_bytes(&self, id: &JobId) -> JobStoreResult<()> {
+        sqlx::query(
+            "WITH known AS (
+                SELECT SUM(expected_bytes) AS s
+                FROM download_job_artifacts
+                WHERE job_id = ?1 AND expected_bytes IS NOT NULL
+            )
+            UPDATE download_jobs
+                SET total_bytes = MAX(COALESCE(total_bytes, 0), known.s)
+                FROM known
+                WHERE job_id = ?1 AND known.s > 0",
+        )
+        .bind(id.to_string())
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_target_sha256(
         &self,
         id: &JobId,
@@ -819,6 +867,161 @@ mod tests {
         assert_eq!(
             store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
             Some(2_000_000)
+        );
+    }
+
+    #[tokio::test]
+    async fn raise_target_expected_bytes_is_monotonic() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let mut params = sample_params();
+        params.targets[0].expected_bytes = None;
+        let job = store.create(params).await.unwrap();
+        let artifact_id = ArtifactId::from("hf:test/model#m.gguf");
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().targets[0].expected_bytes,
+            None
+        );
+
+        store
+            .raise_target_expected_bytes(&job.job_id, &artifact_id, 1_000_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().targets[0].expected_bytes,
+            Some(1_000_000)
+        );
+
+        store
+            .raise_target_expected_bytes(&job.job_id, &artifact_id, 500_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().targets[0].expected_bytes,
+            Some(1_000_000),
+            "a smaller advertised size must not lower a known expected_bytes"
+        );
+
+        store
+            .raise_target_expected_bytes(&job.job_id, &artifact_id, 2_000_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().targets[0].expected_bytes,
+            Some(2_000_000)
+        );
+    }
+
+    fn two_target_params() -> CreateJobParams {
+        CreateJobParams::builder(
+            FamilyId::from("hf:test/bundle"),
+            "huggingface",
+            "test/bundle",
+            RequestedKind::Bundle,
+        )
+        .include_dependencies(true)
+        .target(JobTargetInput {
+            artifact_id: ArtifactId::from("hf:test/bundle#a.gguf"),
+            filename: "a.gguf".into(),
+            role: DependencyRole::Primary,
+            download_url: "https://example/a.gguf".into(),
+            expected_bytes: Some(100),
+            sha256: None,
+        })
+        .target(JobTargetInput {
+            artifact_id: ArtifactId::from("hf:test/bundle#b.bin"),
+            filename: "b.bin".into(),
+            role: DependencyRole::Vae,
+            download_url: "https://example/b.bin".into(),
+            expected_bytes: None,
+            sha256: None,
+        })
+        .build()
+    }
+
+    /// The multi-target correctness guard: with one size known at create and a
+    /// second discovered mid-stream, the job total must equal the SUM (150),
+    /// not stall at the larger single file. This is the gap a single-file
+    /// max-raise leaves; the sum-based recompute closes it.
+    #[tokio::test]
+    async fn recompute_total_sums_expected_bytes_across_targets() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let job = store.create(two_target_params()).await.unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            Some(100),
+            "create totals only the one known size"
+        );
+
+        let b = ArtifactId::from("hf:test/bundle#b.bin");
+        store
+            .raise_target_expected_bytes(&job.job_id, &b, 50)
+            .await
+            .unwrap();
+        store
+            .recompute_total_from_expected_bytes(&job.job_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            Some(150),
+            "total must be the sum of both expected sizes"
+        );
+    }
+
+    /// With no target size known yet, the sum is zero and must not clobber a
+    /// null total — the indeterminate-bar path stays intact.
+    #[tokio::test]
+    async fn recompute_total_leaves_unknown_total_null() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let mut params = sample_params();
+        params.targets[0].expected_bytes = None;
+        let job = store.create(params).await.unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            None
+        );
+
+        store
+            .recompute_total_from_expected_bytes(&job.job_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            None,
+            "a zero sum must not fabricate a total"
+        );
+    }
+
+    /// The recompute is monotonic: a later sum that is smaller (cannot happen
+    /// in practice, but defends the invariant) never lowers a known total.
+    #[tokio::test]
+    async fn recompute_total_never_lowers_existing() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let mut params = sample_params();
+        params.targets[0].expected_bytes = None;
+        let job = store.create(params).await.unwrap();
+
+        store
+            .raise_total_bytes(&job.job_id, 2_000_000)
+            .await
+            .unwrap();
+        let artifact_id = ArtifactId::from("hf:test/model#m.gguf");
+        store
+            .raise_target_expected_bytes(&job.job_id, &artifact_id, 1_000_000)
+            .await
+            .unwrap();
+        store
+            .recompute_total_from_expected_bytes(&job.job_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&job.job_id).await.unwrap().unwrap().total_bytes,
+            Some(2_000_000),
+            "a smaller recomputed sum must not lower a larger known total"
         );
     }
 
