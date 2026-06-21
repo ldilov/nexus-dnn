@@ -591,10 +591,7 @@ impl DeploymentMappers {
             .bind(id)
             .execute(&self.pool)
             .await?;
-        sqlx::query("DELETE FROM deployment_extension_settings WHERE deployment_id = ?")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        self.delete_all_extension_settings(id).await?;
         sqlx::query("DELETE FROM deployment_tags WHERE deployment_id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -687,6 +684,115 @@ impl DeploymentMappers {
                 .execute(&self.pool)
                 .await?;
         Ok(res.rows_affected())
+    }
+
+    /// Remove every extension-settings row for a deployment. Used by the
+    /// import-replace flow (drop stale rows before re-inserting the file's
+    /// bundles) and by [`Self::purge_deployment`].
+    pub async fn delete_all_extension_settings(
+        &self,
+        deployment_id: &str,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query("DELETE FROM deployment_extension_settings WHERE deployment_id = ?")
+            .bind(deployment_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Atomically replace a deployment's active config and all extension
+    /// settings in a single SQLite transaction. Inserts a new revision (numbered
+    /// `MAX(revision_number)+1` computed in-tx, so concurrent replaces cannot
+    /// collide on the unique `(deployment_id, revision_number)` index), points
+    /// the deployment at it, updates `state`/`restore_state`/`updated_at`, then
+    /// drops every settings row and re-inserts the supplied bundles. Returns the
+    /// new revision number. On any error the whole transaction rolls back,
+    /// leaving the deployment exactly as it was before the call.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn replace_in_place(
+        &self,
+        deployment_id: &str,
+        new_revision_id: &str,
+        save_mode: &str,
+        created_at: &str,
+        created_by_action: &str,
+        mapping_state: &str,
+        effective_workflow_hash: &str,
+        state: &str,
+        restore_state: &str,
+        updated_at: &str,
+        settings: &[ReplaceInPlaceSettings<'_>],
+    ) -> Result<i64, StorageError> {
+        let mut tx = self.pool.begin().await?;
+
+        let next_num: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM deployment_revisions WHERE deployment_id = ?",
+        )
+        .bind(deployment_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let none: Option<&str> = None;
+        sqlx::query(
+            "INSERT INTO deployment_revisions (id, deployment_id, revision_number, save_mode, created_at, created_by_action, base_workflow_ref, base_workflow_version_ref, base_recipe_ref, base_recipe_version_ref, base_extension_ref, mapping_state, workflow_snapshot_id, workflow_patch_json, effective_workflow_hash, ui_restore_json, execution_policy_json, compatibility_summary_json, change_summary_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(new_revision_id)
+        .bind(deployment_id)
+        .bind(next_num)
+        .bind(save_mode)
+        .bind(created_at)
+        .bind(created_by_action)
+        .bind(none)
+        .bind(none)
+        .bind(none)
+        .bind(none)
+        .bind(none)
+        .bind(mapping_state)
+        .bind(none)
+        .bind(none)
+        .bind(effective_workflow_hash)
+        .bind(none)
+        .bind(none)
+        .bind(none)
+        .bind(none)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "UPDATE deployments SET current_revision_id = ?, state = ?, restore_state = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(new_revision_id)
+        .bind(state)
+        .bind(restore_state)
+        .bind(updated_at)
+        .bind(deployment_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM deployment_extension_settings WHERE deployment_id = ?")
+            .bind(deployment_id)
+            .execute(&mut *tx)
+            .await?;
+
+        for s in settings {
+            sqlx::query(
+                "INSERT INTO deployment_extension_settings (id, deployment_id, extension_id, settings_json, settings_schema_fingerprint, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(s.id)
+            .bind(deployment_id)
+            .bind(s.extension_id)
+            .bind(s.settings_json)
+            .bind(s.schema_fingerprint)
+            .bind(updated_at)
+            .bind(updated_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(next_num)
     }
 
     pub async fn update_metadata(
@@ -806,6 +912,15 @@ pub struct RawExtensionSettings {
     pub settings_schema_fingerprint: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Borrowed inputs for one extension-settings row passed to
+/// [`DeploymentMappers::replace_in_place`].
+pub struct ReplaceInPlaceSettings<'a> {
+    pub id: &'a str,
+    pub extension_id: &'a str,
+    pub settings_json: &'a str,
+    pub schema_fingerprint: Option<&'a str>,
 }
 
 fn map_extension_settings_row(r: &sqlx::sqlite::SqliteRow) -> RawExtensionSettings {

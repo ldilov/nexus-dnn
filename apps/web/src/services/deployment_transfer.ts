@@ -43,11 +43,32 @@ export async function importDeployment(envelope: ExportEnvelope): Promise<Import
   });
 }
 
+/**
+ * Replace an existing deployment's config + extension settings from an export
+ * envelope, in place. Destructive: the deployment's active revision is replaced
+ * by a new one and all its extension settings are overwritten by the file's.
+ * `missing_dependencies` is derived host-side — the client never supplies it.
+ */
+export async function importIntoDeployment(
+  deploymentId: string,
+  envelope: ExportEnvelope,
+): Promise<ImportResult> {
+  return apiFetch<ImportResult>(
+    `/deployments/${encodeURIComponent(deploymentId)}/import`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ envelope }),
+    },
+  );
+}
+
 export function isExportEnvelope(value: unknown): value is ExportEnvelope {
   if (value === null || typeof value !== "object") return false;
   const v = value as Partial<ExportEnvelope>;
   return (
     typeof v.package_version === "number" &&
+    "deployment" in v &&
     Array.isArray(v.revisions) &&
     v.integrity !== undefined &&
     typeof (v.integrity as { digest?: unknown }).digest === "string"

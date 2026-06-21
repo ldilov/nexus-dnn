@@ -250,6 +250,32 @@ pub struct ExtensionSettingsRow {
     pub updated_at: String,
 }
 
+/// One extension-settings bundle for an in-place replace.
+#[derive(Debug, Clone)]
+pub struct ReplaceSettingsBundle {
+    pub extension_id: String,
+    pub settings_json: String,
+    pub schema_fingerprint: Option<String>,
+}
+
+/// Inputs for [`DeploymentRepository::replace_in_place`] — an atomic replace of
+/// a deployment's active config (new revision) and its full extension-settings
+/// set, keeping the deployment's identity.
+#[derive(Debug, Clone)]
+pub struct ReplaceInPlace {
+    pub deployment_id: DeploymentId,
+    pub new_revision_id: DeploymentRevisionId,
+    pub save_mode: String,
+    pub created_at: String,
+    pub created_by_action: String,
+    pub mapping_state: String,
+    pub effective_workflow_hash: String,
+    pub state: String,
+    pub restore_state: String,
+    pub updated_at: String,
+    pub settings: Vec<ReplaceSettingsBundle>,
+}
+
 #[async_trait]
 pub trait DeploymentRepository: Send + Sync {
     async fn insert_deployment(&self, row: NewDeployment) -> Result<(), DeploymentError>;
@@ -362,4 +388,16 @@ pub trait DeploymentRepository: Send + Sync {
         deployment_id: &DeploymentId,
         extension_id: &str,
     ) -> Result<(), DeploymentError>;
+
+    /// Remove every settings row for a deployment. Used by the import-replace
+    /// flow to clear stale bundles before re-inserting the file's settings.
+    /// Idempotent.
+    async fn delete_all_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+    ) -> Result<(), DeploymentError>;
+
+    /// Atomically replace a deployment's active config (a new revision) and its
+    /// full extension-settings. Returns the new revision number.
+    async fn replace_in_place(&self, input: ReplaceInPlace) -> Result<i64, DeploymentError>;
 }

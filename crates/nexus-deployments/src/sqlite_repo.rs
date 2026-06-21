@@ -4,11 +4,12 @@ use crate::repository::{
     DeploymentRepository, DeploymentRow, ExtensionSettingsRow, ListFilter, MetadataPatch,
     NewArtifactBinding, NewDeployment, NewModelBinding, NewParameter, NewRestoreDiagnostic,
     NewRevision, NewRunLink, NewRuntimeBinding, NewSnapshot, NewSourceLink, NewValidation,
-    RevisionRow,
+    ReplaceInPlace, RevisionRow,
 };
 use async_trait::async_trait;
 use nexus_storage::DeploymentMappers;
 use nexus_storage::RawExtensionSettings;
+use nexus_storage::ReplaceInPlaceSettings;
 use std::str::FromStr;
 
 pub struct SqliteDeploymentRepository {
@@ -492,6 +493,53 @@ impl DeploymentRepository for SqliteDeploymentRepository {
             .delete_extension_settings(deployment_id.as_str(), extension_id)
             .await?;
         Ok(())
+    }
+
+    async fn delete_all_extension_settings(
+        &self,
+        deployment_id: &DeploymentId,
+    ) -> Result<(), DeploymentError> {
+        self.inner
+            .delete_all_extension_settings(deployment_id.as_str())
+            .await?;
+        Ok(())
+    }
+
+    async fn replace_in_place(&self, input: ReplaceInPlace) -> Result<i64, DeploymentError> {
+        // Pre-allocate the row ids so the borrowed storage inputs outlive the call.
+        let ids: Vec<String> = input
+            .settings
+            .iter()
+            .map(|_| format!("depext_{}", uuid::Uuid::now_v7()))
+            .collect();
+        let storage_settings: Vec<ReplaceInPlaceSettings<'_>> = input
+            .settings
+            .iter()
+            .enumerate()
+            .map(|(i, b)| ReplaceInPlaceSettings {
+                id: &ids[i],
+                extension_id: &b.extension_id,
+                settings_json: &b.settings_json,
+                schema_fingerprint: b.schema_fingerprint.as_deref(),
+            })
+            .collect();
+        let revision_number = self
+            .inner
+            .replace_in_place(
+                input.deployment_id.as_str(),
+                input.new_revision_id.as_str(),
+                &input.save_mode,
+                &input.created_at,
+                &input.created_by_action,
+                &input.mapping_state,
+                &input.effective_workflow_hash,
+                &input.state,
+                &input.restore_state,
+                &input.updated_at,
+                &storage_settings,
+            )
+            .await?;
+        Ok(revision_number)
     }
 }
 

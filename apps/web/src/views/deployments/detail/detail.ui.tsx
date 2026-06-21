@@ -101,6 +101,9 @@ export interface DeploymentDetailUIProps {
    * caller may suppress this affordance). */
   onRequestDelete?: () => void;
   onRequestExport?: () => void;
+  /** Callback to begin an in-deployment import-replace (file picker + confirm).
+   * When omitted, the Import button is hidden. */
+  onRequestImport?: () => void;
 }
 
 function renderTitle(moduleName: string | null, name: string) {
@@ -200,6 +203,7 @@ export function DeploymentDetailUI({
   extensionId,
   onRequestDelete,
   onRequestExport,
+  onRequestImport,
 }: DeploymentDetailUIProps) {
   const name = displayName ?? "Deployment detail";
   const titleAriaLabel = buildTitleAriaLabel(moduleName, name);
@@ -348,6 +352,27 @@ export function DeploymentDetailUI({
                 fallbackVariant="primary"
                 onInvoke={handleInvoke}
               />
+            )}
+            {onRequestImport && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={onRequestImport}
+                aria-label={
+                  displayName
+                    ? `Import into deployment ${displayName}`
+                    : "Import into deployment"
+                }
+              >
+                <span
+                  className={`material-symbols-outlined ${s.actionIcon}`}
+                  aria-hidden="true"
+                >
+                  upload
+                </span>
+                Import
+              </Button>
             )}
             {onRequestExport && (
               <Button

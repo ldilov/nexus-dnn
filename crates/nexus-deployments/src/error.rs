@@ -18,6 +18,10 @@ pub enum DeploymentError {
     ExecuteBlocked(RestoreState),
     #[error("import missing dependency: {0}")]
     ImportMissingDependency(String),
+    #[error("invalid export envelope: {0}")]
+    InvalidEnvelope(String),
+    #[error("module mismatch: target binding {expected}, envelope binding {found}")]
+    ModuleMismatch { expected: String, found: String },
     #[error("secret value detected in export payload")]
     ExportBlockedBySecret,
     #[error("revision is referenced by {0} run(s)")]

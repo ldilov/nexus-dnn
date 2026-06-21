@@ -51,7 +51,9 @@ async fn new_deployment(repo: &Arc<dyn DeploymentRepository>, slug: &str) -> Dep
     saved.deployment_id
 }
 
-const EXT: &str = "nexus.local-llm";
+// Generic sentinel — host-generic repository behaviour, never a real extension
+// id (host-extension boundary). Used only as an opaque settings key here.
+const EXT: &str = "test.extension";
 
 #[tokio::test]
 async fn upsert_then_get_returns_blob_and_fingerprint() {

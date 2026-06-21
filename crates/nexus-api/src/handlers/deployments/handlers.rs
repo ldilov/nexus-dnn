@@ -45,6 +45,7 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/runs", post(run))
         .route("/{id}/clone", post(clone_deployment))
         .route("/{id}/export", post(export))
+        .route("/{id}/import", post(import_into))
         .route(
             "/{id}/extension-settings/{ext_id}",
             get(get_extension_settings)
@@ -388,6 +389,84 @@ async fn import(State(state): State<AppState>, Json(body): Json<ImportBody>) -> 
     }
 }
 
+/// In-deployment import-replace. Replaces the target deployment's config (as a
+/// new active revision) and all extension settings from the uploaded envelope,
+/// keeping the deployment's identity and module binding. Destructive — the
+/// frontend gates it behind a confirm dialog.
+async fn import_into(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<ImportBody>,
+) -> impl IntoResponse {
+    let repo = repo_for(&state);
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return bad_id_response(),
+    };
+
+    // Pre-validate + host-recompute each bundle's fingerprint BEFORE any write.
+    // A schema violation (422) returns here, leaving the deployment untouched.
+    let mut envelope = body.envelope;
+    let mut prepared = Vec::with_capacity(envelope.extension_settings.len());
+    for bundle in &envelope.extension_settings {
+        let fingerprint = match state
+            .extension_registry
+            .get_extension(&bundle.extension_id)
+            .and_then(|ext| ext.manifest.config_schema)
+        {
+            Some(schema) => {
+                if let Err(errors) =
+                    nexus_extension::validate_settings_against_schema(&schema, &bundle.settings)
+                {
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(ApiResponse::<()>::err(
+                            StatusCode::UNPROCESSABLE_ENTITY,
+                            "deployment.settings_schema_violation",
+                            "deployment",
+                            errors.join("; "),
+                        )),
+                    )
+                        .into_response();
+                }
+                Some(config_schema_fingerprint(&schema))
+            }
+            None => None,
+        };
+        prepared.push(fingerprint);
+    }
+    for (bundle, fingerprint) in envelope.extension_settings.iter_mut().zip(prepared) {
+        bundle.schema_fingerprint = fingerprint;
+    }
+
+    // Derive missing dependencies host-side from the envelope vs the registry —
+    // never trust a client-supplied list to set persisted restore_state.
+    let missing = nexus_deployments::service::import::missing_extensions(&envelope, |id| {
+        state.extension_registry.get_extension(id).is_some()
+    });
+    let svc = DeploymentImportService::new(repo);
+    match svc.import_into(&did, envelope, missing).await {
+        Ok((res, _events)) => {
+            #[derive(Serialize)]
+            struct I {
+                deployment_id: String,
+                state: String,
+                diagnostics_count: usize,
+            }
+            (
+                StatusCode::OK,
+                Json(ApiResponse::ok(I {
+                    deployment_id: res.deployment_id.to_string(),
+                    state: res.state,
+                    diagnostics_count: res.diagnostics_count,
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => err_to_response(e),
+    }
+}
+
 /// Max serialized size of a settings blob the host will persist. The host
 /// stores the payload opaquely, so this is the only structural bound it
 /// enforces beyond "must be a JSON object".
@@ -582,6 +661,11 @@ fn err_to_response(e: nexus_deployments::DeploymentError) -> axum::response::Res
         PurgeRequiresSoftDeleteFirst => (
             StatusCode::CONFLICT,
             "deployment.purge_requires_soft_delete_first",
+        ),
+        ModuleMismatch { .. } => (StatusCode::CONFLICT, "deployment.module_mismatch"),
+        InvalidEnvelope(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "deployment.invalid_envelope",
         ),
         ExecuteBlocked(_) | RestoreBlocked(_) => {
             (StatusCode::UNPROCESSABLE_ENTITY, "deployment.blocked")

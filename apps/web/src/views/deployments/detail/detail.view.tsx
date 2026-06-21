@@ -12,7 +12,13 @@ import {
 import { useRuntimeStatus } from "../../../hooks/use_runtime_status";
 import type { StatusKind } from "../../../components/base/status_chip";
 import { deleteDeployment } from "../../../services/deployments";
-import { downloadJson, exportDeployment } from "../../../services/deployment_transfer";
+import {
+  downloadJson,
+  exportDeployment,
+  importIntoDeployment,
+  isExportEnvelope,
+  type ExportEnvelope,
+} from "../../../services/deployment_transfer";
 import { useRootOutletContext } from "../../../root_layout";
 import { DeploymentDetailUI, type DetailTabId } from "./detail.ui";
 
@@ -28,6 +34,10 @@ export function DeploymentDetailPlaceholder({
   const [tab, setTab] = useState<DetailTabId>("recipe");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const pendingEnvelope = useRef<ExportEnvelope | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Live execution state from the host event bus (shared root subscription).
   // Lights up the Workflow Graph tab with per-node run status (P0 wire-up).
@@ -152,6 +162,55 @@ export function DeploymentDetailPlaceholder({
     }
   }, [cleanedDisplayName, deploymentId, slug]);
 
+  const handleRequestImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChosen = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      // Reset the input so re-selecting the same file fires `change` again.
+      event.target.value = "";
+      if (!file) return;
+      try {
+        const parsed: unknown = JSON.parse(await file.text());
+        if (!isExportEnvelope(parsed)) {
+          toast.error("That file isn't a valid deployment export.");
+          return;
+        }
+        pendingEnvelope.current = parsed;
+        setImportOpen(true);
+      } catch {
+        toast.error("Couldn't read that file as JSON.");
+      }
+    },
+    [],
+  );
+
+  const handleConfirmImport = useCallback(async () => {
+    const envelope = pendingEnvelope.current;
+    if (!envelope) return;
+    setImportBusy(true);
+    try {
+      const result = await importIntoDeployment(deploymentId, envelope);
+      void globalMutate(["deployment", deploymentId]);
+      void globalMutate("deployments");
+      setImportOpen(false);
+      pendingEnvelope.current = null;
+      toast.success(
+        result.diagnostics_count > 0
+          ? `Deployment replaced — ${result.diagnostics_count} missing dependency(ies)`
+          : "Deployment replaced from file",
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to import deployment";
+      toast.error(message);
+    } finally {
+      setImportBusy(false);
+    }
+  }, [deploymentId]);
+
   return (
     <>
       <DeploymentDetailUI
@@ -172,6 +231,14 @@ export function DeploymentDetailPlaceholder({
         extensionId={deployment?.source_extension_id ?? null}
         onRequestDelete={() => setDeleteOpen(true)}
         onRequestExport={handleExport}
+        onRequestImport={handleRequestImport}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        hidden
+        onChange={handleFileChosen}
       />
       <ConfirmDialog
         open={deleteOpen}
@@ -193,6 +260,27 @@ export function DeploymentDetailPlaceholder({
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           if (!deleteBusy) setDeleteOpen(false);
+        }}
+      />
+      <ConfirmDialog
+        open={importOpen}
+        eyebrow="Destructive action"
+        title="Replace this deployment from file?"
+        description="The uploaded export file replaces this deployment's configuration and extension settings. This cannot be undone from here."
+        impactLines={[
+          "This deployment's configuration is replaced by a new revision from the file.",
+          "All extension settings for this deployment are replaced by the file's settings.",
+          "Identity (name, slug) and past revisions are kept.",
+        ]}
+        confirmLabel="Replace from file"
+        destructive
+        busy={importBusy}
+        onConfirm={handleConfirmImport}
+        onCancel={() => {
+          if (!importBusy) {
+            setImportOpen(false);
+            pendingEnvelope.current = null;
+          }
         }}
       />
     </>
