@@ -565,6 +565,40 @@ def _wan_model_builder(config: dict[str, Any]) -> Any:
     return WanModel(**config)
 
 
+def _diag_user_lora_missing(path_str: str, dit_path: Path) -> None:
+    """Temporary diagnostic: a user LoRA reports missing while the same dir
+    tree's base model is reachable. Logs raw stat/access vs the base dit so the
+    discrepancy between worker `exists()` and the on-disk file is visible."""
+    import os
+
+    def probe(p: str) -> dict:
+        d: dict = {
+            "exists": os.path.exists(p),
+            "lexists": os.path.lexists(p),
+            "r_ok": os.access(p, os.R_OK),
+        }
+        try:
+            d["size"] = os.stat(p).st_size
+        except OSError as e:
+            d["errno"], d["err"] = e.errno, e.strerror
+        return d
+
+    parent = os.path.dirname(path_str)
+    try:
+        listing = sorted(os.listdir(parent))[:8]
+    except OSError as e:
+        listing = f"listdir_errno={e.errno} {e.strerror}"
+    print(
+        f"[svi2-diag] cwd={os.getcwd()!r} euid={os.geteuid()}\n"
+        f"[svi2-diag] lora={path_str!r}\n"
+        f"[svi2-diag] lora_probe={probe(path_str)}\n"
+        f"[svi2-diag] dit={str(dit_path)!r} dit_probe={probe(str(dit_path))}\n"
+        f"[svi2-diag] parent={parent!r} listdir={listing}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _build_expert(
     dit_path: Path,
     lora_path: Optional[Path],
@@ -597,6 +631,7 @@ def _build_expert(
     for entry in (user_loras or []):
         p = Path(entry["path"])
         if not p.exists():
+            _diag_user_lora_missing(entry["path"], dit_path)
             user_audits.append({"path": entry["path"], "missing": True})
             continue
         upairs = load_lora_pairs(p)
