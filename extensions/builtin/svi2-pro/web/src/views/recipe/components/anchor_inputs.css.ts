@@ -30,6 +30,17 @@ export const thumb = style({
   background: vars.color.surface,
 });
 
+export const remotePreview = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.xs,
+});
+
+export const remotePreviewNote = style({
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+});
+
 export const fileName = style({
   fontSize: vars.text.micro,
   color: vars.color.textMuted,

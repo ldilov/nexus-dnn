@@ -9,9 +9,12 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 import { applyPreset, defaultParamsFromSettings } from "../domain/build_params";
 import { loadPersistedParams, savePersistedParams } from "./recipe_persistence";
 import { snapToValidFrames } from "../domain/length";
+import { mediaExists } from "../services/media_url";
+import { basenameOfPath } from "../domain/path_basename";
 import {
   cancelledState,
   connectionLostState,
@@ -81,21 +84,40 @@ interface RenderRequestState {
   lastImageName: string | null;
   qwenEdit: QwenEditConfig;
   render: RenderState;
+  isDirty: boolean;
+}
+
+interface ApplyPresetOptions {
+  /** User-driven gallery applies mark the form dirty (default). The system
+   * auto-apply on mount passes `false` so a route-loader/SWR miss does not
+   * flip dirty with no user action. */
+  markDirty?: boolean;
 }
 
 interface RenderRequestActions {
-  applyPresetById: (preset: PresetSummary) => void;
+  applyPresetById: (preset: PresetSummary, opts?: ApplyPresetOptions) => void;
   setMode: (mode: GenerationMode) => void;
   updateParam: <K extends keyof RenderParams>(key: K, value: RenderParams[K]) => void;
   setPrompts: (prompts: string[]) => void;
   setRefImage: (name: string | null, path: string) => void;
   setLastImage: (name: string | null, path: string | null) => void;
+  /** Clear the reference anchor WITHOUT marking the form dirty. Used by the
+   * remote-preview onError path so a transient image-load failure after a clean
+   * restore does not spuriously flip dirty. */
+  clearRefImageSilent: () => void;
+  /** Clear the last-image anchor WITHOUT marking the form dirty (see above). */
+  clearLastImageSilent: () => void;
   setQwenEdit: (config: Partial<QwenEditConfig>) => void;
   setSettings: (settings: ExtensionSettings) => void;
   startRenderJob: () => Promise<void>;
   cancelRenderJob: () => Promise<void>;
   resetRender: () => void;
   showJobResult: (job: RenderJob) => Promise<void>;
+  restoreJobIntoForm: (job: RenderJob) => Promise<void>;
+  /** Stable accessor for the current dirty flag read at click time (reads
+   * `dirtyRef.current`); avoids depending on the `isDirty` state value in
+   * callbacks that would otherwise re-create on every keystroke. */
+  getIsDirty: () => boolean;
 }
 
 type RenderRequestContextValue = RenderRequestState & RenderRequestActions;
@@ -133,6 +155,8 @@ export function RenderRequestProvider({
     prompt: "",
   });
   const [render, setRender] = useState<RenderState>(initialRenderState);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const dirtyRef = useRef<boolean>(false);
   const streamCleanup = useRef<(() => void) | null>(null);
   const stallTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const renderRef = useRef<RenderState>(render);
@@ -221,8 +245,20 @@ export function RenderRequestProvider({
 
   reconnectRef.current = reconnectOrGiveUp;
 
+  const markDirty = useCallback(() => {
+    if (dirtyRef.current) return;
+    dirtyRef.current = true;
+    setIsDirty(true);
+  }, []);
+
+  const clearDirty = useCallback(() => {
+    dirtyRef.current = false;
+    setIsDirty(false);
+  }, []);
+
   const applyPresetById = useCallback(
-    (preset: PresetSummary) => {
+    (preset: PresetSummary, opts?: ApplyPresetOptions) => {
+      if (opts?.markDirty !== false) markDirty();
       const requiresLast = preset.params.requires_last_image === true;
       setPresetId(preset.id);
       setPresetApplied(true);
@@ -240,51 +276,84 @@ export function RenderRequestProvider({
       });
       if (!requiresLast) setLastImageName(null);
     },
-    [settings],
+    [settings, markDirty],
   );
 
-  const setMode = useCallback((mode: GenerationMode) => {
-    setParams((prev) => {
-      if (mode === "text_to_video") return { ...prev, mode };
-      const { seed: _drop, ...rest } = prev;
-      return { ...rest, mode };
-    });
-  }, []);
+  const setMode = useCallback(
+    (mode: GenerationMode) => {
+      markDirty();
+      setParams((prev) => {
+        if (mode === "text_to_video") return { ...prev, mode };
+        const { seed: _drop, ...rest } = prev;
+        return { ...rest, mode };
+      });
+    },
+    [markDirty],
+  );
 
   const updateParam = useCallback(
     <K extends keyof RenderParams>(key: K, value: RenderParams[K]) => {
+      markDirty();
       setParams((prev) => ({ ...prev, [key]: value }));
     },
-    [],
+    [markDirty],
   );
 
-  const setPrompts = useCallback((prompts: string[]) => {
-    setParams((prev) => ({ ...prev, prompts }));
+  const setPrompts = useCallback(
+    (prompts: string[]) => {
+      markDirty();
+      setParams((prev) => ({ ...prev, prompts }));
+    },
+    [markDirty],
+  );
+
+  const setRefImage = useCallback(
+    (name: string | null, path: string) => {
+      markDirty();
+      setRefImageName(name);
+      setParams((prev) => ({ ...prev, ref_image_path: path }));
+    },
+    [markDirty],
+  );
+
+  const setLastImage = useCallback(
+    (name: string | null, path: string | null) => {
+      markDirty();
+      setLastImageName(name);
+      setParams((prev) => {
+        if (path === null || path.length === 0) {
+          return { ...prev, last_image_path: path };
+        }
+        return {
+          ...prev,
+          last_image_path: path,
+          num_clips: 1,
+          frames_per_clip: snapToValidFrames(prev.frames_per_clip ?? 81),
+        };
+      });
+    },
+    [markDirty],
+  );
+
+  const clearRefImageSilent = useCallback(() => {
+    setRefImageName(null);
+    setParams((prev) => ({ ...prev, ref_image_path: "" }));
   }, []);
 
-  const setRefImage = useCallback((name: string | null, path: string) => {
-    setRefImageName(name);
-    setParams((prev) => ({ ...prev, ref_image_path: path }));
+  const clearLastImageSilent = useCallback(() => {
+    setLastImageName(null);
+    setParams((prev) => ({ ...prev, last_image_path: null }));
   }, []);
 
-  const setLastImage = useCallback((name: string | null, path: string | null) => {
-    setLastImageName(name);
-    setParams((prev) => {
-      if (path === null || path.length === 0) {
-        return { ...prev, last_image_path: path };
-      }
-      return {
-        ...prev,
-        last_image_path: path,
-        num_clips: 1,
-        frames_per_clip: snapToValidFrames(prev.frames_per_clip ?? 81),
-      };
-    });
-  }, []);
+  const setQwenEdit = useCallback(
+    (config: Partial<QwenEditConfig>) => {
+      markDirty();
+      setQwenEditState((prev) => ({ ...prev, ...config }));
+    },
+    [markDirty],
+  );
 
-  const setQwenEdit = useCallback((config: Partial<QwenEditConfig>) => {
-    setQwenEditState((prev) => ({ ...prev, ...config }));
-  }, []);
+  const getIsDirty = useCallback(() => dirtyRef.current, []);
 
   const setSettings = useCallback((next: ExtensionSettings) => {
     setSettingsState(next);
@@ -299,6 +368,7 @@ export function RenderRequestProvider({
   }, [stopWatchdog]);
 
   const startRenderJob = useCallback(async () => {
+    clearDirty();
     streamCleanup.current?.();
     lastReconnectAt.current = 0;
     // Diagnostic: confirm exactly what the UI sends to the backend.
@@ -341,7 +411,7 @@ export function RenderRequestProvider({
     setRender(startedState(jobId, qwenEdit.enabled));
     persistActiveRender(jobId);
     subscribeToJob(jobId);
-  }, [params, presetId, qwenEdit.enabled, subscribeToJob]);
+  }, [params, presetId, qwenEdit.enabled, subscribeToJob, clearDirty]);
 
   const cancelRenderJob = useCallback(async () => {
     const jobId = renderRef.current.jobId ?? render.jobId;
@@ -370,6 +440,64 @@ export function RenderRequestProvider({
       }
     },
     [stopWatchdog],
+  );
+
+  const restoreJobIntoForm = useCallback(
+    async (job: RenderJob) => {
+      streamCleanup.current?.();
+      streamCleanup.current = null;
+      stopWatchdog();
+
+      let full = job;
+      try {
+        full = await getRenderJob(job.id);
+      } catch {
+        full = job;
+      }
+
+      // Resolve BOTH HEAD probes first, then write params ONCE with corrected
+      // paths so a stale historical path never transiently reaches localStorage.
+      const refPath = full.params.ref_image_path ?? "";
+      let correctedRef = refPath;
+      let refName: string | null = null;
+      if (refPath.length > 0) {
+        if (await mediaExists(refPath)) {
+          refName = basenameOfPath(refPath);
+        } else {
+          correctedRef = "";
+          toast.warning("Input image no longer on disk — re-upload to render");
+        }
+      }
+
+      const lastPath = full.params.last_image_path ?? null;
+      let correctedLast: string | null = lastPath;
+      let lastName: string | null = null;
+      if (lastPath && lastPath.length > 0) {
+        if (await mediaExists(lastPath)) {
+          lastName = basenameOfPath(lastPath);
+        } else {
+          correctedLast = null;
+          toast.warning("Last image no longer on disk — re-upload to render");
+        }
+      }
+
+      // Re-base on settings defaults so newly-added keys keep sane defaults
+      // while the historical run's (corrected) values win.
+      setParams({
+        ...defaultParamsFromSettings(settings),
+        ...full.params,
+        ref_image_path: correctedRef,
+        last_image_path: correctedLast,
+      });
+      setPresetId(full.presetId);
+      setPresetApplied(full.presetId !== null);
+      setRefImageName(refName);
+      setLastImageName(lastName);
+
+      setRender(renderStateFromJob(full));
+      clearDirty();
+    },
+    [settings, stopWatchdog, clearDirty],
   );
 
   useEffect(() => {
@@ -444,18 +572,23 @@ export function RenderRequestProvider({
       lastImageName,
       qwenEdit,
       render,
+      isDirty,
       applyPresetById,
       setMode,
       updateParam,
       setPrompts,
       setRefImage,
       setLastImage,
+      clearRefImageSilent,
+      clearLastImageSilent,
       setQwenEdit,
       setSettings,
       startRenderJob,
       cancelRenderJob,
       resetRender,
       showJobResult,
+      restoreJobIntoForm,
+      getIsDirty,
     }),
     [
       settings,
@@ -466,18 +599,23 @@ export function RenderRequestProvider({
       lastImageName,
       qwenEdit,
       render,
+      isDirty,
       applyPresetById,
       setMode,
       updateParam,
       setPrompts,
       setRefImage,
       setLastImage,
+      clearRefImageSilent,
+      clearLastImageSilent,
       setQwenEdit,
       setSettings,
       startRenderJob,
       cancelRenderJob,
       resetRender,
       showJobResult,
+      restoreJobIntoForm,
+      getIsDirty,
     ],
   );
 

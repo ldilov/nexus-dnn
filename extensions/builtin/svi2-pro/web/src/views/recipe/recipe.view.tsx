@@ -1,6 +1,7 @@
-import { type ReactElement, useCallback, useEffect } from "react";
+import { type ReactElement, useCallback, useEffect, useState } from "react";
 import useSWR from "swr";
 import { Button } from "../../components/ui/button";
+import { ConfirmDialog } from "../../components/ui/confirm_dialog";
 import { Panel } from "../../components/ui/panel";
 import { FIELDS, TIERS } from "../../domain/fields";
 import { presetRequiresLastImage } from "../../domain/validation";
@@ -39,8 +40,11 @@ export function RecipeView(): ReactElement {
     setMode,
     resetRender,
     showJobResult,
+    restoreJobIntoForm,
+    getIsDirty,
   } = useRenderRequest();
   const { issues, blocked, busy, submit, cancel, focusRequest } = useRenderOrchestration();
+  const [pendingRestoreId, setPendingRestoreId] = useState<string | null>(null);
 
   useFocusOnBlock(focusRequest);
 
@@ -52,7 +56,9 @@ export function RecipeView(): ReactElement {
   useEffect(() => {
     if (presetApplied || presets.length === 0) return;
     const current = presets.find((p) => p.id === presetId) ?? presets[0];
-    if (current) applyPresetById(current);
+    // System auto-apply on mount must NOT mark the form dirty — an SWR/route
+    // -loader miss firing this is not a user action.
+    if (current) applyPresetById(current, { markDirty: false });
   }, [presetApplied, presets, presetId, applyPresetById]);
   const jobs = historyQuery.data?.jobs ?? [];
   const mode = params.mode ?? "image_to_video";
@@ -65,15 +71,42 @@ export function RecipeView(): ReactElement {
     (i) => i.field === "width" && i.severity === "warning",
   )?.message;
 
+  // Read dirty via the store's stable getIsDirty() at click time so this
+  // callback stays stable across keystrokes (HistoryList is memoized).
   const handleOpenJob = useCallback(
     (job: RenderJob) => {
-      void showJobResult(job);
+      if (job.status !== "succeeded") {
+        void showJobResult(job);
+        return;
+      }
+      if (getIsDirty()) {
+        setPendingRestoreId(job.id);
+        return;
+      }
+      void restoreJobIntoForm(job);
     },
-    [showJobResult],
+    [showJobResult, restoreJobIntoForm, getIsDirty],
   );
+
+  const confirmRestore = useCallback(() => {
+    const job = jobs.find((j) => j.id === pendingRestoreId);
+    setPendingRestoreId(null);
+    if (job) void restoreJobIntoForm(job);
+  }, [pendingRestoreId, jobs, restoreJobIntoForm]);
+
+  const cancelRestore = useCallback(() => setPendingRestoreId(null), []);
 
   return (
     <div className={styles.layout}>
+      <ConfirmDialog
+        open={pendingRestoreId !== null}
+        title="Load this run into the form?"
+        message="Unsaved changes will be replaced."
+        confirmLabel="Load run"
+        cancelLabel="Keep editing"
+        onConfirm={confirmRestore}
+        onCancel={cancelRestore}
+      />
       <div className={styles.column}>
         <Panel
           title="Preset"

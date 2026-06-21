@@ -1,7 +1,6 @@
 import { type ReactElement, useCallback } from "react";
 import { FileDropzone } from "../../../components/primitives/file_dropzone";
 import { Badge } from "../../../components/ui/badge";
-import { useObjectUrl } from "../../../hooks/use_object_url";
 import { useRenderRequest } from "../../../store/render_request_store";
 import { useAnchorUpload } from "../hooks/use_anchor_upload";
 import * as styles from "./anchor_inputs.css";
@@ -21,7 +20,15 @@ export function AnchorInputs({
   refError,
   lastError,
 }: AnchorInputsProps): ReactElement {
-  const { setRefImage, setLastImage } = useRenderRequest();
+  const {
+    params,
+    refImageName,
+    lastImageName,
+    setRefImage,
+    setLastImage,
+    clearRefImageSilent,
+    clearLastImageSilent,
+  } = useRenderRequest();
 
   const onRefResolved = useCallback(
     (name: string | null, path: string | null) => setRefImage(name, path ?? ""),
@@ -32,10 +39,17 @@ export function AnchorInputs({
     [setLastImage],
   );
 
-  const refUpload = useAnchorUpload(onRefResolved);
-  const lastUpload = useAnchorUpload(onLastResolved);
-  const refUrl = useObjectUrl(refUpload.file);
-  const lastUrl = useObjectUrl(lastUpload.file);
+  const refRemotePath = params.ref_image_path && params.ref_image_path.length > 0
+    ? params.ref_image_path
+    : null;
+  const lastRemotePath = params.last_image_path && params.last_image_path.length > 0
+    ? params.last_image_path
+    : null;
+
+  const refUpload = useAnchorUpload(onRefResolved, refRemotePath, clearRefImageSilent);
+  const lastUpload = useAnchorUpload(onLastResolved, lastRemotePath, clearLastImageSilent);
+  const refUrl = refUpload.previewUrl;
+  const lastUrl = lastUpload.previewUrl;
 
   return (
     <div className={styles.grid}>
@@ -60,11 +74,24 @@ export function AnchorInputs({
           }
           onFiles={(files) => void refUpload.pick(files[0] ?? null)}
           renderPreview={() =>
-            refUrl ? (
+            refUpload.file && refUrl ? (
               <img className={styles.thumb} src={refUrl} alt="reference preview" />
             ) : null
           }
         />
+        {!refUpload.file && refUrl && (
+          <div className={styles.remotePreview}>
+            <img
+              className={styles.thumb}
+              src={refUrl}
+              alt="reference preview"
+              onError={refUpload.handleRemotePreviewError}
+            />
+            <span className={styles.remotePreviewNote}>
+              Restored from a past run{refImageName ? ` · ${refImageName}` : ""}
+            </span>
+          </div>
+        )}
         {refUpload.uploading && <span className={styles.status}>Uploading…</span>}
         {!refUpload.uploading && refUpload.file && (
           <span className={styles.fileName}>{refUpload.file.name}</span>
@@ -98,9 +125,24 @@ export function AnchorInputs({
           hint="FLF2V end keyframe. Animates reference → last image over one clip — switches the render to single-clip morph (Clips locked to 1)."
           onFiles={(files) => void lastUpload.pick(files[0] ?? null)}
           renderPreview={() =>
-            lastUrl ? <img className={styles.thumb} src={lastUrl} alt="last preview" /> : null
+            lastUpload.file && lastUrl ? (
+              <img className={styles.thumb} src={lastUrl} alt="last preview" />
+            ) : null
           }
         />
+        {!lastUpload.file && lastUrl && (
+          <div className={styles.remotePreview}>
+            <img
+              className={styles.thumb}
+              src={lastUrl}
+              alt="last preview"
+              onError={lastUpload.handleRemotePreviewError}
+            />
+            <span className={styles.remotePreviewNote}>
+              Restored from a past run{lastImageName ? ` · ${lastImageName}` : ""}
+            </span>
+          </div>
+        )}
         {lastUpload.uploading && <span className={styles.status}>Uploading…</span>}
         {!lastUpload.uploading && lastUpload.file && (
           <span className={styles.fileName}>{lastUpload.file.name}</span>

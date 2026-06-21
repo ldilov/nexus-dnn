@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { memo, type ReactElement } from "react";
 import { Badge, type BadgeTone } from "../../../components/ui/badge";
 import { EmptyState } from "../../../components/ui/empty_state";
 import type { RenderJob, RenderJobStatus } from "../../../services/types";
@@ -17,7 +17,7 @@ const STATUS_TONE: Record<RenderJobStatus, BadgeTone> = {
   cancelled: "neutral",
 };
 
-export function HistoryList({ jobs, onOpen }: HistoryListProps): ReactElement {
+function HistoryListImpl({ jobs, onOpen }: HistoryListProps): ReactElement {
   if (jobs.length === 0) {
     return (
       <EmptyState
@@ -46,6 +46,11 @@ export function HistoryList({ jobs, onOpen }: HistoryListProps): ReactElement {
     </div>
   );
 }
+
+/** Memoized so a stable `onOpen` prevents re-renders on every keystroke in the
+ * sibling form. The store's single big context memo means `onOpen` is stable
+ * only because handleOpenJob reads dirty via getIsDirty() instead of the state. */
+export const HistoryList = memo(HistoryListImpl);
 
 function paramsSummary(job: RenderJob): string {
   const p = job.params;
