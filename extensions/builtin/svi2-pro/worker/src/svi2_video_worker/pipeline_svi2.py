@@ -9,6 +9,45 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 
+def cpu_thread_count() -> int:
+    """Worker-side thread budget for CPU-parallel ops (``cpu//2``, min 1)."""
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
+THREADS = cpu_thread_count()
+
+# Tracks the torch intra-op thread count we last applied (and the process
+# default captured once) so fast-parallel toggling stays reversible + idempotent.
+_torch_threads_applied: Optional[int] = None
+_torch_threads_original: Optional[int] = None
+
+
+def _apply_torch_threads(fast_parallel: bool) -> bool:
+    """Apply the fast-parallel intra-op thread budget (cpu//2) or restore the
+    process default when off. Idempotent and torch-absent-safe."""
+    global _torch_threads_applied, _torch_threads_original
+    try:
+        import torch
+    except ImportError:
+        return False
+    if _torch_threads_original is None:
+        try:
+            _torch_threads_original = torch.get_num_threads()
+        except (RuntimeError, AttributeError):
+            _torch_threads_original = 0
+    target = THREADS if fast_parallel else _torch_threads_original
+    if not target or target <= 0:
+        return False
+    if _torch_threads_applied == target:
+        return False
+    try:
+        torch.set_num_threads(target)
+    except (RuntimeError, AttributeError):
+        return False
+    _torch_threads_applied = target
+    return True
+
+
 class RenderCancelled(Exception):
     """Raised inside the render thread when a cooperative cancel signal fires.
 
@@ -301,6 +340,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "device": params.get("device"),
         "attention": params.get("attention"),
         "use_torch_compile": bool(params.get("use_torch_compile", False)),
+        "fast_parallel": bool(params.get("fast_parallel", True)),
+        "batch_prompt_encode": bool(params.get("batch_prompt_encode", False)),
     }
 
 
@@ -1238,6 +1279,60 @@ def _generate_t2v_clip0(
     return T2vClip(frames=frames, last_latent=last_latent, audit=audit)
 
 
+def _to_pinned_cpu(tensor: Any) -> Any:
+    """Copy a (possibly CUDA) tensor to host RAM, pinning the destination.
+
+    Pinned (page-locked) host memory makes the device->host copy faster and lets
+    the later host->device move back use a non-blocking transfer. Byte-identical
+    to ``tensor.to("cpu")``; falls back to a plain CPU copy when not on CUDA or
+    when pinning is unavailable.
+    """
+    import torch
+
+    if not isinstance(tensor, torch.Tensor):
+        return tensor
+    if tensor.device.type != "cuda":
+        return tensor.detach().clone()
+    try:
+        host = torch.empty_like(tensor, device="cpu", pin_memory=True)
+        host.copy_(tensor, non_blocking=True)
+        torch.cuda.current_stream().synchronize()
+        return host
+    except (RuntimeError, TypeError):
+        return tensor.to("cpu")
+
+
+def _encode_prompts(
+    text_encoder: Any,
+    unique_prompts: list[str],
+    negative_prompt: str,
+    cfg_scale: float,
+    *,
+    batch_prompt_encode: bool,
+    device: str,
+) -> tuple[dict[str, Any], Any]:
+    """Encode the unique prompts (+ negative) into CPU-resident context tensors.
+
+    Default path: one forward pass per prompt (today's exact behavior). When
+    ``batch_prompt_encode`` is on, all prompts (+ optional negative) run in a
+    single batched UMT5 forward, then are sliced back per prompt — fewer kernel
+    launches at the cost of altering the exact text-conditioning bytes.
+    """
+    if not batch_prompt_encode:
+        ctx_cache = {p: _to_pinned_cpu(text_encoder.encode_text(p)) for p in unique_prompts}
+        neg_context = (
+            _to_pinned_cpu(text_encoder.encode_text(negative_prompt)) if cfg_scale != 1.0 else None
+        )
+        return ctx_cache, neg_context
+
+    has_neg = cfg_scale != 1.0
+    all_prompts = list(unique_prompts) + ([negative_prompt] if has_neg else [])
+    batched = text_encoder.batch_encode_text(all_prompts)
+    ctx_cache = {p: _to_pinned_cpu(batched[i : i + 1]) for i, p in enumerate(unique_prompts)}
+    neg_context = _to_pinned_cpu(batched[-1:]) if has_neg else None
+    return ctx_cache, neg_context
+
+
 def _run_render(
     params: dict[str, Any],
     worker: Any = None,
@@ -1272,6 +1367,9 @@ def _run_render(
 
     device = params.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     reset_peak()
+
+    fast_parallel: bool = params["fast_parallel"]
+    _apply_torch_threads(fast_parallel)
 
     set_attention_override(params.get("attention"))
     _ab._logged = False
@@ -1331,9 +1429,13 @@ def _run_render(
                 text_encoder.to_cuda()
         _notify(worker, "svi2.video.progress", {"fraction": 0.03, "stage": "encoding_prompts"})
         unique_prompts = list(dict.fromkeys(prompts[i % len(prompts)] for i in range(num_clips)))
-        ctx_cache = {p: text_encoder.encode_text(p).to("cpu") for p in unique_prompts}
-        neg_context = (
-            text_encoder.encode_text(negative_prompt).to("cpu") if cfg_scale != 1.0 else None
+        ctx_cache, neg_context = _encode_prompts(
+            text_encoder,
+            unique_prompts,
+            negative_prompt,
+            cfg_scale,
+            batch_prompt_encode=params["batch_prompt_encode"],
+            device=device,
         )
         if device == "cuda":
             text_encoder.to_cpu()
@@ -1689,7 +1791,9 @@ def _run_render(
             _notify(worker, "svi2.video.progress", {"fraction": 0.97, "stage": "stitching"})
             writer.write_many(stitcher.flush())
             total_frames = writer.count
-            video_path = writer.finalize(output_path, fps=fps)
+            video_path = writer.finalize(
+                output_path, fps=fps, ffmpeg_threads=THREADS if fast_parallel else None
+            )
         finally:
             models = high = low = vae = None
             gc.collect()
@@ -1734,6 +1838,8 @@ def _run_render(
                 rife_weights=params.get("rife_weights"),
                 device=device,
                 src_frame_count=total_frames,
+                ffmpeg_threads=THREADS if fast_parallel else None,
+                fast_parallel=fast_parallel,
             )
             log_vram(f"interpolated {fps}->{interpolate_fps}fps via {interp_engine}")
 

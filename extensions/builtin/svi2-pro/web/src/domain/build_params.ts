@@ -29,6 +29,8 @@ export function defaultParamsFromSettings(settings: ExtensionSettings): RenderPa
     dit_low_path: settings.ditLowPath || undefined,
     svi_lora_tier: settings.sviLoraTier ?? "high",
     torch_compile_mode: "default",
+    fast_parallel: settings.fastParallel,
+    batch_prompt_encode: settings.batchPromptEncode,
   } as RenderParams;
 }
 

@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import weakref
 from pathlib import Path
-from typing import Sequence
+from typing import Optional, Sequence
 
 from PIL import Image
 
@@ -15,12 +15,21 @@ def _cleanup_dir(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-def _encode_png_dir(tmpdir: Path, out_path: Path, fps: int, quality: int) -> Path:
+def _threads_flag(ffmpeg_threads: Optional[int]) -> list[str]:
+    """``-threads N`` when a count is given, else empty (today's behavior)."""
+    return ["-threads", str(int(ffmpeg_threads))] if ffmpeg_threads else []
+
+
+def _encode_png_dir(
+    tmpdir: Path, out_path: Path, fps: int, quality: int,
+    ffmpeg_threads: Optional[int] = None,
+) -> Path:
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     crf = max(1, min(51, round(51 - quality * 5)))
     cmd = [
         "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error",
+        *_threads_flag(ffmpeg_threads),
         "-framerate", str(fps),
         "-i", str(tmpdir / "%06d.png"),
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(crf),
@@ -37,13 +46,14 @@ def _encode_png_dir(tmpdir: Path, out_path: Path, fps: int, quality: int) -> Pat
 
 
 def frames_to_mp4(
-    frames: Sequence[Image.Image], out_path: Path, *, fps: int = 15, quality: int = 7
+    frames: Sequence[Image.Image], out_path: Path, *, fps: int = 15, quality: int = 7,
+    ffmpeg_threads: Optional[int] = None,
 ) -> Path:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         for i, frame in enumerate(frames):
             frame.save(tmpdir / f"{i:06d}.png")
-        return _encode_png_dir(tmpdir, out_path, fps, quality)
+        return _encode_png_dir(tmpdir, out_path, fps, quality, ffmpeg_threads)
 
 
 class StreamingFrameWriter:
@@ -76,9 +86,12 @@ class StreamingFrameWriter:
     def count(self) -> int:
         return self._n
 
-    def finalize(self, out_path: Path, *, fps: int = 15, quality: int = 7) -> Path:
+    def finalize(
+        self, out_path: Path, *, fps: int = 15, quality: int = 7,
+        ffmpeg_threads: Optional[int] = None,
+    ) -> Path:
         try:
-            result = _encode_png_dir(self._dir, out_path, fps, quality)
+            result = _encode_png_dir(self._dir, out_path, fps, quality, ffmpeg_threads)
         except Exception:
             self._finalizer.detach()
             _log.error("mux failed; preserved %d frame(s) at %s", self._n, self._dir)

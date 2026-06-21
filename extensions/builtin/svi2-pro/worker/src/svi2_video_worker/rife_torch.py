@@ -27,6 +27,11 @@ def _ff(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL, capture_output=True)
 
 
+def _threads_flag(ffmpeg_threads: Optional[int]) -> list[str]:
+    """``-threads N`` when a count is given, else empty (today's behavior)."""
+    return ["-threads", str(int(ffmpeg_threads))] if ffmpeg_threads else []
+
+
 def _load_model(weights_path: str, device: str):
     import torch
 
@@ -52,6 +57,8 @@ def interpolate_rife_torch(
     device: str = "cuda",
     scale: float = 1.0,
     crf: int = 16,
+    fast_parallel: bool = False,
+    ffmpeg_threads: Optional[int] = None,
 ) -> Path:
     import torch
     from PIL import Image
@@ -87,6 +94,7 @@ def interpolate_rife_torch(
         in_dir.mkdir()
         out_dir.mkdir()
         _ff(["ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error",
+             *_threads_flag(ffmpeg_threads),
              "-i", str(src_mp4), str(in_dir / "%06d.png")])
         paths = sorted(in_dir.glob("*.png"))
         if len(paths) < 2:
@@ -105,21 +113,55 @@ def interpolate_rife_torch(
             t = t[:, :, :h, :w].clamp(0, 1)[0].permute(1, 2, 0).mul(255).round().byte().cpu().numpy()
             Image.fromarray(t).save(out_dir / f"{idx:06d}.png")
 
-        out_idx = 0
-        prev = load(paths[0])
-        save(prev, out_idx)
-        out_idx += 1
-        for nxt_path in paths[1:]:
-            nxt = load(nxt_path)
-            for mid in _pair(prev, nxt, depth):
-                save(mid, out_idx)
-                out_idx += 1
-            save(nxt, out_idx)
+        frames = [load(p) for p in paths]
+        # fast_parallel=True batches pairs through RIFE; floating-point reduction
+        # order differs, so interpolated frames may not be bit-identical (by design).
+        if fast_parallel:
+            _interpolate_batched(frames, _pair, depth, save)
+        else:
+            out_idx = 0
+            save(frames[0], out_idx)
             out_idx += 1
-            prev = nxt
+            prev = frames[0]
+            for nxt in frames[1:]:
+                for mid in _pair(prev, nxt, depth):
+                    save(mid, out_idx)
+                    out_idx += 1
+                save(nxt, out_idx)
+                out_idx += 1
+                prev = nxt
 
         _ff(["ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error",
+             *_threads_flag(ffmpeg_threads),
              "-framerate", str(int(src_fps * factor)), "-i", str(out_dir / "%06d.png"),
              "-vf", f"fps={int(target_fps)}", "-c:v", "libx264", "-pix_fmt", "yuv420p",
              "-crf", str(int(crf)), "-movflags", "+faststart", str(out_mp4)])
     return out_mp4
+
+
+def _interpolate_batched(frames, pair_fn, depth, save) -> None:
+    """Batched RIFE: interpolate every consecutive pair in one GPU pass per level.
+
+    Stacks the P=len(frames)-1 consecutive (a, b) pairs along the batch dim and
+    runs ``pair_fn`` once, so each recursion level launches a single batched
+    forward instead of P. Output frame order and count match the per-pair path
+    exactly: f0, mids(f0,f1), f1, mids(f1,f2), f2, ... , f_{N-1}.
+    """
+    import torch
+
+    if len(frames) < 2:
+        save(frames[0], 0)
+        return
+    a_batch = torch.cat(frames[:-1], dim=0)
+    b_batch = torch.cat(frames[1:], dim=0)
+    mids_batched = pair_fn(a_batch, b_batch, depth)  # list of [P, C, H, W], ordered
+    out_idx = 0
+    num_pairs = len(frames) - 1
+    save(frames[0], out_idx)
+    out_idx += 1
+    for j in range(num_pairs):
+        for mid in mids_batched:
+            save(mid[j : j + 1], out_idx)
+            out_idx += 1
+        save(frames[j + 1], out_idx)
+        out_idx += 1

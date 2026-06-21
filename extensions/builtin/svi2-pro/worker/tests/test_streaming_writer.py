@@ -36,7 +36,7 @@ def test_weakref_backstop_cleans_tmpdir_when_abandoned():
 
 
 def test_finalize_success_cleans_tmpdir(tmp_path: Path, monkeypatch):
-    def _fake_encode(tmpdir, out_path, fps, quality):
+    def _fake_encode(tmpdir, out_path, fps, quality, ffmpeg_threads=None):
         Path(out_path).write_bytes(b"mp4")
         return Path(out_path)
 
@@ -50,7 +50,7 @@ def test_finalize_success_cleans_tmpdir(tmp_path: Path, monkeypatch):
 
 
 def test_finalize_preserves_frames_on_encode_failure(tmp_path: Path, monkeypatch):
-    def _boom(tmpdir, out_path, fps, quality):
+    def _boom(tmpdir, out_path, fps, quality, ffmpeg_threads=None):
         raise RuntimeError("ffmpeg missing")
 
     monkeypatch.setattr(ffmpeg_io, "_encode_png_dir", _boom)
@@ -71,7 +71,9 @@ def test_finalize_preserves_frames_on_encode_failure(tmp_path: Path, monkeypatch
 
 def test_double_finalize_and_close_are_safe(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
-        ffmpeg_io, "_encode_png_dir", lambda t, o, f, q: (Path(o).write_bytes(b"m"), Path(o))[1]
+        ffmpeg_io,
+        "_encode_png_dir",
+        lambda t, o, f, q, ffmpeg_threads=None: (Path(o).write_bytes(b"m"), Path(o))[1],
     )
     w = StreamingFrameWriter()
     w.write(_img())

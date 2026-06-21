@@ -86,8 +86,11 @@ def test_interpolate_rife_ncnn_pipeline(tmp_path):
 def test_interpolate_rife_torch_uses_injected_backend():
     seen = {}
 
-    def fake_backend(src, out, *, src_fps, target_fps, weights_path, device):
-        seen.update(src=str(src), out=str(out), src_fps=src_fps, target_fps=target_fps, device=device)
+    def fake_backend(src, out, *, src_fps, target_fps, weights_path, device, **kwargs):
+        seen.update(
+            src=str(src), out=str(out), src_fps=src_fps, target_fps=target_fps,
+            device=device, **kwargs,
+        )
         return Path(out)
 
     out = interpolate_video(
@@ -95,6 +98,9 @@ def test_interpolate_rife_torch_uses_injected_backend():
     )
     assert out == Path("out.mp4")
     assert seen["src_fps"] == 16 and seen["target_fps"] == 48
+    # backend receives the off-path defaults (no -threads, per-pair RIFE)
+    assert seen["fast_parallel"] is False
+    assert seen["ffmpeg_threads"] is None
 
 
 def test_interpolate_unknown_method():

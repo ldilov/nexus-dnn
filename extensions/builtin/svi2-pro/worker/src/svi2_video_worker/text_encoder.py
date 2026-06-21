@@ -63,6 +63,32 @@ class TextEncoderWrapper:
             context[:, v:] = 0
         return context
 
+    def batch_encode_text(self, prompts: list[str]) -> Any:
+        """Encode several prompts in a single batched UMT5 forward.
+
+        Mirrors ``encode_text`` but runs all ``prompts`` at once and returns a
+        ``[N, L, D]`` context. Padding positions are zeroed out-of-place (multiply
+        by a 0/1 mask), which is bit-identical to per-row zeroing for finite
+        embeddings, so per-prompt slices match the single-prompt loop.
+        """
+        import torch
+        self._ensure_loaded()
+        if self._tokenizer is None:
+            raise RuntimeError(
+                "TextEncoderWrapper.batch_encode_text requires tokenizer_path to be set to a "
+                "valid umt5-xxl tokenizer directory. See versions.yaml for the artifact."
+            )
+        ids, mask = self._tokenizer(prompts, return_mask=True, add_special_tokens=True)
+        ids = ids.to(torch.device(self.device))
+        mask = mask.to(torch.device(self.device))
+        with torch.no_grad():
+            context = self._model(ids, mask)
+        seq_lens = mask.gt(0).sum(dim=1).long()
+        positions = torch.arange(context.shape[1], device=context.device).unsqueeze(0)
+        seq_mask = (positions < seq_lens.unsqueeze(1)).to(context.dtype)
+        context = context * seq_mask.unsqueeze(-1)
+        return context
+
     def to_cpu(self) -> "TextEncoderWrapper":
         self.device = "cpu"
         if self._model is not None:

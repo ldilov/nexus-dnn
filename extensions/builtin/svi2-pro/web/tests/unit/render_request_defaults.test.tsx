@@ -126,6 +126,43 @@ describe("preset switching never leaks the previous preset's keys", () => {
   });
 });
 
+describe("DEFAULT_SETTINGS fast-parallel flags", () => {
+  test("fastParallel defaults ON, batchPromptEncode defaults OFF", () => {
+    expect(DEFAULT_SETTINGS.fastParallel).toBe(true);
+    expect(DEFAULT_SETTINGS.batchPromptEncode).toBe(false);
+  });
+});
+
+describe("defaultParamsFromSettings maps the fast-parallel flags into RenderParams", () => {
+  test("maps the DEFAULT_SETTINGS flag values (true / false) onto snake_case keys", () => {
+    const params = defaultParamsFromSettings(DEFAULT_SETTINGS);
+    expect(params.fast_parallel).toBe(true);
+    expect(params.batch_prompt_encode).toBe(false);
+  });
+
+  test("propagates non-default flag values verbatim", () => {
+    const settings: ExtensionSettings = {
+      ...DEFAULT_SETTINGS,
+      fastParallel: false,
+      batchPromptEncode: true,
+    };
+    const params = defaultParamsFromSettings(settings);
+    expect(params.fast_parallel).toBe(false);
+    expect(params.batch_prompt_encode).toBe(true);
+  });
+
+  test("both-off baseline maps to both render flags false", () => {
+    const settings: ExtensionSettings = {
+      ...DEFAULT_SETTINGS,
+      fastParallel: false,
+      batchPromptEncode: false,
+    };
+    const params = defaultParamsFromSettings(settings);
+    expect(params.fast_parallel).toBe(false);
+    expect(params.batch_prompt_encode).toBe(false);
+  });
+});
+
 describe("defaultParamsFromSettings seeds attention from attentionBackend", () => {
   test("uses the default setting (flash2)", () => {
     const params = defaultParamsFromSettings(DEFAULT_SETTINGS);

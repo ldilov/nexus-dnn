@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 
 import torch
 from typing_extensions import Literal
@@ -18,6 +19,8 @@ class FlowMatchScheduler:
             "Z-Image": FlowMatchScheduler.set_timesteps_z_image,
         }.get(template, FlowMatchScheduler.set_timesteps_flux)
         self.num_train_timesteps = 1000
+        self._sigmas_cpu: list[float] = []
+        self._timesteps_cpu: Optional[torch.Tensor] = None
 
     @staticmethod
     def set_timesteps_flux(num_inference_steps=100, denoising_strength=1.0, shift=None):
@@ -151,6 +154,7 @@ class FlowMatchScheduler:
         self.sigmas = s
         self.timesteps = s * self.num_train_timesteps
         self.training = False
+        self._precompute_step_buffers()
 
     def set_timesteps(
         self, num_inference_steps=100, denoising_strength=1.0, training=False, **kwargs
@@ -165,22 +169,34 @@ class FlowMatchScheduler:
             self.training = True
         else:
             self.training = False
+        self._precompute_step_buffers()
+
+    def _precompute_step_buffers(self) -> None:
+        """Snapshot the per-step sigma/timestep scalars to CPU buffers once.
+
+        The denoise loop reads these scalars every step; reading them off the
+        live tensors (``.item()``/``.cpu()`` + ``argmin``) forces a GPU->CPU
+        sync per step. Indexing the precomputed Python-float / CPU-tensor
+        buffers yields bit-identical values with no per-step sync.
+        """
+        self._sigmas_cpu = [float(x) for x in self.sigmas.detach().cpu().tolist()]
+        self._timesteps_cpu = self.timesteps.detach().to("cpu", dtype=self.timesteps.dtype)
 
     def sigma_pair(self, step_idx: int):
         """Return (sigma, sigma_next) for the given step index.
 
         sigma_next is 0.0 at the final step (flow-matching terminal).
         """
-        sigma = self.sigmas[step_idx]
-        sigma_next = self.sigmas[step_idx + 1] if step_idx + 1 < len(self.sigmas) else 0.0
-        return float(sigma.item()), float(sigma_next.item() if hasattr(sigma_next, "item") else sigma_next)
+        sigma = self._sigmas_cpu[step_idx]
+        sigma_next = self._sigmas_cpu[step_idx + 1] if step_idx + 1 < len(self._sigmas_cpu) else 0.0
+        return float(sigma), float(sigma_next)
 
     def step(self, model_output, timestep, sample, to_final=False, **kwargs):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.cpu()
-        timestep_id = torch.argmin((self.timesteps - timestep).abs())
+        timestep_id = int(torch.argmin((self._timesteps_cpu - timestep).abs()))
         sigma = self.sigmas[timestep_id]
-        if to_final or timestep_id + 1 >= len(self.timesteps):
+        if to_final or timestep_id + 1 >= len(self.sigmas):
             sigma_ = 0
         else:
             sigma_ = self.sigmas[timestep_id + 1]
@@ -190,7 +206,7 @@ class FlowMatchScheduler:
     def return_to_timestep(self, timestep, sample, sample_stablized):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.cpu()
-        timestep_id = torch.argmin((self.timesteps - timestep).abs())
+        timestep_id = int(torch.argmin((self._timesteps_cpu - timestep).abs()))
         sigma = self.sigmas[timestep_id]
         model_output = (sample - sample_stablized) / sigma
         return model_output
@@ -198,7 +214,7 @@ class FlowMatchScheduler:
     def add_noise(self, original_samples, noise, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.cpu()
-        timestep_id = torch.argmin((self.timesteps - timestep).abs())
+        timestep_id = int(torch.argmin((self._timesteps_cpu - timestep).abs()))
         sigma = self.sigmas[timestep_id]
         sample = (1 - sigma) * original_samples + sigma * noise
         return sample

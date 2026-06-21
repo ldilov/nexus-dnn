@@ -69,6 +69,8 @@ export interface RenderParams {
   solver?: "euler" | "heun" | "euler_ancestral";
   use_torch_compile?: boolean;
   torch_compile_mode?: TorchCompileMode;
+  fast_parallel?: boolean;
+  batch_prompt_encode?: boolean;
   svi_lora_tier?: SviLoraTier;
   attention?: string;
   seed?: number;
@@ -133,6 +135,8 @@ export interface ExtensionSettings {
   blocksToSwap: number;
   interpolateMethod: InterpolateMethod;
   interpolateFps: number;
+  fastParallel: boolean;
+  batchPromptEncode: boolean;
   outputDir: string;
   baseModelFamilyId?: string;
   ditHighPath?: string;

@@ -33,6 +33,8 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   blocksToSwap: 40,
   interpolateMethod: "rife",
   interpolateFps: 48,
+  fastParallel: true,
+  batchPromptEncode: false,
   outputDir: "",
   baseModelFamilyId: "",
   ditHighPath: "",

@@ -357,6 +357,13 @@ export function RenderRequestProvider({
 
   const setSettings = useCallback((next: ExtensionSettings) => {
     setSettingsState(next);
+    // Re-seed the settings-sourced render flags so a settings save takes effect
+    // on the next render without a preset re-apply or page reload.
+    setParams((prev) => ({
+      ...prev,
+      fast_parallel: next.fastParallel,
+      batch_prompt_encode: next.batchPromptEncode,
+    }));
   }, []);
 
   const resetRender = useCallback(() => {
@@ -403,6 +410,10 @@ export function RenderRequestProvider({
         use_torch_compile: params.use_torch_compile,
         torch_compile_mode: params.torch_compile_mode,
         blocks_to_swap: params.blocks_to_swap,
+      },
+      parallel: {
+        fast_parallel: params.fast_parallel,
+        batch_prompt_encode: params.batch_prompt_encode,
       },
       user_loras: params.user_loras ?? [],
       presetId,

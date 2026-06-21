@@ -302,7 +302,9 @@ class WanModel(nn.Module):
         self.blocks_to_swap = 0
         self.main_device = torch.device("cpu")
         self.offload_device = torch.device("cpu")
-        self.use_non_blocking = False
+        # Async block-swap memcpy: offloaded block is read only after its
+        # blocking swap-back-in, so the copy is identical bytes, no extra sync.
+        self.use_non_blocking = True
         self.patch_size = patch_size
         self.enable_teacache = False
         self.teacache_thresh = 0.0

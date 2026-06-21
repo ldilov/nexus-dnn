@@ -1,5 +1,6 @@
 import { type ReactElement, useMemo, useState } from "react";
 import { toast } from "sonner";
+import * as fc from "../../components/form/field_control.css";
 import { Button } from "../../components/ui/button";
 import { Panel } from "../../components/ui/panel";
 import { ATTENTION_OPTIONS, FP8_COMPUTE_OPTIONS } from "../../domain/settings_defaults";
@@ -147,6 +148,52 @@ export function SettingsView(): ReactElement {
           />
           <span className={styles.help}>0 = off. 48 from 16 = ×3 smooth playback.</span>
         </label>
+
+        <div className={styles.field}>
+          <span className={styles.label} id="svi2-fast-parallel-label">
+            Fast parallel (CPU & encode threads)
+          </span>
+          <div className={fc.toggleRow}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={draft.fastParallel}
+              aria-labelledby="svi2-fast-parallel-label"
+              className={fc.toggle}
+              onClick={() => update("fastParallel", !draft.fastParallel)}
+            >
+              <span className={fc.toggleThumb} aria-hidden="true" />
+            </button>
+            <span className={styles.help}>{draft.fastParallel ? "On" : "Off"}</span>
+          </div>
+          <span className={styles.help}>
+            Uses ~half the CPU cores for prompt-encode and ffmpeg. Visually identical; only mp4 sha
+            differs.
+          </span>
+        </div>
+
+        <div className={styles.field}>
+          <span className={styles.label} id="svi2-batch-prompt-encode-label">
+            Batch prompt encoding (experimental — alters exact output)
+          </span>
+          <div className={fc.toggleRow}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={draft.batchPromptEncode}
+              aria-labelledby="svi2-batch-prompt-encode-label"
+              className={fc.toggle}
+              onClick={() => update("batchPromptEncode", !draft.batchPromptEncode)}
+            >
+              <span className={fc.toggleThumb} aria-hidden="true" />
+            </button>
+            <span className={styles.help}>{draft.batchPromptEncode ? "On" : "Off"}</span>
+          </div>
+          <span className={styles.help}>
+            Encodes all prompts in one forward pass. Faster, but changes text conditioning at the bit
+            level — off by default.
+          </span>
+        </div>
       </div>
 
       <div className={styles.actions}>

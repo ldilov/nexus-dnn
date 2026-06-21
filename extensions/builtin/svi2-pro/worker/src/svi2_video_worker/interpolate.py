@@ -28,9 +28,18 @@ def rife_factor_for_fps(src_fps: int, target_fps: int) -> int:
     return 1 << max(0, math.ceil(math.log2(ratio)))
 
 
-def build_minterpolate_cmd(src: str | Path, out: str | Path, target_fps: int, crf: int = 16) -> list[str]:
+def _threads_flag(ffmpeg_threads: Optional[int]) -> list[str]:
+    """``-threads N`` when a count is given, else empty (today's behavior)."""
+    return ["-threads", str(int(ffmpeg_threads))] if ffmpeg_threads else []
+
+
+def build_minterpolate_cmd(
+    src: str | Path, out: str | Path, target_fps: int, crf: int = 16,
+    ffmpeg_threads: Optional[int] = None,
+) -> list[str]:
     return [
         "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error",
+        *_threads_flag(ffmpeg_threads),
         "-i", str(src),
         "-vf", f"minterpolate=fps={int(target_fps)}:mi_mode=mci:mc_mode=aobmc:vsbmc=1",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(int(crf)),
@@ -48,13 +57,23 @@ def build_rife_cmd(
     return cmd
 
 
-def _extract_cmd(src: str | Path, pattern: str | Path) -> list[str]:
-    return ["ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error", "-i", str(src), str(pattern)]
-
-
-def _assemble_cmd(pattern: str | Path, out: str | Path, in_fps: int, target_fps: int, crf: int = 16) -> list[str]:
+def _extract_cmd(
+    src: str | Path, pattern: str | Path, ffmpeg_threads: Optional[int] = None
+) -> list[str]:
     return [
         "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error",
+        *_threads_flag(ffmpeg_threads),
+        "-i", str(src), str(pattern),
+    ]
+
+
+def _assemble_cmd(
+    pattern: str | Path, out: str | Path, in_fps: int, target_fps: int, crf: int = 16,
+    ffmpeg_threads: Optional[int] = None,
+) -> list[str]:
+    return [
+        "ffmpeg", "-y", "-nostdin", "-nostats", "-loglevel", "error",
+        *_threads_flag(ffmpeg_threads),
         "-framerate", str(int(in_fps)), "-i", str(pattern),
         "-vf", f"fps={int(target_fps)}",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(int(crf)),
@@ -76,6 +95,8 @@ def interpolate_video(
     src_frame_count: Optional[int] = None,
     runner: Optional[Runner] = None,
     torch_backend: Optional[Callable[..., Path]] = None,
+    ffmpeg_threads: Optional[int] = None,
+    fast_parallel: bool = False,
 ) -> Path:
     src_mp4 = Path(src_mp4)
     out_mp4 = Path(out_mp4)
@@ -85,7 +106,7 @@ def interpolate_video(
         return src_mp4
 
     if method == "ffmpeg":
-        run(build_minterpolate_cmd(src_mp4, out_mp4, target_fps))
+        run(build_minterpolate_cmd(src_mp4, out_mp4, target_fps, ffmpeg_threads=ffmpeg_threads))
         return out_mp4
 
     if method == "rife_torch":
@@ -94,7 +115,8 @@ def interpolate_video(
             from .rife_torch import interpolate_rife_torch as backend  # lazy: torch + weights
         return backend(
             src_mp4, out_mp4, src_fps=src_fps, target_fps=target_fps,
-            weights_path=rife_weights, device=device,
+            weights_path=rife_weights, device=device, ffmpeg_threads=ffmpeg_threads,
+            fast_parallel=fast_parallel,
         )
 
     if method == "rife_ncnn":
@@ -107,10 +129,13 @@ def interpolate_video(
             out_dir = tdp / "out"
             in_dir.mkdir()
             out_dir.mkdir()
-            run(_extract_cmd(src_mp4, in_dir / "%06d.png"))
+            run(_extract_cmd(src_mp4, in_dir / "%06d.png", ffmpeg_threads))
             n = src_frame_count if src_frame_count is not None else len(list(in_dir.glob("*.png")))
             run(build_rife_cmd(rife_bin, in_dir, out_dir, target_frame_count(n, factor), rife_model))
-            run(_assemble_cmd(out_dir / "%06d.png", out_mp4, src_fps * factor, target_fps))
+            run(_assemble_cmd(
+                out_dir / "%06d.png", out_mp4, src_fps * factor, target_fps,
+                ffmpeg_threads=ffmpeg_threads,
+            ))
         return out_mp4
 
     raise ValueError(f"unknown interpolation method: {method}")
