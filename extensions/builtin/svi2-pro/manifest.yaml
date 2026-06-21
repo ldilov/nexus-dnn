@@ -210,6 +210,14 @@ backend_runtimes:
     version_manifest: "backends/rtx50-fp8/versions.yaml"
     capability_tags: ["video-generation", "image-to-video", "long-video", "svi", "wan22", "fp8", "blackwell"]
     supported_roles: ["video.render"]
+  - runtime_id: "nexus.video.svi2-pro.rtx50-nvfp4"
+    display_name: "SVI 2.0 Pro i2v NVFP4 (RTX 50 / Blackwell, experimental)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/svi2_video_worker/__main__.py"
+    version_manifest: "backends/rtx50-nvfp4/versions.yaml"
+    capability_tags: ["video-generation", "image-to-video", "long-video", "svi", "wan22", "nvfp4", "blackwell"]
+    supported_roles: ["video.render"]
   - runtime_id: "nexus.video.svi2-pro.fake"
     display_name: "SVI 2.0 Pro Fake (CI / development)"
     family: "python"

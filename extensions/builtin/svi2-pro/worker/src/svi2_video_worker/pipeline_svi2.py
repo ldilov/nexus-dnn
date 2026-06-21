@@ -60,6 +60,10 @@ _ARTIFACT_FILENAMES: dict[str, str] = {
     "dit-low-fp8": "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
     "dit-t2v-high": "T2V/Wan2_2-T2V-A14B_HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
     "dit-t2v-low": "T2V/Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+    "dit-high-nvfp4": "Wan2.2-I2V-A14B_NVFP4_Sparse_high_comfy.safetensors",
+    "dit-low-nvfp4": "Wan2.2-I2V-A14B_NVFP4_Sparse_low_comfy.safetensors",
+    "dit-t2v-high-nvfp4": "Wan2.2-T2V-A14B_NVFP4_Sparse_high_comfy.safetensors",
+    "dit-t2v-low-nvfp4": "Wan2.2-T2V-A14B_NVFP4_Sparse_low_comfy.safetensors",
     "svi-lora-high": "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors",
     "svi-lora-low": "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors",
     "text-encoder": "umt5-xxl-enc-bf16.safetensors",
@@ -655,13 +659,37 @@ def _build_expert(
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
 
+_DIT_QUANTS: tuple[str, ...] = ("fp8", "nvfp4")
+
+
+def dit_quant(params: dict[str, Any]) -> str:
+    """Selected diffusion-weight quant variant: ``fp8`` (default, canonical
+    Kijai fp8) or ``nvfp4`` (lightx2v _comfy NVFP4). Unknown values fall back to
+    ``fp8`` so the canonical path is the safe default."""
+    quant = str(params.get("dit_quant") or "fp8").strip().lower()
+    return quant if quant in _DIT_QUANTS else "fp8"
+
+
+def _i2v_dit_artifact_ids(quant: str) -> tuple[str, str]:
+    if quant == "nvfp4":
+        return "dit-high-nvfp4", "dit-low-nvfp4"
+    return "dit-high-fp8", "dit-low-fp8"
+
+
+def _t2v_dit_artifact_ids(quant: str) -> tuple[str, str]:
+    if quant == "nvfp4":
+        return "dit-t2v-high-nvfp4", "dit-t2v-low-nvfp4"
+    return "dit-t2v-high", "dit-t2v-low"
+
+
 def resolve_dit_paths(
     params: dict[str, Any], models_dir: Path, *, require_overrides_exist: bool = False
 ) -> tuple[Path, Path]:
+    high_id, low_id = _i2v_dit_artifact_ids(dit_quant(params))
     dit_high_override = params.get("dit_high_path")
     dit_low_override = params.get("dit_low_path")
-    dit_high = Path(dit_high_override) if dit_high_override else _resolve(models_dir, "dit-high-fp8")
-    dit_low = Path(dit_low_override) if dit_low_override else _resolve(models_dir, "dit-low-fp8")
+    dit_high = Path(dit_high_override) if dit_high_override else _resolve(models_dir, high_id)
+    dit_low = Path(dit_low_override) if dit_low_override else _resolve(models_dir, low_id)
     if require_overrides_exist:
         for label, override, path in (
             ("dit_high_path", dit_high_override, dit_high),
@@ -938,11 +966,13 @@ def _build_t2v_expert(dit_path: Path) -> ExpertModel:
 
 def _build_t2v_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     models_dir = _models_dir_from(params)
+    quant = dit_quant(params)
+    high_id, low_id = _t2v_dit_artifact_ids(quant)
     dit_high = _require(
-        _resolve(models_dir, "dit-t2v-high"), "Wan2.2 T2V high-noise DiT (fp8)", models_dir
+        _resolve(models_dir, high_id), f"Wan2.2 T2V high-noise DiT ({quant})", models_dir
     )
     dit_low = _require(
-        _resolve(models_dir, "dit-t2v-low"), "Wan2.2 T2V low-noise DiT (fp8)", models_dir
+        _resolve(models_dir, low_id), f"Wan2.2 T2V low-noise DiT ({quant})", models_dir
     )
     return _build_t2v_expert(dit_high), _build_t2v_expert(dit_low)
 

@@ -25,3 +25,17 @@ def test_every_artifact_declares_role():
     v = yaml.safe_load((ROOT / "backends/rtx50-fp8/versions.yaml").read_text())
     for a in v["versions"][0]["artifacts"]:
         assert a.get("role"), a["id"]
+
+
+def test_rtx50_nvfp4_dit_artifacts_point_at_lightx2v_comfy():
+    v = yaml.safe_load((ROOT / "backends/rtx50-nvfp4/versions.yaml").read_text())
+    assert v["backend"]["runtime_id"] == "nexus.video.svi2-pro.rtx50-nvfp4"
+    arts = {a["id"]: a for a in v["versions"][0]["artifacts"]}
+    for aid in ("dit-high-nvfp4", "dit-low-nvfp4", "dit-t2v-high-nvfp4", "dit-t2v-low-nvfp4"):
+        assert arts[aid]["source"]["repo"] == "lightx2v/Wan2.2-NVFP4-Sparse"
+        assert arts[aid]["source"]["file"].endswith("_comfy.safetensors")
+        assert "NVFP4" in arts[aid]["source"]["file"]
+    for aid in ("svi-lora-high", "svi-lora-low", "text-encoder", "vae", "tokenizer", "rife-flownet", "sd-cli"):
+        assert aid in arts
+    for a in v["versions"][0]["artifacts"]:
+        assert a.get("role"), a["id"]
