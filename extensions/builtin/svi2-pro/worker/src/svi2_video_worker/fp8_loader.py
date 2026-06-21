@@ -237,16 +237,22 @@ def _fp8_linear_member_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
     return members
 
 
-def build_remainder_bf16(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+def build_remainder_bf16(
+    state_dict: dict[str, torch.Tensor],
+    extra_exclude: frozenset[str] | set[str] = frozenset(),
+) -> dict[str, torch.Tensor]:
     bridged = bridge_kj_keys(state_dict)
     fp8_members = _fp8_linear_member_keys(bridged)
     remainder: dict[str, torch.Tensor] = {}
     for key, value in bridged.items():
-        if key in fp8_members:
+        if key in fp8_members or key in extra_exclude:
             continue
         if _is_scale_key(key):
             continue
         if is_fp8_dtype(value.dtype):
+            continue
+        if value.dtype == torch.uint8:
+            # Packed NVFP4 weight / quant metadata — never blind-cast to bf16.
             continue
         remainder[key] = value.to(torch.bfloat16)
     return remainder
@@ -313,11 +319,22 @@ def load_expert_meta(
     audit = audit_key_overlap(state, dit)
     audit.update(_summarize_state(state))
 
+    from . import nvfp4_loader
+
+    nvfp4_members: set[str] = set()
+    nvfp4_count = 0
+    if nvfp4_loader.is_nvfp4_state_dict(state):
+        nvfp4_linears = nvfp4_loader.build_nvfp4_linears(state)
+        apply_fp8_linears_to_module(dit, nvfp4_linears)
+        nvfp4_members = nvfp4_loader.nvfp4_member_keys(state)
+        nvfp4_count = len(nvfp4_linears)
+    audit["nvfp4_linears_built"] = nvfp4_count
+
     linears = build_fp8_linears(state)
     audit["fp8_linears_built"] = len(linears)
     apply_fp8_linears_to_module(dit, linears)
 
-    remainder = build_remainder_bf16(state)
+    remainder = build_remainder_bf16(state, extra_exclude=nvfp4_members)
     audit["bf16_remainder_loaded"] = len(remainder)
     dit.load_state_dict(remainder, strict=False, assign=True)
 
@@ -327,7 +344,7 @@ def load_expert_meta(
     print(
         f"[svi2-load] {Path(dit_path).name} dtypes={audit['dtype_counts']} "
         f"scale_suffixes={audit['scale_suffixes']} fp8_linears={len(linears)} "
-        f"bf16_remainder={len(remainder)}\n"
+        f"nvfp4_linears={nvfp4_count} bf16_remainder={len(remainder)}\n"
         f"[svi2-load] key_overlap={overlap:.1f}% matched={audit.get('matched_count')}"
         f"/{audit.get('target_count')} unmatched_src={len(unmatched_src)} "
         f"unmatched_target={len(unmatched_target)}"
