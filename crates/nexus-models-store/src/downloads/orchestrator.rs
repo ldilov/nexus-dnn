@@ -372,6 +372,12 @@ impl DownloadOrchestrator {
         sink_dir: &Path,
         mut pause_rx: watch::Receiver<bool>,
     ) -> Result<Option<String>, TargetFailure> {
+        if !is_safe_sink_relative(&target.filename) {
+            return Err(TargetFailure::Io(format!(
+                "unsafe target filename (path traversal): {}",
+                target.filename
+            )));
+        }
         let path = sink_dir.join(&target.filename);
         if let Some(parent) = path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
@@ -762,6 +768,36 @@ fn variant_id_from_job(job: &PersistedJob) -> Option<VariantId> {
         "{fam}@{}",
         quant.to_ascii_uppercase()
     )))
+}
+
+/// True iff `name` is a relative path that stays under the per-job sink dir:
+/// no parent-dir (`..`), no absolute/root/drive prefix, no NUL. In-sink subpaths
+/// (e.g. `unet/model.safetensors`) are allowed for multi-folder repos. Guards the
+/// `sink_dir.join(filename)` against an attacker-controlled direct-URL filename.
+fn is_safe_sink_relative(name: &str) -> bool {
+    use std::path::Component;
+    if name.is_empty() || name.contains('\0') {
+        return false;
+    }
+    Path::new(name)
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+}
+
+#[cfg(test)]
+mod filename_guard_tests {
+    use super::is_safe_sink_relative;
+
+    #[test]
+    fn allows_basename_and_subpath_rejects_traversal() {
+        assert!(is_safe_sink_relative("model.safetensors"));
+        assert!(is_safe_sink_relative("unet/model.safetensors"));
+        assert!(!is_safe_sink_relative("../escape.gguf"));
+        assert!(!is_safe_sink_relative("a/../../b"));
+        assert!(!is_safe_sink_relative("/abs/x"));
+        assert!(!is_safe_sink_relative("x\0y"));
+        assert!(!is_safe_sink_relative(""));
+    }
 }
 
 async fn truncate_to(path: &Path, size: u64) -> Result<(), TargetFailure> {

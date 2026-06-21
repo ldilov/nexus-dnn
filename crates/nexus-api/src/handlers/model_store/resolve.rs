@@ -285,6 +285,7 @@ pub async fn resolve_url(
 }
 
 fn extract_filename(url: &str, headers: &reqwest::header::HeaderMap) -> String {
+    let mut raw: Option<String> = None;
     if let Some(cd) = headers.get(reqwest::header::CONTENT_DISPOSITION)
         && let Ok(cd_str) = cd.to_str()
     {
@@ -293,18 +294,31 @@ fn extract_filename(url: &str, headers: &reqwest::header::HeaderMap) -> String {
             if let Some(rest) = part.strip_prefix("filename=") {
                 let name = rest.trim_matches('"').trim();
                 if !name.is_empty() {
-                    return name.to_owned();
+                    raw = Some(name.to_owned());
+                    break;
                 }
             }
         }
     }
 
-    let path = url.split('?').next().unwrap_or(url);
-    path.split('/')
-        .next_back()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("download.bin")
-        .to_owned()
+    let raw = raw.unwrap_or_else(|| {
+        let path = url.split('?').next().unwrap_or(url);
+        path.split('/').next_back().unwrap_or("").to_owned()
+    });
+
+    // Content-Disposition / URL tail are attacker-controlled — reduce to a safe
+    // basename so a pasted direct URL can't traverse out of the per-job sink dir.
+    safe_basename(&raw).unwrap_or_else(|| "download.bin".to_owned())
+}
+
+/// Reduce a server/URL-supplied name to a safe basename — no directories, no
+/// traversal, no NUL — or `None` when it can't be made safe.
+fn safe_basename(name: &str) -> Option<String> {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
+    if base.is_empty() || base == "." || base == ".." || base.contains('\0') {
+        return None;
+    }
+    Some(base.to_owned())
 }
 
 #[cfg(test)]
@@ -313,6 +327,39 @@ mod tests {
     use nexus_models_store::types::Format;
 
     use super::*;
+
+    #[test]
+    fn extract_filename_sanitizes_traversal_in_content_disposition() {
+        use reqwest::header::{CONTENT_DISPOSITION, HeaderMap, HeaderValue};
+        let mut h = HeaderMap::new();
+        h.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=\"../../etc/passwd\""),
+        );
+        assert_eq!(extract_filename("https://x.com/a", &h), "passwd");
+
+        let mut h2 = HeaderMap::new();
+        h2.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("filename=\"/abs/evil.gguf\""),
+        );
+        assert_eq!(extract_filename("https://x.com/a", &h2), "evil.gguf");
+
+        let empty = HeaderMap::new();
+        assert_eq!(
+            extract_filename("https://x.com/d/model.safetensors", &empty),
+            "model.safetensors"
+        );
+        assert_eq!(extract_filename("https://x.com/..", &empty), "download.bin");
+    }
+
+    #[test]
+    fn safe_basename_rejects_traversal_and_strips_dirs() {
+        assert_eq!(safe_basename("../../x.gguf").as_deref(), Some("x.gguf"));
+        assert_eq!(safe_basename("C:\\Users\\m.bin").as_deref(), Some("m.bin"));
+        assert_eq!(safe_basename(".."), None);
+        assert_eq!(safe_basename(""), None);
+    }
 
     #[test]
     fn direct_family_infers_format_and_has_no_hash() {

@@ -29,10 +29,13 @@ async fn reconcile_once(install_map: &InstallMap, sink_root: Option<&std::path::
         return;
     }
     if let Err(e) = install_map.reconcile_installed_with_sink(sink_root).await {
+        // Reset on failure (transient DB/fs) so a later request retries instead of
+        // disabling sink adoption for the whole process.
+        RECONCILED_ONCE.store(false, Ordering::Release);
         tracing::warn!(
             target: "model_store",
             error = %e,
-            "get_installed: sink reconcile failed — listing install-map rows as-is"
+            "get_installed: sink reconcile failed — will retry on next request"
         );
     }
 }
