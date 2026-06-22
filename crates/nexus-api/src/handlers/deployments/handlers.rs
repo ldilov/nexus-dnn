@@ -759,6 +759,8 @@ async fn create_preset(
         Ok(t) => t,
         Err(resp) => return resp,
     };
+    // Records the host deployment's module binding for provenance only;
+    // recipe_key is the authority for apply-compatibility.
     let source_ext = deployment.source_extension_id.clone();
     let svc = DeploymentPresetService::new(repo_for(&state));
     let result = match body {
@@ -805,24 +807,6 @@ struct RenamePresetBody {
     description: Option<String>,
 }
 
-/// Confirm a preset id belongs to the deployment's recipe family before
-/// mutating/applying it. Returns 404 for a foreign-recipe preset so ids cannot
-/// be used to reach across recipe families.
-async fn preset_in_family(
-    state: &AppState,
-    recipe_key: &str,
-    preset_id: &str,
-) -> Result<(), axum::response::Response> {
-    let svc = DeploymentPresetService::new(repo_for(state));
-    match svc.get(preset_id).await {
-        Ok(p) if p.recipe_key == recipe_key => Ok(()),
-        Ok(_) => Err(err_to_response(
-            nexus_deployments::DeploymentError::PresetNotFound(preset_id.to_owned()),
-        )),
-        Err(e) => Err(err_to_response(e)),
-    }
-}
-
 async fn rename_preset(
     State(state): State<AppState>,
     Path((id, preset_id)): Path<(String, String)>,
@@ -832,12 +816,14 @@ async fn rename_preset(
         Ok(t) => t,
         Err(resp) => return resp,
     };
-    if let Err(resp) = preset_in_family(&state, &recipe_key, &preset_id).await {
-        return resp;
-    }
     let svc = DeploymentPresetService::new(repo_for(&state));
     match svc
-        .rename(&preset_id, &body.name, body.description.as_deref())
+        .rename(
+            &preset_id,
+            &recipe_key,
+            &body.name,
+            body.description.as_deref(),
+        )
         .await
     {
         Ok(row) => (StatusCode::OK, Json(ApiResponse::ok(preset_summary(row)))).into_response(),
@@ -853,11 +839,8 @@ async fn delete_preset(
         Ok(t) => t,
         Err(resp) => return resp,
     };
-    if let Err(resp) = preset_in_family(&state, &recipe_key, &preset_id).await {
-        return resp;
-    }
     let svc = DeploymentPresetService::new(repo_for(&state));
-    match svc.delete(&preset_id).await {
+    match svc.delete(&preset_id, &recipe_key).await {
         Ok(()) => (StatusCode::NO_CONTENT, ()).into_response(),
         Err(e) => err_to_response(e),
     }

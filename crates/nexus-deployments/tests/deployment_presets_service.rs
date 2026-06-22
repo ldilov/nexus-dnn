@@ -145,10 +145,10 @@ async fn rename_then_delete() {
         .await
         .unwrap();
 
-    let renamed = svc.rename(&row.id, "two", Some("d2")).await.unwrap();
+    let renamed = svc.rename(&row.id, RK, "two", Some("d2")).await.unwrap();
     assert_eq!(renamed.name, "two");
     assert_eq!(renamed.description.as_deref(), Some("d2"));
 
-    svc.delete(&row.id).await.unwrap();
+    svc.delete(&row.id, RK).await.unwrap();
     assert!(svc.list(RK).await.unwrap().is_empty());
 }

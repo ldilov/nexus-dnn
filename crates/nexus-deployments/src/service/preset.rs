@@ -161,14 +161,21 @@ impl DeploymentPresetService {
         self.repo.get_preset(preset_id).await
     }
 
+    /// Rename / re-describe a preset, enforcing recipe-family membership with a
+    /// single fetch. A preset id from another recipe family is reported as
+    /// `PresetNotFound` so ids cannot be used to reach across families.
     pub async fn rename(
         &self,
         preset_id: &str,
+        recipe_key: &str,
         name: &str,
         description: Option<&str>,
     ) -> Result<PresetRow, DeploymentError> {
         let current = self.repo.get_preset(preset_id).await?;
-        self.ensure_name_free(&current.recipe_key, name, Some(preset_id))
+        if current.recipe_key != recipe_key {
+            return Err(DeploymentError::PresetNotFound(preset_id.to_owned()));
+        }
+        self.ensure_name_free(recipe_key, name, Some(preset_id))
             .await?;
         self.repo
             .update_preset_meta(preset_id, name, description)
@@ -176,7 +183,13 @@ impl DeploymentPresetService {
         self.repo.get_preset(preset_id).await
     }
 
-    pub async fn delete(&self, preset_id: &str) -> Result<(), DeploymentError> {
+    /// Delete a preset, enforcing recipe-family membership with a single fetch.
+    /// A preset id from another recipe family is reported as `PresetNotFound`.
+    pub async fn delete(&self, preset_id: &str, recipe_key: &str) -> Result<(), DeploymentError> {
+        let current = self.repo.get_preset(preset_id).await?;
+        if current.recipe_key != recipe_key {
+            return Err(DeploymentError::PresetNotFound(preset_id.to_owned()));
+        }
         self.repo.delete_preset(preset_id).await
     }
 }
