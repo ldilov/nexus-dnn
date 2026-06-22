@@ -147,11 +147,17 @@ impl LeaseProvider {
     pub async fn end_render(&self) {
         let to_release = {
             let mut st = self.state.lock().await;
-            st.active = st.active.saturating_sub(1);
             if st.active == 0 {
-                st.client.take()
-            } else {
+                // Unbalanced call (no counted render in flight) — never touch a
+                // worker that was warmed by something other than a render.
                 None
+            } else {
+                st.active -= 1;
+                if st.active == 0 {
+                    st.client.take()
+                } else {
+                    None
+                }
             }
         };
         if let Some(client) = to_release {
