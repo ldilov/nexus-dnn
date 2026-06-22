@@ -10,19 +10,59 @@ export const list = style({
 export const row = style({
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
-  gap: vars.space.md,
+  gap: vars.space.sm,
   padding: vars.space.md,
   borderRadius: vars.radius.md,
   background: vars.color.surfaceMuted,
   width: "100%",
-  border: "none",
-  textAlign: "left",
-  cursor: "pointer",
   color: vars.color.text,
   transition: `background ${vars.motion.fast}`,
   selectors: {
     "&:hover": { background: vars.color.surfaceHigh },
+  },
+});
+
+export const openBtn = style({
+  flex: 1,
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.md,
+  padding: 0,
+  background: "transparent",
+  border: "none",
+  textAlign: "left",
+  cursor: "pointer",
+  color: "inherit",
+  selectors: {
+    "&:focus-visible": {
+      outline: "none",
+      boxShadow: vars.shadow.focusRing,
+      borderRadius: vars.radius.sm,
+    },
+  },
+});
+
+export const deleteBtn = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  width: "26px",
+  height: "26px",
+  padding: 0,
+  borderRadius: vars.radius.sm,
+  background: "transparent",
+  border: "none",
+  color: vars.color.textFaint,
+  cursor: "pointer",
+  transition: `color ${vars.motion.fast}, background ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": {
+      color: vars.color.danger,
+      background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
+    },
     "&:focus-visible": {
       outline: "none",
       boxShadow: vars.shadow.focusRing,

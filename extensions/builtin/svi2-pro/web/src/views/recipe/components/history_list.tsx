@@ -7,6 +7,7 @@ import * as styles from "./history_list.css";
 interface HistoryListProps {
   jobs: RenderJob[];
   onOpen: (job: RenderJob) => void;
+  onDelete: (job: RenderJob) => void;
 }
 
 const STATUS_TONE: Record<RenderJobStatus, BadgeTone> = {
@@ -17,7 +18,7 @@ const STATUS_TONE: Record<RenderJobStatus, BadgeTone> = {
   cancelled: "neutral",
 };
 
-function HistoryListImpl({ jobs, onOpen }: HistoryListProps): ReactElement {
+function HistoryListImpl({ jobs, onOpen, onDelete }: HistoryListProps): ReactElement {
   if (jobs.length === 0) {
     return (
       <EmptyState
@@ -30,18 +31,41 @@ function HistoryListImpl({ jobs, onOpen }: HistoryListProps): ReactElement {
   return (
     <div className={styles.list}>
       {jobs.map((job) => (
-        <button key={job.id} type="button" className={styles.row} onClick={() => onOpen(job)}>
-          <span className={styles.meta}>
-            <span className={styles.preset}>{job.presetId ?? "custom"}</span>
-            <span className={styles.summary}>{paramsSummary(job)}</span>
-          </span>
-          <span className={styles.right}>
-            <time className={styles.time} dateTime={job.createdAt} title={absoluteTime(job.createdAt)}>
-              {relativeTime(job.createdAt)}
-            </time>
-            <Badge tone={STATUS_TONE[job.status]}>{job.status}</Badge>
-          </span>
-        </button>
+        <div key={job.id} className={styles.row}>
+          <button type="button" className={styles.openBtn} onClick={() => onOpen(job)}>
+            <span className={styles.meta}>
+              <span className={styles.preset}>{job.presetId ?? "custom"}</span>
+              <span className={styles.summary}>{paramsSummary(job)}</span>
+            </span>
+            <span className={styles.right}>
+              <time
+                className={styles.time}
+                dateTime={job.createdAt}
+                title={absoluteTime(job.createdAt)}
+              >
+                {relativeTime(job.createdAt)}
+              </time>
+              <Badge tone={STATUS_TONE[job.status]}>{job.status}</Badge>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={styles.deleteBtn}
+            aria-label={`Delete ${job.presetId ?? "custom"} render from history`}
+            title="Delete from history"
+            onClick={() => onDelete(job)}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+              <title>delete</title>
+              <path
+                d="M6 6l12 12M18 6L6 18"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
       ))}
     </div>
   );

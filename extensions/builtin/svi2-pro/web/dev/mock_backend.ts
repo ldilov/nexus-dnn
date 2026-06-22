@@ -66,7 +66,7 @@ const installedModels: InstalledModelsIndex = {
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS, modelsDir: "D:/svi2_models", outputDir: "D:/svi2_out" };
 let uploadCounter = 0;
 
-const sampleJobs: RenderJob[] = [
+let sampleJobs: RenderJob[] = [
   {
     id: "job-demo-0001",
     presetId: "svi-canonical",
@@ -205,6 +205,11 @@ async function handle(url: string, init: RequestInit | undefined): Promise<Respo
   }
   if (path.startsWith("/render/jobs/") && path.endsWith("/cancel")) {
     return json({ status: "cancelled" });
+  }
+  if (path.startsWith("/render/jobs/") && method === "DELETE") {
+    const id = decodeURIComponent(path.slice("/render/jobs/".length));
+    sampleJobs = sampleJobs.filter((j) => j.id !== id);
+    return json({ status: "deleted" });
   }
   if (path.startsWith("/render/jobs/") && method === "GET") {
     return json(sampleJobs[0]);

@@ -20,7 +20,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/render/start", post(start))
         .route("/render/jobs", get(list_jobs))
-        .route("/render/jobs/{job_id}", get(get_job))
+        .route("/render/jobs/{job_id}", get(get_job).delete(delete_job))
         .route("/render/jobs/{job_id}/cancel", post(cancel))
         .route("/render/jobs/{job_id}/events", get(events))
 }
@@ -139,6 +139,20 @@ async fn get_job(State(state): State<AppState>, Path(job_id): Path<String>) -> R
     }
     match state.store.get_job(&job_id).await {
         Ok(row) => Json(row.into_dto()).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn delete_job(State(state): State<AppState>, Path(job_id): Path<String>) -> Response {
+    if let Err(err) = JobId::try_from(job_id.as_str()).map_err(Svi2Error::from) {
+        return err.into_response();
+    }
+    match state.store.delete_job(&job_id).await {
+        Ok(_) => {
+            // Drop any live event sink for this job; the mp4 stays on disk.
+            state.channels.remove(&job_id).await;
+            Json(json!({ "status": "deleted" })).into_response()
+        }
         Err(err) => err.into_response(),
     }
 }

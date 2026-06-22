@@ -246,6 +246,17 @@ impl Store {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Remove a render job row from history. Returns `true` when a row was
+    /// deleted. The produced mp4 (if any) is left on disk — this only drops
+    /// the history entry.
+    pub async fn delete_job(&self, job_id: &str) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM ext_svi2_pro__render_jobs WHERE job_id = ?")
+            .bind(job_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn get_settings(&self) -> Result<JsonValue> {
         let row = sqlx::query("SELECT settings_json FROM ext_svi2_pro__settings WHERE id = 1")
             .fetch_optional(&self.pool)
