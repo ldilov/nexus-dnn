@@ -45,26 +45,26 @@ export function PresetMenu({ presets, busy, onApply, onDelete, onSaveCurrent }: 
       {open && (
         <div className={s.menu} role="menu" aria-label="Deployment presets">
           {presets.length === 0 && <p className={s.empty}>No presets yet.</p>}
-          {presets.map((p) => (
-            <div className={s.row} role="none" key={p.id}>
+          {presets.map((preset) => (
+            <div className={s.row} role="none" key={preset.id}>
               <button
                 className={s.item}
                 role="menuitem"
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  onApply(p);
+                  onApply(preset);
                   setOpen(false);
                 }}
               >
-                {p.name}
+                {preset.name}
               </button>
               <button
                 className={s.iconBtn}
                 type="button"
-                aria-label={`Delete preset ${p.name}`}
+                aria-label={`Delete preset ${preset.name}`}
                 disabled={busy}
-                onClick={() => onDelete(p)}
+                onClick={() => onDelete(preset)}
               >
                 <span className="material-symbols-outlined" aria-hidden="true">
                   delete

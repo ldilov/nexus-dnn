@@ -276,7 +276,7 @@ export function DeploymentDetailPlaceholder({
       setPresetBusy(true);
       try {
         await deletePreset(deploymentId, preset.id);
-        void globalMutate(presetsKey);
+        refreshAfterMutation();
         toast.success(`Deleted preset "${preset.name}"`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to delete preset");
@@ -284,7 +284,7 @@ export function DeploymentDetailPlaceholder({
         setPresetBusy(false);
       }
     },
-    [deploymentId, presetsKey],
+    [deploymentId, refreshAfterMutation],
   );
 
   const handleSaveCurrent = useCallback(() => {

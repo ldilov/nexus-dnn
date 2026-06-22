@@ -5,6 +5,7 @@ import {
   createPresetFromEnvelope,
   deletePreset,
   listPresets,
+  renamePreset,
   type PresetSummary,
 } from "./deployment_presets";
 import type { ExportEnvelope } from "./deployment_transfer";
@@ -96,6 +97,18 @@ describe("deployment_presets client", () => {
       expect(got.state).toBe("saved");
       expect(captured[0]?.url).toBe("/api/v1/deployments/dep-1/presets/depreset_1/apply");
       expect(captured[0]?.method).toBe("POST");
+    } finally {
+      restore();
+    }
+  });
+
+  it("renamePreset PATCHes the preset path", async () => {
+    const { captured, restore } = stubFetch(preset);
+    try {
+      await renamePreset("dep-1", "depreset_1", "NewName", "newdesc");
+      expect(captured[0]?.url).toBe("/api/v1/deployments/dep-1/presets/depreset_1");
+      expect(captured[0]?.method).toBe("PATCH");
+      expect(captured[0]?.body).toEqual({ name: "NewName", description: "newdesc" });
     } finally {
       restore();
     }
