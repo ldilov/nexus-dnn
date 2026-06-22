@@ -110,6 +110,9 @@ const thumbBase = {
 
 export const slider = style({
   width: "100%",
+  // Match the 44px input/select slot so a slider in a mixed row shares the
+  // same control baseline; the thin track auto-centers within the height.
+  height: "44px",
   appearance: "none",
   background: "transparent",
   cursor: "pointer",
@@ -146,6 +149,9 @@ export const toggleRow = style({
   display: "flex",
   alignItems: "center",
   gap: vars.space.sm,
+  // Occupy the same 44px control slot as inputs/selects so toggle-based
+  // fields align with their neighbours in a mixed grid row.
+  minHeight: "44px",
 });
 
 export const toggle = style({
