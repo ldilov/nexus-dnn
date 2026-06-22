@@ -353,6 +353,18 @@ export const FIELDS: FieldSpec[] = [
     help: "DiT blocks offloaded to CPU. Higher = LESS VRAM (40 = lowest peak ~10 GiB). 40 is 16 GB-safe.",
   },
   {
+    key: "fp8_compute",
+    label: "FP8 compute",
+    tier: "perf",
+    control: "select",
+    default: "bf16",
+    options: [
+      { value: "bf16", label: "bf16 dequant (Blackwell colour fix)" },
+      { value: "scaled_mm", label: "fp8 rowwise _scaled_mm (faster)" },
+    ],
+    help: "bf16 = dequant→bf16 matmul (safe, slower). scaled_mm = per-row fp8 GEMM (faster; auto-falls back to bf16 if the kernel rejects it).",
+  },
+  {
     key: "teacache_multiplier",
     label: "TeaCache speedup",
     tier: "perf",

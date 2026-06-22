@@ -78,25 +78,37 @@ class ScaledFP8Linear(nn.Module):
             and x.device.type == "cuda"
             and hasattr(torch, "_scaled_mm")
         )
-        _log_fp8_path_once("scaled_mm" if use_scaled_mm else "bf16_dequant")
+        _log_fp8_path_once("scaled_mm_rowwise" if use_scaled_mm else "bf16_dequant")
         if use_scaled_mm:
             return self._cuda_forward(x)
         return self._fallback_forward(x)
 
+    def _rowwise_weight_scale(self, out_features: int) -> torch.Tensor:
+        # Per-row activations need a row/col-granular weight scale; a per-tensor
+        # scalar is broadcast to [1, N] (numerically identical, kernel-compatible).
+        sw = self.scale_weight.to(torch.float32)
+        if sw.numel() == 1:
+            return sw.reshape(1, 1).expand(1, out_features).contiguous()
+        return sw.reshape(1, -1)
+
     def _cuda_forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Per-ROW (per-token) activation scaling. Per-tensor amax under-scales
+        # active channels on Blackwell -> _scaled_mm colour smudge; rowwise fixes it.
         try:
-            x_fp32 = x.float()
-            amax_x = x_fp32.abs().max().clamp(min=1e-12)
+            x_fp32 = x.reshape(-1, x.shape[-1]).float()
+            amax_x = x_fp32.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)
             scale_a = (amax_x / 448.0).to(torch.float32)
             x_fp8 = (x_fp32 / scale_a).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
             w_t = self.weight_fp8.t().contiguous()
+            scale_b = self._rowwise_weight_scale(w_t.shape[1])
             out = torch._scaled_mm(
                 x_fp8,
                 w_t,
                 scale_a=scale_a,
-                scale_b=self.scale_weight,
+                scale_b=scale_b,
                 out_dtype=torch.bfloat16,
             )
+            out = out.reshape(*x.shape[:-1], w_t.shape[1])
             if self.bias is not None:
                 out = out + self.bias
             return out

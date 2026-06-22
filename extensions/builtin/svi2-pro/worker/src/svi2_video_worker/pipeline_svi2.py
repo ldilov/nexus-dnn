@@ -1477,6 +1477,8 @@ def _run_render(
         )
         if params.get("fixed_sigmas"):
             scheduler.set_fixed_sigmas(params["fixed_sigmas"])
+        if params.get("fp8_compute"):
+            os.environ["SVI2_FP8_COMPUTE"] = str(params["fp8_compute"])
         timesteps = scheduler.timesteps
 
         total_latent_frames = (frames_per_clip - 1) // 4 + 1

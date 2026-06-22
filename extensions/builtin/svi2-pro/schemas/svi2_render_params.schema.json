@@ -265,6 +265,11 @@
     "use_torch_compile": {
       "type": ["boolean", "null"],
       "default": false
+    },
+    "fp8_compute": {
+      "type": "string",
+      "enum": ["bf16", "scaled_mm"],
+      "default": "bf16"
     }
   }
 }

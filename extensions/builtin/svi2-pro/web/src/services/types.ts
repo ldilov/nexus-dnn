@@ -18,6 +18,7 @@ export interface UserLoraParam {
 export type TorchCompileMode = "default" | "reduce-overhead" | "max-autotune";
 export type InterpolateMethod = "rife" | "rife_torch" | "rife_ncnn" | "ffmpeg";
 export type StitchMode = "trim" | "crossfade";
+export type Fp8Compute = "bf16" | "scaled_mm";
 export type UpscaleQuality =
   | "LOW"
   | "MEDIUM"
@@ -74,6 +75,7 @@ export interface RenderParams {
   batch_prompt_encode?: boolean;
   svi_lora_tier?: SviLoraTier;
   attention?: string;
+  fp8_compute?: Fp8Compute;
   seed?: number;
   seed_multiplier?: number;
   requires_last_image?: boolean;
