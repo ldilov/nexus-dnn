@@ -176,4 +176,59 @@ describe("ChatSurface", () => {
     expect(screen.getByTestId("custom-inspector")).toBeInTheDocument();
     expect(screen.queryByLabelText(/temperature/i)).toBeNull();
   });
+
+  it("renders a single thread rail instance (no duplicate thread buttons)", () => {
+    renderSurface();
+    expect(screen.getAllByRole("button", { name: /first thread/i })).toHaveLength(1);
+  });
+
+  it("mobile thread toggle opens the drawer and selecting a thread closes it", () => {
+    const onSelectThread = vi.fn();
+    renderSurface({ onSelectThread });
+    expect(screen.queryByLabelText("Close threads")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Show threads"));
+    expect(screen.getByLabelText("Close threads")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /second thread/i }));
+    expect(onSelectThread).toHaveBeenCalledWith("t-2");
+    expect(screen.queryByLabelText("Close threads")).toBeNull();
+  });
+
+  it("scrim click and Escape both close the thread drawer", () => {
+    renderSurface();
+    fireEvent.click(screen.getByLabelText("Show threads"));
+    fireEvent.click(screen.getByLabelText("Close threads"));
+    expect(screen.queryByLabelText("Close threads")).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Show threads"));
+    expect(screen.getByLabelText("Close threads")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByLabelText("Close threads")).toBeNull();
+  });
+
+  it("creating a thread from the drawer closes it", () => {
+    const onCreateThread = vi.fn();
+    renderSurface({ onCreateThread });
+    fireEvent.click(screen.getByLabelText("Show threads"));
+    fireEvent.click(screen.getByLabelText("New thread"));
+    expect(onCreateThread).toHaveBeenCalled();
+    expect(screen.queryByLabelText("Close threads")).toBeNull();
+  });
+
+  it("moves focus into the rail on open and back to the toggle on close", () => {
+    renderSurface();
+    const toggle = screen.getByLabelText("Show threads");
+    fireEvent.click(toggle);
+    const rail = screen.getByRole("navigation", { name: /chat threads/i });
+    expect(document.activeElement).toBe(rail);
+    fireEvent.click(screen.getByLabelText("Close threads"));
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("the thread toggle is wired to the rail via aria-controls", () => {
+    renderSurface();
+    const toggle = screen.getByLabelText("Show threads");
+    const rail = screen.getByRole("navigation", { name: /chat threads/i });
+    expect(toggle.getAttribute("aria-controls")).toBe(rail.id);
+    expect(rail.id).toBeTruthy();
+  });
 });

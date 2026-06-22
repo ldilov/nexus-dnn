@@ -1,5 +1,6 @@
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+import { media } from "../../theme/breakpoints";
 
 export const page = style({
   display: "flex",
@@ -8,6 +9,11 @@ export const page = style({
   gap: "16px",
   // audit-allow: px — sub-token spacing value, no density token at this step
   padding: "24px",
+  "@media": {
+    [media.maxMobile]: {
+      padding: vars.density.d4,
+    },
+  },
 });
 
 export const header = style({
@@ -59,6 +65,12 @@ export const grid = style({
   // audit-allow: px — fixed layout breakpoint
   gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
   gap: vars.density.gapCard,
+  "@media": {
+    [media.maxMobile]: {
+      gridTemplateColumns: "1fr",
+      gap: vars.density.d3,
+    },
+  },
 });
 
 // Error boundary panel — used when the backends fetch fails (e.g. server

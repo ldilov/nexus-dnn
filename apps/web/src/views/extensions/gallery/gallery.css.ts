@@ -1,5 +1,6 @@
 import { style, globalStyle, keyframes } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
+import { media } from "../../../theme/breakpoints";
 
 export const root = style({
   display: "flex",
@@ -10,6 +11,11 @@ export const root = style({
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",
+  "@media": {
+    [media.maxMobile]: {
+      paddingBlock: vars.density.d4,
+    },
+  },
 });
 
 export const summaryGrid = style({
@@ -64,6 +70,10 @@ export const grid = style({
     // audit-allow: px — Spectral Graphite responsive breakpoint per design brief §2.3
     "(min-width: 960px) and (max-width: 1279px)": {
       gridTemplateColumns: "repeat(2, 1fr)",
+    },
+    [media.maxMobile]: {
+      gridTemplateColumns: "1fr",
+      gap: vars.density.d3,
     },
   },
 });

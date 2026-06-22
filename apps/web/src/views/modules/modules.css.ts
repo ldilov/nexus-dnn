@@ -1,5 +1,6 @@
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../styles";
+import { media } from "../../theme/breakpoints";
 
 export const root = style({
   display: "flex",
@@ -8,6 +9,11 @@ export const root = style({
   padding: vars.space.xl,
   height: "100%",
   overflow: "auto",
+  "@media": {
+    [media.maxMobile]: {
+      padding: vars.space.md,
+    },
+  },
 });
 
 export const header = style({
@@ -56,6 +62,12 @@ export const search = style({
   fontSize: vars.text.bodyM,
   // audit-allow: px — sub-token spacing value, no density token at this step
   minWidth: "240px",
+  "@media": {
+    [media.maxMobile]: {
+      minWidth: 0,
+      width: "100%",
+    },
+  },
   selectors: {
     "&:focus-visible": {
       // audit-allow: px — below minimum token granularity (sub-10px)
@@ -140,6 +152,12 @@ export const grid = style({
   // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
   gap: vars.space.lg,
+  "@media": {
+    [media.maxMobile]: {
+      gridTemplateColumns: "1fr",
+      gap: vars.space.md,
+    },
+  },
 });
 
 export const sectionHeader = style({

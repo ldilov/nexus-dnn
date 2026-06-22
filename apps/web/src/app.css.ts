@@ -1,5 +1,6 @@
 import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "./theme/contract.css";
+import { media } from "./theme/breakpoints";
 
 const routeEnterKeyframes = keyframes({
   // audit-allow: px — below minimum token granularity (sub-10px)
@@ -17,6 +18,11 @@ export const canvasContent = style({
   flex: 1,
   overflow: "auto",
   padding: vars.space.insetXl,
+  "@media": {
+    [media.maxMobile]: {
+      padding: vars.space.insetMd,
+    },
+  },
 });
 
 export const routeTransitionWrapper = style({

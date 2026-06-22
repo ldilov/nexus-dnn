@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import * as styles from "./thread_rail.css";
 import type { ChatThreadSummary } from "./chat_surface";
+
+/** Shared element id so the chat header toggle can `aria-controls` the rail. */
+export const CHAT_THREAD_RAIL_ID = "chat-thread-rail";
 
 interface ThreadRailProps {
   threads: ReadonlyArray<ChatThreadSummary>;
@@ -10,6 +13,14 @@ interface ThreadRailProps {
   onRename?: (id: string, nextTitle: string) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   reconciling?: boolean;
+  /** When true the rail is slid in as an off-canvas drawer (phones only). */
+  mobileOpen?: boolean;
+  /** Id for the rail nav, referenced by the chat header toggle's aria-controls. */
+  id?: string;
+  /** Remove the rail from the tab order + a11y tree (closed drawer on phones). */
+  inert?: boolean;
+  /** Ref to the rail nav so the chat surface can move focus into the drawer. */
+  navRef?: Ref<HTMLElement>;
 }
 
 interface ThreadRowProps {
@@ -118,9 +129,20 @@ function ThreadRow({ thread, active, onSelect, onRename, onDelete }: ThreadRowPr
   );
 }
 
-export function ThreadRail({ threads, activeThreadId, onSelect, onCreate, onRename, onDelete, reconciling }: ThreadRailProps) {
+export function ThreadRail({ threads, activeThreadId, onSelect, onCreate, onRename, onDelete, reconciling, mobileOpen = false, id, inert, navRef }: ThreadRailProps) {
+  const railCls = [
+    styles.rail,
+    mobileOpen ? styles.railMobileOpen : styles.railMobileClosed,
+  ].join(" ");
   return (
-    <nav className={styles.rail} aria-label="Chat threads">
+    <nav
+      id={id}
+      ref={navRef}
+      tabIndex={-1}
+      className={railCls}
+      aria-label="Chat threads"
+      inert={inert || undefined}
+    >
       <div className={styles.railHeader}>
         <span>Threads</span>
         {reconciling ? (

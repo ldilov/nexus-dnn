@@ -1,5 +1,6 @@
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+import { media } from "../../theme/breakpoints";
 
 export const root = style({
   display: "grid",
@@ -7,6 +8,7 @@ export const root = style({
   gridTemplateColumns: "240px 1fr 320px",
   height: "100%",
   minHeight: 0,
+  position: "relative",
   background: vars.color.bg.canvas,
   color: vars.color.text.primary,
   "@media": {
@@ -19,6 +21,10 @@ export const root = style({
     "(max-width: 960px)": {
       // audit-allow: px — sub-token spacing value, no density token at this step
       gridTemplateColumns: "56px 1fr",
+    },
+    // Phones: drop the thread rail so the conversation gets the full width.
+    [media.maxMobile]: {
+      gridTemplateColumns: "1fr",
     },
   },
 });
@@ -37,6 +43,58 @@ export const header = style({
   gap: vars.density.d4,
   paddingBlock: vars.density.d3,
   paddingInline: vars.density.d6,
+  "@media": {
+    [media.maxMobile]: {
+      paddingInline: vars.density.d4,
+    },
+  },
+});
+
+export const headerLeft = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.density.d3,
+  minWidth: 0,
+  flex: "1 1 auto",
+});
+
+export const threadToggle = style({
+  display: "none",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  width: vars.control.heightLg,
+  height: vars.control.heightLg,
+  background: "transparent",
+  border: "none",
+  color: vars.color.text.secondary,
+  borderRadius: vars.radius.control,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.bg.hover,
+    color: vars.color.text.primary,
+  },
+  "@media": {
+    [media.maxMobile]: {
+      display: "inline-flex",
+    },
+  },
+});
+
+export const threadScrim = style({
+  position: "absolute",
+  inset: 0,
+  border: "none",
+  padding: 0,
+  background: vars.color.scrim,
+  zIndex: vars.z.dropdown,
+  cursor: "pointer",
+  "@media": {
+    [media.minMobile]: {
+      display: "none",
+    },
+  },
 });
 
 export const title = style({
@@ -88,6 +146,11 @@ export const messages = style({
   display: "flex",
   flexDirection: "column",
   gap: vars.density.d4,
+  "@media": {
+    [media.maxMobile]: {
+      paddingInline: vars.density.d4,
+    },
+  },
 });
 
 export const emptyState = style({
@@ -106,6 +169,11 @@ export const composerSlot = style({
   flex: "0 0 auto",
   paddingInline: vars.density.d6,
   paddingBlockEnd: vars.density.d6,
+  "@media": {
+    [media.maxMobile]: {
+      paddingInline: vars.density.d4,
+    },
+  },
 });
 
 export const inspector = style({

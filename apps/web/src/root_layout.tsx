@@ -26,6 +26,7 @@ import { createRun } from "./services/runs";
 import { fetchDeployments } from "./services/deployments";
 import { freeAllMemory } from "./services/backend_runtimes_client";
 import { SearchPalette } from "./layout/search/search_palette";
+import { media } from "./theme/breakpoints";
 import type { SearchItem } from "./layout/search/search_results";
 import type {
   RuntimeMetrics,
@@ -170,6 +171,7 @@ export default function RootLayout() {
   const [isRunning, setIsRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [deployments, setDeployments] = useState<DeploymentSummary[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(false);
@@ -259,6 +261,10 @@ export default function RootLayout() {
 
   const location = useLocation();
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
   const inspectorVisible = location.pathname.startsWith("/workflows");
 
   const breadcrumbs = useMemo(
@@ -337,9 +343,23 @@ export default function RootLayout() {
         event.preventDefault();
         setSearchOpen((open) => !open);
       }
+      if (event.key === "Escape") setMobileNavOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const mq =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(media.minTablet)
+        : null;
+    if (!mq) return;
+    const close = () => {
+      if (mq.matches) setMobileNavOpen(false);
+    };
+    mq.addEventListener("change", close);
+    return () => mq.removeEventListener("change", close);
   }, []);
 
   const handleSearchSelect = useCallback(
@@ -361,6 +381,7 @@ export default function RootLayout() {
             tweakPanel={<TweakPanel />}
             onFreeMemory={handleFreeMemory}
             gcState={gcState}
+            onOpenNav={() => setMobileNavOpen(true)}
           />
         }
         sidebar={
@@ -368,6 +389,8 @@ export default function RootLayout() {
             variant={sidebarVariant}
             onTogglePin={() => setSidebarPinned((p) => !p)}
             extensionNavItems={extensionNavItems}
+            mobileOpen={mobileNavOpen}
+            onMobileClose={() => setMobileNavOpen(false)}
           />
         }
         sidebarPinned={sidebarPinned}

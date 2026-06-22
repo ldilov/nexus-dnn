@@ -1,5 +1,6 @@
 import { style, styleVariants, keyframes } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+import { media } from "../../theme/breakpoints";
 
 const pulse = keyframes({
   "0%, 100%": { opacity: 0.45 },
@@ -23,6 +24,11 @@ export const page = style({
   flex: 1,
   minWidth: 0,
   boxSizing: "border-box",
+  "@media": {
+    [media.maxMobile]: {
+      paddingBlock: vars.density.d4,
+    },
+  },
 });
 
 export const heroCount = style({
@@ -423,6 +429,13 @@ export const queryInput = style([
     letterSpacing: "normal",
     fontFamily: vars.font.code,
     fontSize: vars.font.size.bodySm,
+    "@media": {
+      [media.maxMobile]: {
+        minWidth: 0,
+        width: "100%",
+        maxWidth: "100%",
+      },
+    },
   },
 ]);
 

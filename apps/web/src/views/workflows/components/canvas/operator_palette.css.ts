@@ -3,6 +3,7 @@
 // audit-allow: px — below minimum token granularity (sub-10px)
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../../../theme/contract.css";
+import { media } from "../../../../theme/breakpoints";
 
 export const wrapper = style({
   position: "absolute",
@@ -24,6 +25,17 @@ export const wrapper = style({
   // audit-allow: px — node graph layout primitive (xy-flow contract)
   backdropFilter: "blur(10px)",
   overflow: "hidden",
+  "@media": {
+    // Phones: the palette spans the canvas width as a top sheet instead of a
+    // fixed panel that would cover the whole viewport at a fixed offset.
+    [media.maxMobile]: {
+      top: vars.density.d3,
+      left: vars.density.d3,
+      right: vars.density.d3,
+      width: "auto",
+      maxHeight: "50vh",
+    },
+  },
 });
 
 export const header = style({

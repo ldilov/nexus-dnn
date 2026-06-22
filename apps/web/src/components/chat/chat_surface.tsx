@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ThreadRail } from "./thread_rail";
+import { ThreadRail, CHAT_THREAD_RAIL_ID } from "./thread_rail";
 import { MessageBubble } from "./message_bubble";
 import { Composer } from "./composer";
 import { ModelPicker } from "./model_picker";
 import { SamplerPanel, type SamplerOverride } from "./sampler_panel";
+import { media } from "../../theme/breakpoints";
 import * as styles from "./chat_surface.css";
 
 export interface ChatThreadSummary {
@@ -168,24 +169,97 @@ export function ChatSurface(props: ChatSurfaceProps) {
   );
   const heroTitle = surfaceTitle ?? activeThread?.title ?? "Chat";
 
+  const [threadDrawerOpen, setThreadDrawerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const railRef = useRef<HTMLElement>(null);
+  const wasDrawerOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (!threadDrawerOpen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setThreadDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [threadDrawerOpen]);
+
+  useEffect(() => {
+    const mq =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(media.maxMobile)
+        : null;
+    if (!mq) return;
+    const sync = () => {
+      setIsMobile(mq.matches);
+      if (!mq.matches) setThreadDrawerOpen(false);
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (threadDrawerOpen) {
+      wasDrawerOpenRef.current = true;
+      railRef.current?.focus();
+    } else if (wasDrawerOpenRef.current) {
+      wasDrawerOpenRef.current = false;
+      toggleRef.current?.focus();
+    }
+  }, [threadDrawerOpen]);
+
   return (
     <section className={styles.root} aria-label={ariaLabel} data-testid={testId}>
       <ThreadRail
         threads={threads}
         activeThreadId={activeThreadId}
-        onSelect={onSelectThread}
-        onCreate={onCreateThread}
+        onSelect={(id) => {
+          onSelectThread(id);
+          setThreadDrawerOpen(false);
+        }}
+        onCreate={() => {
+          onCreateThread();
+          setThreadDrawerOpen(false);
+        }}
         onRename={onRenameThread}
         onDelete={onDeleteThread}
         reconciling={threadsReconciling}
+        mobileOpen={threadDrawerOpen}
+        id={CHAT_THREAD_RAIL_ID}
+        navRef={railRef}
+        inert={isMobile && !threadDrawerOpen}
       />
+      {threadDrawerOpen ? (
+        <button
+          type="button"
+          className={styles.threadScrim}
+          aria-label="Close threads"
+          onClick={() => setThreadDrawerOpen(false)}
+        />
+      ) : null}
 
-      <div className={styles.center}>
+      <div className={styles.center} inert={threadDrawerOpen || undefined}>
         <header className={styles.header}>
-          <div className={styles.title}>
-            {surfaceTitle ? <span className={styles.titleEyebrow}>{surfaceTitle}</span> : null}
-            <h2 className={styles.titleText}>{heroTitle}</h2>
-            {surfaceMeta ? <div className={styles.titleMeta}>{surfaceMeta}</div> : null}
+          <div className={styles.headerLeft}>
+            <button
+              type="button"
+              ref={toggleRef}
+              className={styles.threadToggle}
+              onClick={() => setThreadDrawerOpen(true)}
+              aria-label="Show threads"
+              aria-controls={CHAT_THREAD_RAIL_ID}
+              aria-expanded={threadDrawerOpen}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">
+                forum
+              </span>
+            </button>
+            <div className={styles.title}>
+              {surfaceTitle ? <span className={styles.titleEyebrow}>{surfaceTitle}</span> : null}
+              <h2 className={styles.titleText}>{heroTitle}</h2>
+              {surfaceMeta ? <div className={styles.titleMeta}>{surfaceMeta}</div> : null}
+            </div>
           </div>
           <div className={styles.headerRight}>
             {headerSlot ?? (
@@ -242,7 +316,7 @@ export function ChatSurface(props: ChatSurfaceProps) {
         </div>
       </div>
 
-      <aside className={styles.inspector} aria-label="Chat settings">
+      <aside className={styles.inspector} aria-label="Chat settings" inert={threadDrawerOpen || undefined}>
         {inspector ?? (
           <SamplerPanel override={samplerOverride} onUpdate={onUpdateSamplerOverride} />
         )}

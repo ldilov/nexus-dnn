@@ -31,6 +31,9 @@ export interface TopBarProps {
    *  a power-action button is rendered before notifications. */
   onFreeMemory?: () => void;
   gcState?: GcState;
+  /** Open the off-canvas navigation drawer. The hamburger that triggers it
+   *  is only visible below the tablet breakpoint. */
+  onOpenNav?: () => void;
 }
 
 const GC_BUTTON_BY_STATE: Record<
@@ -74,10 +77,23 @@ export function TopBar({
   tweakPanel,
   onFreeMemory,
   gcState = "idle",
+  onOpenNav,
 }: TopBarProps) {
   const gc = GC_BUTTON_BY_STATE[gcState];
   return (
     <div className={styles.root}>
+      {onOpenNav && (
+        <button
+          type="button"
+          className={styles.hamburger}
+          onClick={onOpenNav}
+          aria-label="Open navigation"
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            menu
+          </span>
+        </button>
+      )}
       <div className={styles.leftZone}>
         <nav aria-label="Breadcrumb" className={styles.breadcrumbList}>
           {breadcrumbs.map((crumb, index) => {
@@ -105,16 +121,18 @@ export function TopBar({
       </div>
 
       <div className={styles.rightZone}>
-        <StatusChip
-          kind={host.kind === "live" ? "live" : "failed"}
-          label={host.label}
-          pulse={host.kind === "live"}
-        />
-        <StatusChip
-          kind={runtimes.kind === "live" ? "live" : "failed"}
-          label={runtimes.label}
-          pulse={runtimes.kind === "live"}
-        />
+        <div className={styles.statusCluster}>
+          <StatusChip
+            kind={host.kind === "live" ? "live" : "failed"}
+            label={host.label}
+            pulse={host.kind === "live"}
+          />
+          <StatusChip
+            kind={runtimes.kind === "live" ? "live" : "failed"}
+            label={runtimes.label}
+            pulse={runtimes.kind === "live"}
+          />
+        </div>
         <button
           type="button"
           className={styles.searchAffordance}
@@ -124,7 +142,7 @@ export function TopBar({
           <span className="material-symbols-outlined" aria-hidden="true">
             search
           </span>
-          <span>Search</span>
+          <span className={styles.searchLabel}>Search</span>
         </button>
         {tweakPanel}
         {onFreeMemory && (

@@ -1,6 +1,7 @@
 import { style, keyframes } from "@vanilla-extract/css";
 import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
+import { media } from "../theme/breakpoints";
 
 export const root = style({
   display: "flex",
@@ -9,6 +10,36 @@ export const root = style({
   height: "100%",
   paddingInline: vars.density.d6,
   gap: vars.density.d6,
+  "@media": {
+    [media.maxMobile]: {
+      paddingInline: vars.density.d3,
+      gap: vars.density.d3,
+    },
+  },
+});
+
+export const hamburger = style({
+  display: "none",
+  alignItems: "center",
+  justifyContent: "center",
+  width: vars.control.heightLg,
+  height: vars.control.heightLg,
+  flexShrink: 0,
+  background: "transparent",
+  border: "none",
+  color: vars.color.text.secondary,
+  borderRadius: vars.radius.control,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.bg.hover,
+    color: vars.color.text.primary,
+  },
+  "@media": {
+    [media.maxTablet]: {
+      display: "inline-flex",
+    },
+  },
 });
 
 export const leftZone = style({
@@ -79,6 +110,32 @@ export const rightZone = style({
   alignItems: "center",
   gap: vars.density.d3,
   flex: "0 0 auto",
+  "@media": {
+    [media.maxMobile]: {
+      gap: vars.density.d2,
+    },
+  },
+});
+
+export const statusCluster = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.density.d3,
+  "@media": {
+    // Runtime/host chips are non-essential on a phone — drop them so the
+    // primary actions keep their touch targets.
+    [media.maxMobile]: {
+      display: "none",
+    },
+  },
+});
+
+export const searchLabel = style({
+  "@media": {
+    [media.maxMobile]: {
+      display: "none",
+    },
+  },
 });
 
 export const searchAffordance = style({

@@ -1,9 +1,15 @@
 // audit-allow: px — sidebar width per IA contract
 // audit-allow: px — fixed UX hit-target, not density-coupled
 // audit-allow: px — sub-token spacing value, no density token at this step
-import { style } from "@vanilla-extract/css";
+import { style, keyframes } from "@vanilla-extract/css";
 import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
+import { media } from "../theme/breakpoints";
+
+const drawerSlideIn = keyframes({
+  from: { transform: "translateX(-115%)" },
+  to: { transform: "translateX(0)" },
+});
 
 const COLLAPSED_WIDTH = "64px";
 // audit-allow: px — workspace shell scaffolding dimension
@@ -22,6 +28,58 @@ export const container = style({
   zIndex: vars.z.dropdown,
   transition: `width ${vars.motion.durationNormal} cubic-bezier(0.4, 0, 0.2, 1)`,
   overflow: "hidden",
+  "@media": {
+    // Below the tablet ceiling the rail becomes an off-canvas drawer that
+    // floats above content and slides in from the left when opened.
+    [media.maxTablet]: {
+      width: EXPANDED_WIDTH,
+      top: vars.density.d6,
+      bottom: vars.density.d6,
+      left: vars.density.d4,
+      borderRadius: vars.radius.panel,
+      boxShadow: vars.shadow.lg,
+      // audit-allow: px — glass blur per design spec, matches float variant
+      backdropFilter: "blur(20px)",
+      zIndex: vars.z.drawer,
+    },
+  },
+});
+
+// Mutually-exclusive open/closed modifiers — exactly one is applied at a time,
+// so the off-canvas and slid-in transforms never compete in the cascade.
+export const containerMobileClosed = style({
+  "@media": {
+    [media.maxTablet]: {
+      transform: "translateX(-115%)",
+    },
+  },
+});
+
+export const containerMobileOpen = style({
+  "@media": {
+    [media.maxTablet]: {
+      transform: "translateX(0)",
+      animation: `${drawerSlideIn} ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+    },
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
+});
+
+export const scrim = style({
+  position: "fixed",
+  inset: 0,
+  border: "none",
+  padding: 0,
+  background: vars.color.scrim,
+  zIndex: vars.z.dropdown,
+  cursor: "pointer",
+  "@media": {
+    [media.minTablet]: {
+      display: "none",
+    },
+  },
 });
 
 export const containerExpanded = style({

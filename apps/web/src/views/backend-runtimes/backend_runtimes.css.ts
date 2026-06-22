@@ -1,12 +1,18 @@
 // audit-allow: px — sub-token spacing value, no density token at this step
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+import { media } from "../../theme/breakpoints";
 
 export const page = style({
   display: "flex",
   flexDirection: "column",
   gap: vars.density.d4,
   padding: vars.density.d6,
+  "@media": {
+    [media.maxMobile]: {
+      padding: vars.density.d4,
+    },
+  },
 });
 
 export const groupSection = style({
@@ -29,6 +35,12 @@ export const grid = style({
   // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
   gap: vars.density.d4,
+  "@media": {
+    [media.maxMobile]: {
+      gridTemplateColumns: "1fr",
+      gap: vars.density.d3,
+    },
+  },
 });
 
 export const card = style({

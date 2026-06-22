@@ -1,5 +1,6 @@
 import { style } from "@vanilla-extract/css";
 import { vars } from "../theme/contract.css";
+import { media } from "../theme/breakpoints";
 
 export const shellContainer = style({
   display: "grid",
@@ -11,11 +12,22 @@ export const shellContainer = style({
   overflow: "hidden",
   marginLeft: "64px",
   transition: `margin-left ${vars.motion.durationNormal} cubic-bezier(0.4, 0, 0.2, 1)`,
+  "@media": {
+    // The rail floats off-canvas on mobile, so the shell reclaims its margin.
+    [media.maxTablet]: {
+      marginLeft: 0,
+    },
+  },
 });
 
 export const shellContainerSidebarPinned = style({
   // audit-allow: px — workspace shell scaffolding dimension
   marginLeft: "232px",
+  "@media": {
+    [media.maxTablet]: {
+      marginLeft: 0,
+    },
+  },
 });
 
 export const topBar = style({
@@ -36,6 +48,11 @@ export const canvas = style({
   paddingInline: vars.density.padSection,
   position: "relative",
   isolation: "isolate",
+  "@media": {
+    [media.maxMobile]: {
+      paddingInline: vars.density.d3,
+    },
+  },
   "::before": {
     content: "",
     position: "fixed",
@@ -70,6 +87,12 @@ export const inspector = style({
   zIndex: 2,
   backgroundColor: "transparent",
   overflow: "visible",
+  "@media": {
+    // The fixed-width inspector cannot share a phone viewport with the canvas.
+    [media.maxTablet]: {
+      display: "none",
+    },
+  },
 });
 
 export const inspectorCollapsed = style({

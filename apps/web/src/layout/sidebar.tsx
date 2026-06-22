@@ -49,6 +49,10 @@ type SidebarProps = {
   onTogglePin: () => void;
   onUtility?: (id: UtilityItemId) => void;
   extensionNavItems?: readonly ExtensionNavItem[];
+  /** When true the rail renders as an open off-canvas drawer (mobile only). */
+  mobileOpen?: boolean;
+  /** Dismiss the mobile drawer (scrim tap, nav selection, Escape). */
+  onMobileClose?: () => void;
 };
 
 function isItemActive(pathname: string, item: NavItem): boolean {
@@ -63,15 +67,21 @@ export function Sidebar({
   onTogglePin,
   onUtility,
   extensionNavItems = [],
+  mobileOpen = false,
+  onMobileClose,
 }: SidebarProps) {
   const { pathname } = useLocation();
   const resolvedVariant: SidebarVariant = variant ?? (pinned ? "expanded" : "rail");
-  const expanded = resolvedVariant === "expanded" || resolvedVariant === "float";
+  // An open mobile drawer always shows the full expanded content regardless
+  // of the desktop pin state it inherited.
+  const expanded =
+    resolvedVariant === "expanded" || resolvedVariant === "float" || mobileOpen;
 
   const containerCls = [
     styles.container,
     expanded ? styles.containerExpanded : "",
     resolvedVariant === "float" ? styles.containerFloat : "",
+    mobileOpen ? styles.containerMobileOpen : styles.containerMobileClosed,
   ]
     .filter(Boolean)
     .join(" ");
@@ -104,6 +114,7 @@ export function Sidebar({
         title={item.label}
         aria-label={item.label}
         aria-current={active ? "page" : undefined}
+        onClick={onMobileClose}
       >
         <span
           className={`material-symbols-outlined ${styles.navItemIcon}`}
@@ -130,7 +141,16 @@ export function Sidebar({
   ];
 
   return (
-    <div className={containerCls}>
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          className={styles.scrim}
+          aria-label="Close navigation"
+          onClick={onMobileClose}
+        />
+      )}
+      <div className={containerCls} data-mobile-open={mobileOpen ? "true" : "false"}>
       <div className={headerCls}>
         {expanded && (
           <span className={styles.brandSlot}>
@@ -179,6 +199,7 @@ export function Sidebar({
           Creator: Lazar Dilov
         </span>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+import { media } from "../../theme/breakpoints";
 
 const reconcilePulseAnim = keyframes({
   "0%, 100%": { opacity: 0.55 },
@@ -49,6 +50,47 @@ export const rail = style({
     "(max-width: 1280px)": {
       paddingInline: vars.density.d2,
     },
+    // Phones: the rail becomes an off-canvas drawer overlaying the chat panel.
+    [media.maxMobile]: {
+      position: "absolute",
+      insetBlock: 0,
+      left: 0,
+      // audit-allow: px — thread drawer width per UX spec
+      width: "min(320px, 86vw)",
+      paddingInline: vars.density.d3,
+      borderRight: "none",
+      borderTopRightRadius: vars.radius.panel,
+      borderBottomRightRadius: vars.radius.panel,
+      boxShadow: vars.shadow.lg,
+      // audit-allow: px — glass blur per design spec
+      backdropFilter: "blur(20px)",
+      zIndex: vars.z.drawer,
+    },
+  },
+});
+
+const railSlideIn = keyframes({
+  from: { transform: "translateX(-110%)" },
+  to: { transform: "translateX(0)" },
+});
+
+export const railMobileClosed = style({
+  "@media": {
+    [media.maxMobile]: {
+      transform: "translateX(-110%)",
+    },
+  },
+});
+
+export const railMobileOpen = style({
+  "@media": {
+    [media.maxMobile]: {
+      transform: "translateX(0)",
+      animation: `${railSlideIn} ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+    },
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
   },
 });
 
@@ -67,6 +109,9 @@ export const railHeader = style({
     // audit-allow: px — fixed layout breakpoint
     "(max-width: 1280px)": {
       display: "none",
+    },
+    [media.maxMobile]: {
+      display: "flex",
     },
   },
 });
@@ -183,6 +228,9 @@ export const itemMeta = style({
     // audit-allow: px — fixed layout breakpoint
     "(max-width: 1280px)": {
       display: "none",
+    },
+    [media.maxMobile]: {
+      display: "block",
     },
   },
 });

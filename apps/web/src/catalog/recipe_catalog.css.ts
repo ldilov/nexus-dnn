@@ -4,12 +4,19 @@
 // audit-allow: hex — pure-white contrast anchor
 import { style } from "@vanilla-extract/css";
 import { vars } from "../theme/contract.css";
+import { media } from "../theme/breakpoints";
 
 export const grid = style({
   display: "grid",
   // audit-allow: px — fixed layout breakpoint
   gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
   gap: vars.space.gapLg,
+  "@media": {
+    [media.maxMobile]: {
+      gridTemplateColumns: "1fr",
+      gap: vars.space.gapMd,
+    },
+  },
 });
 
 export const card = style({
