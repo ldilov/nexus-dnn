@@ -6,7 +6,7 @@ use nexus_events::emitter::RunNodeEmitter;
 use serde_json::{json, Value as JsonValue};
 use tokio::sync::{broadcast, Mutex};
 
-use crate::backend_client::{methods, BackendClient};
+use crate::backend_client::{methods, BackendClient, LeaseProvider};
 use crate::domain::JobId;
 use crate::host_contract::NotificationEnvelope;
 use crate::node_events::{StageTracker, Transition};
@@ -120,6 +120,9 @@ pub struct RenderTask {
     /// When `Some`, per-node status is published as the render progresses
     /// (spec 057). `None` keeps the legacy behaviour (no graph overlay).
     pub emitter: Option<RunNodeEmitter>,
+    /// Owns the in-flight render count. On completion the task calls
+    /// `end_render`, which releases the worker (frees VRAM) once idle.
+    pub provider: Arc<LeaseProvider>,
 }
 
 /// Drives one render to completion in the background. Subscribes to the
@@ -136,6 +139,7 @@ pub fn spawn_render(task: RenderTask) {
             store,
             channels,
             emitter,
+            provider,
         } = task;
 
         channels.register(job_id.as_str()).await;
@@ -179,16 +183,16 @@ pub fn spawn_render(task: RenderTask) {
             }
         });
 
-        let outcome = client.call_long_running(methods::RENDER_START, params).await;
+        let outcome = client
+            .call_long_running(methods::RENDER_START, params)
+            .await;
 
         relay.abort();
 
         match outcome {
             // A cooperative cancel resolves the long-running call with a
             // `cancelled` reply instead of an error. Honour it as terminal —
-            Ok(result)
-                if result.get("status").and_then(JsonValue::as_str) == Some("cancelled") =>
-            {
+            Ok(result) if result.get("status").and_then(JsonValue::as_str) == Some("cancelled") => {
                 let _ = store.mark_cancelled(&job_id).await;
                 if let Some(em) = &emitter {
                     let transitions = { tracker.lock().await.on_failure() };
@@ -252,6 +256,11 @@ pub fn spawn_render(task: RenderTask) {
             }
         }
 
+        // Drop our lease handle, then signal the provider so it releases the
+        // worker (frees VRAM) once no other render is in flight.
+        drop(client);
+        provider.end_render().await;
+
         // Retain the terminal buffer briefly so a late SSE subscriber can
         // still replay done/error before the sink is dropped.
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -294,7 +303,10 @@ mod tests {
         emit_transition(&emitter, &Transition::Completed(node::MUX));
         emit_transition(&emitter, &Transition::Failed(node::DIFFUSION));
         let ev = bus.replay_after(None);
-        assert!(matches!(ev[0].event, NexusEvent::NodeProgress { percent: 42, .. }));
+        assert!(matches!(
+            ev[0].event,
+            NexusEvent::NodeProgress { percent: 42, .. }
+        ));
         assert!(matches!(ev[1].event, NexusEvent::NodeCompleted { .. }));
         assert!(matches!(ev[2].event, NexusEvent::NodeFailed { .. }));
     }

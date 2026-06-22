@@ -40,7 +40,9 @@ async fn start(State(state): State<AppState>, Json(body): Json<StartRequest>) ->
 }
 
 async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
-    let client = state.provider.spawn_if_needed().await?;
+    // Fail fast if the worker can't start, before creating a job row. This
+    // probe does not count as an in-flight render (no refcount).
+    let _ = state.provider.spawn_if_needed().await?;
 
     let prepared = prepare_params(state, body.params);
 
@@ -67,6 +69,10 @@ async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
         .clone()
         .map(|bus| RunNodeEmitter::new(bus, job_id.as_str().to_string()));
 
+    // Atomically (re)acquire the worker AND count this render in-flight, right
+    // before spawning (no fallible await in between, so the count can't leak).
+    let client = state.provider.acquire_for_render().await?;
+
     spawn_render(RenderTask {
         job_id: job_id.clone(),
         params: prepared,
@@ -74,6 +80,7 @@ async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
         store: state.store.clone(),
         channels: state.channels.clone(),
         emitter,
+        provider: state.provider.clone(),
     });
 
     Ok(job_id)
