@@ -180,6 +180,9 @@ impl StdioLease {
 
             if self.writer_tx.send(WriterCmd::Frame(frame)).await.is_err() {
                 self.matchmaker.cancel(id);
+                // Writer task is gone (worker stdin broke). The reader may never
+                // see EOF for a hung worker, so flip Failed here to drive recovery.
+                mark_worker_gone(&self.state);
                 tracing::warn!(rpc_id = %id, "rpc writer channel closed — worker crashed");
                 return Err(LeaseError::WorkerCrashed);
             }
@@ -188,6 +191,9 @@ impl StdioLease {
                 Ok(Ok(Ok(resp))) => resp,
                 Ok(Ok(Err(f))) => return Err(LeaseError::from(f)),
                 Ok(Err(_)) => {
+                    // Reply channel dropped (matchmaker failed the RPC on worker
+                    // death). Flip Failed so the dead lease is replaced.
+                    mark_worker_gone(&self.state);
                     tracing::warn!(rpc_id = %id, "rpc reply channel closed — worker crashed");
                     return Err(LeaseError::WorkerCrashed);
                 }
