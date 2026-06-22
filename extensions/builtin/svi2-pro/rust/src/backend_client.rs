@@ -113,10 +113,31 @@ impl LeaseProvider {
         Ok(client)
     }
 
-    /// Mark a render in-flight. Pair with [`Self::end_render`]; the worker is
-    /// kept warm (resident, fast reuse) while any render is active.
-    pub async fn begin_render(&self) {
-        self.state.lock().await.active += 1;
+    /// Acquire the worker for a render AND count this render in-flight,
+    /// atomically under one lock — so a concurrent [`Self::end_render`] cannot
+    /// release the worker between acquiring it and registering the render.
+    /// Pair every successful call with exactly one `end_render`.
+    pub async fn acquire_for_render(&self) -> Result<BackendClient> {
+        let mut st = self.state.lock().await;
+        if let Some(existing) = st
+            .client
+            .as_ref()
+            .filter(|c| is_serviceable(c.lease().state()))
+            .cloned()
+        {
+            st.active += 1;
+            return Ok(existing);
+        }
+        // Release the dead/failed lease before replacing it — dropping it
+        // silently leaks the worker process (and its tens of GiB of weights).
+        if let Some(stale) = st.client.take() {
+            let _ = stale.lease().release().await;
+        }
+        let lease = self.factory.acquire().await?;
+        let client = BackendClient::new(lease);
+        st.client = Some(client.clone());
+        st.active += 1;
+        Ok(client)
     }
 
     /// Mark a render finished. When it was the LAST in-flight render, release
@@ -244,14 +265,12 @@ mod release_when_idle_tests {
             released: released.clone(),
         }));
 
-        // First render acquires the worker.
-        let _c1 = provider.spawn_if_needed().await.unwrap();
-        provider.begin_render().await;
+        // First render acquires the worker (and counts itself in-flight).
+        let _c1 = provider.acquire_for_render().await.unwrap();
         assert_eq!(acquired.load(Ordering::SeqCst), 1);
 
         // A second concurrent render reuses the same warm worker.
-        let _c2 = provider.spawn_if_needed().await.unwrap();
-        provider.begin_render().await;
+        let _c2 = provider.acquire_for_render().await.unwrap();
         assert_eq!(acquired.load(Ordering::SeqCst), 1, "warm worker reused");
 
         // First render finishes — one still active, worker NOT released.
@@ -269,7 +288,7 @@ mod release_when_idle_tests {
         assert!(provider.current().await.is_none(), "slot cleared");
 
         // The next render spawns a fresh worker.
-        let _c3 = provider.spawn_if_needed().await.unwrap();
+        let _c3 = provider.acquire_for_render().await.unwrap();
         assert_eq!(
             acquired.load(Ordering::SeqCst),
             2,
