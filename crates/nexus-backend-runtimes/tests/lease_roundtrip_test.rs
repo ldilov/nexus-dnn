@@ -258,3 +258,76 @@ async fn worker_exit_flips_lease_to_failed_for_recovery() {
         "a Failed lease must reject RPCs with RuntimeUnavailable, got {err:?}"
     );
 }
+
+/// Regression for the HUNG-worker case seen in production: the worker breaks
+/// its stdin (host writes fail → writer task exits) but keeps stdout open and
+/// the process alive, so the reader NEVER sees EOF. Detection must come from
+/// the send/writer side; without it the lease stays `Ready` and every later
+/// RPC returns `WorkerCrashed` ("rpc writer channel closed") forever — only a
+/// host restart recovered.
+#[tokio::test]
+async fn writer_break_with_open_stdout_flips_lease_to_failed() {
+    // Close stdin (host writes break); keep stdout open + alive (no reader EOF).
+    let stub_script = "import os, time\nos.close(0)\ntime.sleep(30)\n";
+    let tmp = tempfile::tempdir().unwrap();
+    let stub_path = tmp.path().join("stdin_break_worker.py");
+    std::fs::write(&stub_path, stub_script).unwrap();
+    let spec = LaunchSpec {
+        program: PathBuf::from(python_executable()),
+        args: vec!["-u".into(), stub_path.display().to_string()],
+        env: HashMap::new(),
+        working_dir: None,
+    };
+
+    let Ok(lease) = StdioLease::spawn(spec, RuntimeLeaseId::new()).await else {
+        eprintln!("test skipped — python unavailable");
+        return;
+    };
+
+    // Let python boot and run os.close(0) so subsequent host writes break.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Drive sends until the writer side reports the worker gone. On Linux a
+    // write to the closed-stdin pipe fails → writer task exits → WorkerCrashed.
+    let mut observed_crash = false;
+    for _ in 0..6 {
+        match lease
+            .send_rpc_with_timeout("ping", serde_json::json!({}), Duration::from_millis(400))
+            .await
+        {
+            Err(LeaseError::WorkerCrashed) | Err(LeaseError::RuntimeUnavailable) => {
+                observed_crash = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    // Windows discards writes into a closed-read-end pipe instead of erroring,
+    // so the writer never dies and the hung case can't be driven here — skip.
+    if !observed_crash {
+        eprintln!(
+            "test skipped — host writes to a closed-stdin pipe did not fail on this platform"
+        );
+        let _ = lease.release().await;
+        return;
+    }
+
+    // The send path detected the dead writer while the reader saw NO EOF
+    // (stdout still open) — the lease MUST be flipped to Failed for recovery.
+    let mut state = lease.state();
+    for _ in 0..20 {
+        if state == LeaseState::Failed {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        state = lease.state();
+    }
+    assert_eq!(
+        state,
+        LeaseState::Failed,
+        "send-side crash detection must flip the lease to Failed (reader saw no EOF)"
+    );
+
+    let _ = lease.release().await;
+}
