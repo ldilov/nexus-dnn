@@ -229,8 +229,8 @@ async fn worker_exit_flips_lease_to_failed_for_recovery() {
         return;
     };
 
-    // Simulate a live lease (a successful handshake would set this).
-    lease.set_state(LeaseState::Ready);
+    // Lease is live (`Starting`); the reader must flip it on the worker's EOF.
+    // (Ready/Busy behave identically — see `reader_exit_tests`.)
 
     // Condition-based wait: poll until the reader observes EOF and flips state.
     let mut state = lease.state();
