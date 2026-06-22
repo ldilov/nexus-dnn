@@ -67,6 +67,7 @@ export interface RenderParams {
   blocks_to_swap?: number;
   teacache_multiplier?: number;
   solver?: "euler" | "heun" | "euler_ancestral";
+  sigma_preset?: "auto" | "distilled_4step";
   use_torch_compile?: boolean;
   torch_compile_mode?: TorchCompileMode;
   svi_lora_tier?: SviLoraTier;
