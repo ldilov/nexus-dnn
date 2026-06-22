@@ -348,11 +348,14 @@ async fn reader_loop(
     fanout: NotificationFanout,
     state: Arc<Mutex<LeaseState>>,
 ) {
+    let lease_id = fanout.lease_id();
+    let mut progress = super::progress_log::ProgressThrottle::default();
     let mut buf = BufReader::new(stdout);
     loop {
         match read_frame(&mut buf).await {
             Ok(Some(IncomingFrame::Response(resp))) => matchmaker.resolve(resp),
             Ok(Some(IncomingFrame::Notification(n))) => {
+                super::progress_log::log_notification(lease_id, &n, &mut progress);
                 fanout.publish(n);
             }
             Ok(Some(IncomingFrame::ParseError(e))) => {

@@ -1776,6 +1776,8 @@ def _run_render(
                 def _on_step(
                     step: int, total_steps: int, seconds: float, _clip_idx: int = clip_idx
                 ) -> None:
+                    # ETA for the remaining steps of THIS clip at the latest rate.
+                    eta = max(total_steps - step, 0) * seconds
                     _notify(
                         worker,
                         "svi2.video.clip.step",
@@ -1784,6 +1786,7 @@ def _run_render(
                             "step": step,
                             "total_steps": total_steps,
                             "seconds_per_step": round(seconds, 2),
+                            "eta_seconds": round(eta, 1),
                         },
                     )
                     fraction = 0.07 + denoise_span * (_clip_idx + step / max(total_steps, 1))

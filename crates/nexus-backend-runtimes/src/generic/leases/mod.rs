@@ -17,6 +17,7 @@ pub mod handshake;
 pub mod manager;
 pub mod matchmaker;
 pub mod notifications;
+pub mod progress_log;
 pub mod repo;
 pub mod sqlite;
 pub mod stdio_lease;
