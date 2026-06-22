@@ -906,7 +906,10 @@ impl DeploymentMappers {
         .bind(recipe_key)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.iter().map(map_preset_row).collect())
+        Ok(rows
+            .iter()
+            .map(map_preset_row)
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     pub async fn get_preset(&self, id: &str) -> Result<Option<RawPreset>, StorageError> {
@@ -917,7 +920,7 @@ impl DeploymentMappers {
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(|r| map_preset_row(&r)))
+        Ok(row.map(|r| map_preset_row(&r)).transpose()?)
     }
 
     pub async fn update_preset_meta(
@@ -1036,25 +1039,19 @@ fn map_extension_settings_row(r: &sqlx::sqlite::SqliteRow) -> RawExtensionSettin
     }
 }
 
-fn map_preset_row(r: &sqlx::sqlite::SqliteRow) -> RawPreset {
-    RawPreset {
-        id: r.try_get("id").unwrap_or_default(),
-        recipe_key: r.try_get("recipe_key").unwrap_or_default(),
-        source_extension_id: r
-            .try_get::<Option<String>, _>("source_extension_id")
-            .ok()
-            .flatten(),
-        name: r.try_get("name").unwrap_or_default(),
-        description: r.try_get::<Option<String>, _>("description").ok().flatten(),
-        payload_json: r.try_get("payload_json").unwrap_or_default(),
-        integrity_digest: r.try_get("integrity_digest").unwrap_or_default(),
-        created_from_deployment_id: r
-            .try_get::<Option<String>, _>("created_from_deployment_id")
-            .ok()
-            .flatten(),
-        created_at: r.try_get("created_at").unwrap_or_default(),
-        updated_at: r.try_get("updated_at").unwrap_or_default(),
-    }
+fn map_preset_row(r: &sqlx::sqlite::SqliteRow) -> Result<RawPreset, sqlx::Error> {
+    Ok(RawPreset {
+        id: r.try_get("id")?,
+        recipe_key: r.try_get("recipe_key")?,
+        source_extension_id: r.try_get::<Option<String>, _>("source_extension_id")?,
+        name: r.try_get("name")?,
+        description: r.try_get::<Option<String>, _>("description")?,
+        payload_json: r.try_get("payload_json")?,
+        integrity_digest: r.try_get("integrity_digest")?,
+        created_from_deployment_id: r.try_get::<Option<String>, _>("created_from_deployment_id")?,
+        created_at: r.try_get("created_at")?,
+        updated_at: r.try_get("updated_at")?,
+    })
 }
 
 fn row_to_deployment(r: sqlx::sqlite::SqliteRow) -> DeploymentRowRaw {
