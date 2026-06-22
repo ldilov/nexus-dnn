@@ -1,12 +1,14 @@
-import { type ReactElement, useCallback, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm_dialog";
 import { Panel } from "../../components/ui/panel";
 import { FIELDS, TIERS } from "../../domain/fields";
 import { presetRequiresLastImage } from "../../domain/validation";
-import { listRenderJobs } from "../../services/history_client";
+import { deleteRenderJob, listRenderJobs } from "../../services/history_client";
 import { listPresets } from "../../services/presets_client";
+import { cancelRender } from "../../services/render_client";
 import type { RenderJob } from "../../services/types";
 import { useRenderRequest } from "../../store/render_request_store";
 import { AnchorInputs } from "./components/anchor_inputs";
@@ -95,6 +97,66 @@ export function RecipeView(): ReactElement {
   }, [pendingRestoreId, jobs, restoreJobIntoForm]);
 
   const cancelRestore = useCallback(() => setPendingRestoreId(null), []);
+
+  // Delete-from-history with an undo window: hide the row immediately and only
+  // commit the delete after UNDO_MS, so Undo just cancels the pending delete.
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const refreshHistory = historyQuery.mutate;
+
+  useEffect(() => {
+    const timers = deleteTimers.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
+
+  const handleDeleteJob = useCallback(
+    (job: RenderJob) => {
+      const id = job.id;
+      const wasActive = job.status === "running" || job.status === "queued";
+      setHiddenIds((prev) => new Set(prev).add(id));
+      const existing = deleteTimers.current.get(id);
+      if (existing) clearTimeout(existing);
+      const unhide = (target: string) =>
+        setHiddenIds((prev) => {
+          const next = new Set(prev);
+          next.delete(target);
+          return next;
+        });
+      const timer = setTimeout(() => {
+        deleteTimers.current.delete(id);
+        void (async () => {
+          try {
+            // Running renders are cancelled before the row is dropped.
+            if (wasActive) await cancelRender(id).catch(() => undefined);
+            await deleteRenderJob(id);
+            await refreshHistory();
+            unhide(id);
+          } catch {
+            unhide(id);
+            toast.error("Couldn't delete that render.");
+          }
+        })();
+      }, 5000);
+      deleteTimers.current.set(id, timer);
+      toast.success("Render removed", {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            const t = deleteTimers.current.get(id);
+            if (t) clearTimeout(t);
+            deleteTimers.current.delete(id);
+            unhide(id);
+          },
+        },
+      });
+    },
+    [refreshHistory],
+  );
+
+  const visibleJobs = hiddenIds.size === 0 ? jobs : jobs.filter((j) => !hiddenIds.has(j.id));
 
   return (
     <div className={styles.layout}>
@@ -200,7 +262,7 @@ export function RecipeView(): ReactElement {
         </Panel>
 
         <Panel title="History" description="Past renders for this deployment.">
-          <HistoryList jobs={jobs} onOpen={handleOpenJob} />
+          <HistoryList jobs={visibleJobs} onOpen={handleOpenJob} onDelete={handleDeleteJob} />
         </Panel>
       </div>
     </div>
