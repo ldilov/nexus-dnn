@@ -114,3 +114,43 @@ fn contains_secret(value: &Value) -> bool {
     let serialized = value.to_string().to_lowercase();
     SECRET_PATTERNS.iter().any(|p| serialized.contains(p))
 }
+
+/// Re-scan a fully-formed envelope for secret-like keys/values. The host export
+/// path already scans at build time; this guards the save-from-import preset
+/// path, where the envelope comes from a client-supplied file.
+pub fn envelope_contains_secret(envelope: &ExportEnvelope) -> bool {
+    if contains_secret(&envelope.deployment) || envelope.revisions.iter().any(contains_secret) {
+        return true;
+    }
+    match serde_json::to_value(&envelope.extension_settings) {
+        Ok(v) => contains_secret(&v),
+        // Unserializable settings are anomalous — treat as unsafe.
+        Err(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod secret_scan_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn env(deployment: serde_json::Value, settings: serde_json::Value) -> ExportEnvelope {
+        ExportEnvelope {
+            package_version: 1,
+            deployment,
+            revisions: vec![json!({})],
+            extension_settings: vec![ExtensionSettingsBundle {
+                extension_id: "x".into(),
+                settings,
+                schema_fingerprint: None,
+            }],
+            integrity: Integrity { hash_algo: "x".into(), digest: "0".repeat(64) },
+        }
+    }
+
+    #[test]
+    fn flags_secret_in_settings_and_passes_clean() {
+        assert!(envelope_contains_secret(&env(json!({}), json!({"api_key": "sk-1"}))));
+        assert!(!envelope_contains_secret(&env(json!({"display_name": "ok"}), json!({"speed": 1.5}))));
+    }
+}
