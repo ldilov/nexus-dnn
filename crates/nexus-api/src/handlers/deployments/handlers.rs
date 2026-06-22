@@ -5,7 +5,7 @@ use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use nexus_deployments::DeploymentRepository;
 use nexus_deployments::id::{DeploymentId, DeploymentRevisionId};
 use nexus_deployments::repository::{ListFilter, MetadataPatch};
@@ -14,6 +14,7 @@ use nexus_deployments::service::execute::DeploymentExecuteService;
 use nexus_deployments::service::export::DeploymentExportService;
 use nexus_deployments::service::import::DeploymentImportService;
 use nexus_deployments::service::load::DeploymentLoadService;
+use nexus_deployments::service::preset::{DeploymentPresetService, recipe_key_of};
 use nexus_deployments::service::save::{DeploymentSaveService, SaveRequest};
 use nexus_deployments::service::validate::DeploymentValidateService;
 use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
@@ -46,6 +47,12 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/clone", post(clone_deployment))
         .route("/{id}/export", post(export))
         .route("/{id}/import", post(import_into))
+        .route("/{id}/presets", get(list_presets).post(create_preset))
+        .route(
+            "/{id}/presets/{preset_id}",
+            patch(rename_preset).delete(delete_preset),
+        )
+        .route("/{id}/presets/{preset_id}/apply", post(apply_preset))
         .route(
             "/{id}/extension-settings/{ext_id}",
             get(get_extension_settings)
@@ -660,6 +667,239 @@ async fn delete_extension_settings(
     }
 }
 
+#[derive(Debug, Serialize)]
+struct PresetSummaryDto {
+    id: String,
+    name: String,
+    description: Option<String>,
+    recipe_key: String,
+    source_extension_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+fn preset_summary(p: nexus_deployments::repository::PresetRow) -> PresetSummaryDto {
+    PresetSummaryDto {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        recipe_key: p.recipe_key,
+        source_extension_id: p.source_extension_id,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+    }
+}
+
+/// Resolve the deployment + its recipe_key, mapping errors to a response.
+/// Returns `Err(response)` when the deployment is missing (404) or unbound (422).
+async fn deployment_recipe_key(
+    state: &AppState,
+    id: &str,
+) -> Result<
+    (
+        DeploymentId,
+        nexus_deployments::repository::DeploymentRow,
+        String,
+    ),
+    axum::response::Response,
+> {
+    let did = DeploymentId::from_str(id).map_err(|_| bad_id_response())?;
+    let repo = repo_for(state);
+    let deployment = repo.fetch_deployment(&did).await.map_err(err_to_response)?;
+    let recipe_key = recipe_key_of(&deployment).map_err(err_to_response)?;
+    Ok((did, deployment, recipe_key))
+}
+
+async fn list_presets(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    let (_did, _deployment, recipe_key) = match deployment_recipe_key(&state, &id).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+    let svc = DeploymentPresetService::new(repo_for(&state));
+    match svc.list(&recipe_key).await {
+        Ok(rows) => {
+            #[derive(Serialize)]
+            struct L {
+                presets: Vec<PresetSummaryDto>,
+            }
+            (
+                StatusCode::OK,
+                Json(ApiResponse::ok(L {
+                    presets: rows.into_iter().map(preset_summary).collect(),
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+enum CreatePresetBody {
+    Current {
+        name: String,
+        #[serde(default)]
+        description: Option<String>,
+    },
+    Envelope {
+        name: String,
+        #[serde(default)]
+        description: Option<String>,
+        envelope: nexus_deployments::service::export::ExportEnvelope,
+    },
+}
+
+async fn create_preset(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<CreatePresetBody>,
+) -> impl IntoResponse {
+    let (did, deployment, recipe_key) = match deployment_recipe_key(&state, &id).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+    let source_ext = deployment.source_extension_id.clone();
+    let svc = DeploymentPresetService::new(repo_for(&state));
+    let result = match body {
+        CreatePresetBody::Current { name, description } => {
+            svc.create_from_deployment(
+                &did,
+                &recipe_key,
+                source_ext.as_deref(),
+                &name,
+                description.as_deref(),
+            )
+            .await
+        }
+        CreatePresetBody::Envelope {
+            name,
+            description,
+            envelope,
+        } => {
+            svc.create_from_envelope(
+                &did,
+                &recipe_key,
+                source_ext.as_deref(),
+                envelope,
+                &name,
+                description.as_deref(),
+            )
+            .await
+        }
+    };
+    match result {
+        Ok(row) => (
+            StatusCode::CREATED,
+            Json(ApiResponse::ok(preset_summary(row))),
+        )
+            .into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RenamePresetBody {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+/// Confirm a preset id belongs to the deployment's recipe family before
+/// mutating/applying it. Returns 404 for a foreign-recipe preset so ids cannot
+/// be used to reach across recipe families.
+async fn preset_in_family(
+    state: &AppState,
+    recipe_key: &str,
+    preset_id: &str,
+) -> Result<(), axum::response::Response> {
+    let svc = DeploymentPresetService::new(repo_for(state));
+    match svc.get(preset_id).await {
+        Ok(p) if p.recipe_key == recipe_key => Ok(()),
+        Ok(_) => Err(err_to_response(
+            nexus_deployments::DeploymentError::PresetNotFound(preset_id.to_owned()),
+        )),
+        Err(e) => Err(err_to_response(e)),
+    }
+}
+
+async fn rename_preset(
+    State(state): State<AppState>,
+    Path((id, preset_id)): Path<(String, String)>,
+    Json(body): Json<RenamePresetBody>,
+) -> impl IntoResponse {
+    let (_did, _deployment, recipe_key) = match deployment_recipe_key(&state, &id).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+    if let Err(resp) = preset_in_family(&state, &recipe_key, &preset_id).await {
+        return resp;
+    }
+    let svc = DeploymentPresetService::new(repo_for(&state));
+    match svc
+        .rename(&preset_id, &body.name, body.description.as_deref())
+        .await
+    {
+        Ok(row) => (StatusCode::OK, Json(ApiResponse::ok(preset_summary(row)))).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+async fn delete_preset(
+    State(state): State<AppState>,
+    Path((id, preset_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let (_did, _deployment, recipe_key) = match deployment_recipe_key(&state, &id).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+    if let Err(resp) = preset_in_family(&state, &recipe_key, &preset_id).await {
+        return resp;
+    }
+    let svc = DeploymentPresetService::new(repo_for(&state));
+    match svc.delete(&preset_id).await {
+        Ok(()) => (StatusCode::NO_CONTENT, ()).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+async fn apply_preset(
+    State(state): State<AppState>,
+    Path((id, preset_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let (did, _deployment, recipe_key) = match deployment_recipe_key(&state, &id).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+    let svc = DeploymentPresetService::new(repo_for(&state));
+    let preset = match svc.get(&preset_id).await {
+        Ok(p) => p,
+        Err(e) => return err_to_response(e),
+    };
+    if preset.recipe_key != recipe_key {
+        return err_to_response(nexus_deployments::DeploymentError::PresetNotFound(
+            preset_id,
+        ));
+    }
+    let envelope: nexus_deployments::service::export::ExportEnvelope =
+        match serde_json::from_str(&preset.payload_json) {
+            Ok(env) => env,
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse::<()>::err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "deployment.preset_corrupt",
+                        "deployment",
+                        String::from("stored preset payload is not a valid envelope"),
+                    )),
+                )
+                    .into_response();
+            }
+        };
+    perform_import_into(&state, &did, envelope).await
+}
+
 fn err_to_response(e: nexus_deployments::DeploymentError) -> axum::response::Response {
     use nexus_deployments::DeploymentError::*;
     let (status, code) = match &e {
@@ -682,6 +922,12 @@ fn err_to_response(e: nexus_deployments::DeploymentError) -> axum::response::Res
             "deployment.export_blocked_by_secret",
         ),
         PathOutsideWorkspace(_) => (StatusCode::BAD_REQUEST, "deployment.path_outside_workspace"),
+        PresetNotFound(_) => (StatusCode::NOT_FOUND, "deployment.preset_not_found"),
+        PresetNameConflict(_) => (StatusCode::CONFLICT, "deployment.preset_name_conflict"),
+        PresetUnsupported(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "deployment.preset_unsupported",
+        ),
         _ => (StatusCode::INTERNAL_SERVER_ERROR, "deployment.error"),
     };
     let body = serde_json::json!({"status":"error","code":code,"message":e.to_string()});
