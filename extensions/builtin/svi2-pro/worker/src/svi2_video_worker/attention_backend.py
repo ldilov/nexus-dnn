@@ -131,29 +131,44 @@ def _attn_flash3(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, causal: bool
     return out.transpose(1, 2)
 
 
+def _sage_pv_mode() -> str:
+    """PV-accumulator strategy for sage2 on Blackwell. fp8 (default, fastest:
+    fp32+fp16 accum), fp16 (INT8-QK / FP16-PV — the safe fallback when FP8-PV
+    overflows to black/noise on Wan video), or fp32 (fp8 QK with fp32+fp32
+    accum — slowest, most accurate)."""
+    return os.environ.get("SVI2_SAGE_PV", "fp8").strip().lower()
+
+
 def _attn_sage2(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, causal: bool) -> torch.Tensor:
     import sageattention
 
-    # Blackwell (sm120) parity with Wan2GP: explicit INT8-QK / FP8-PV CUDA
-    # variant with per-warp quant granularity. pv_accum_dtype + smooth_v track
     if _SM >= (12, 0):
-        fn = getattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda", None)
-        if fn is not None:
-            ver = _SAGE_VERSION
-            kwargs: dict = dict(
-                tensor_layout="HND",
-                is_causal=causal,
-                qk_quant_gran="per_warp",
-            )
-            if ver is not None and ver >= (2, 2):
-                kwargs["pv_accum_dtype"] = "fp32+fp16"
-            else:
-                kwargs["pv_accum_dtype"] = "fp32"
-                kwargs["smooth_v"] = True
-            try:
-                return fn(q, k, v, **kwargs)
-            except TypeError:
-                pass  # signature drift across versions -> high-level selector
+        mode = _sage_pv_mode()
+        ver = _SAGE_VERSION
+        if mode == "fp16":
+            fn = getattr(sageattention, "sageattn_qk_int8_pv_fp16_cuda", None)
+            if fn is not None:
+                try:
+                    return fn(q, k, v, tensor_layout="HND", is_causal=causal, qk_quant_gran="per_warp")
+                except TypeError:
+                    pass
+        else:
+            fn = getattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda", None)
+            if fn is not None:
+                kwargs: dict = dict(tensor_layout="HND", is_causal=causal, qk_quant_gran="per_warp")
+                if mode == "fp32":
+                    kwargs["pv_accum_dtype"] = "fp32+fp32"
+                elif ver is not None and ver >= (2, 2):
+                    # Blackwell: smooth_v no-ops/warns when combined with fp32+fp16.
+                    kwargs["pv_accum_dtype"] = "fp32+fp16"
+                    kwargs["smooth_v"] = False
+                else:
+                    kwargs["pv_accum_dtype"] = "fp32"
+                    kwargs["smooth_v"] = True
+                try:
+                    return fn(q, k, v, **kwargs)
+                except TypeError:
+                    pass  # signature drift across versions -> high-level selector
     return sageattention.sageattn(q, k, v, tensor_layout="HND", is_causal=causal)
 
 

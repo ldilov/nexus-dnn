@@ -591,6 +591,7 @@ rtx-upscale = [
     { name = "nvidia-vfx", marker = "sys_platform == 'win32'" },
 ]
 sage = [
+    { name = "sageattention", marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
     { name = "sageattn3", version = "1.0.0", source = { path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
     { name = "sageattn3", version = "1.0.0+cu132torch2.12.thuml", source = { path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl" }, marker = "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
@@ -628,6 +629,7 @@ requires-dist = [
     { name = "regex", marker = "extra == 'diffusers'", specifier = ">=2024.0" },
     { name = "safetensors", marker = "extra == 'diffusers'", specifier = ">=0.4" },
     { name = "safetensors", marker = "extra == 'test'", specifier = ">=0.4" },
+    { name = "sageattention", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'sage'", path = "../../../../binaries/linux-aarch64/sageattention-2.2.0-cp312-cp312-linux_aarch64.whl" },
     { name = "sageattn3", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'sage'", path = "../../../../binaries/linux-aarch64/sageattn3-1.0.0+cu132torch2.12.thuml-cp312-cp312-linux_aarch64.whl" },
     { name = "sageattn3", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'sage'", path = "../../../../binaries/win-amd64/sageattn3-1.0.0+cu131torch2.12.mengqin-cp312-cp312-win_amd64.whl" },
     { name = "sentencepiece", marker = "extra == 'diffusers'", specifier = ">=0.2" },
@@ -1190,6 +1192,14 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/d8/0c8a7dc9b41dcac53c4cbf9df2b9c83e0e0097203de8b37a712b345c0be5/safetensors-0.7.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:b0f6d66c1c538d5a94a73aa9ddca8ccc4227e6c9ff555322ea40bdd142391dd4", size = 677368, upload-time = "2025-11-19T15:18:41.627Z" },
     { url = "https://files.pythonhosted.org/packages/05/e5/cb4b713c8a93469e3c5be7c3f8d77d307e65fe89673e731f5c2bfd0a9237/safetensors-0.7.0-cp38-abi3-win32.whl", hash = "sha256:c74af94bf3ac15ac4d0f2a7c7b4663a15f8c2ab15ed0fc7531ca61d0835eccba", size = 326423, upload-time = "2025-11-19T15:18:45.74Z" },
     { url = "https://files.pythonhosted.org/packages/5d/e6/ec8471c8072382cb91233ba7267fd931219753bb43814cbc71757bfd4dab/safetensors-0.7.0-cp38-abi3-win_amd64.whl", hash = "sha256:d1239932053f56f3456f32eb9625590cc7582e905021f94636202a864d470755", size = 341380, upload-time = "2025-11-19T15:18:44.427Z" },
+]
+
+[[package]]
+name = "sageattention"
+version = "2.2.0"
+source = { path = "../../../../binaries/linux-aarch64/sageattention-2.2.0-cp312-cp312-linux_aarch64.whl" }
+wheels = [
+    { filename = "sageattention-2.2.0-cp312-cp312-linux_aarch64.whl", hash = "sha256:9152c9270569d379ed7bf389eb9a92ff7dd6e18f9b43de783be04c9ebcd7f548" },
 ]
 
 [[package]]
