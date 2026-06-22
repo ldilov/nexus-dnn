@@ -67,6 +67,10 @@ async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
         .clone()
         .map(|bus| RunNodeEmitter::new(bus, job_id.as_str().to_string()));
 
+    // Count this render in-flight right before spawning it (no fallible await
+    // in between), so the worker stays warm until the last render finishes.
+    state.provider.begin_render().await;
+
     spawn_render(RenderTask {
         job_id: job_id.clone(),
         params: prepared,
@@ -74,6 +78,7 @@ async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
         store: state.store.clone(),
         channels: state.channels.clone(),
         emitter,
+        provider: state.provider.clone(),
     });
 
     Ok(job_id)
