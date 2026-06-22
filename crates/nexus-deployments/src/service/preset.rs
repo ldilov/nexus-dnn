@@ -214,8 +214,8 @@ mod recipe_key_tests {
     #[test]
     fn prefers_extension_binding() {
         assert_eq!(
-            recipe_key_of(&row(Some("nexus.video.svi2-pro"), Some("wf"))).unwrap(),
-            "nexus.video.svi2-pro"
+            recipe_key_of(&row(Some("test.extension"), Some("wf"))).unwrap(),
+            "test.extension"
         );
     }
 
