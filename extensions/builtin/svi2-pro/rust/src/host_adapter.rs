@@ -390,9 +390,9 @@ fn map_error_host_to_ext(e: HostLeaseError) -> ExtLeaseError {
             }
         }
         HostLeaseError::WorkerCrashed => ExtLeaseError::WorkerCrashed,
-        HostLeaseError::RuntimeUnavailable => {
-            ExtLeaseError::Transport("runtime unavailable".into())
-        }
+        // A Failed/Released lease (e.g. after the worker died) surfaces as
+        // WorkerCrashed → Svi2Error::RuntimeUnavailable, not an opaque Internal.
+        HostLeaseError::RuntimeUnavailable => ExtLeaseError::WorkerCrashed,
         HostLeaseError::Timeout => ExtLeaseError::Timeout,
         HostLeaseError::PayloadTooLarge => ExtLeaseError::Transport("payload too large".into()),
         HostLeaseError::CrashRecovered => ExtLeaseError::WorkerCrashed,
