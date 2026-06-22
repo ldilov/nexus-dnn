@@ -398,15 +398,24 @@ async fn import_into(
     Path(id): Path<String>,
     Json(body): Json<ImportBody>,
 ) -> impl IntoResponse {
-    let repo = repo_for(&state);
     let did = match DeploymentId::from_str(&id) {
         Ok(d) => d,
         Err(_) => return bad_id_response(),
     };
+    perform_import_into(&state, &did, body.envelope).await
+}
 
-    // Pre-validate + host-recompute each bundle's fingerprint BEFORE any write.
-    // A schema violation (422) returns here, leaving the deployment untouched.
-    let mut envelope = body.envelope;
+/// Shared replace-in-place path used by both `POST /{id}/import` and
+/// `POST /{id}/presets/{preset_id}/apply`. Pre-validates + host-recomputes each
+/// bundle's schema fingerprint BEFORE any write (a 422 returns here, leaving the
+/// deployment untouched), derives missing dependencies host-side, then runs the
+/// atomic replace.
+async fn perform_import_into(
+    state: &AppState,
+    did: &DeploymentId,
+    mut envelope: nexus_deployments::service::export::ExportEnvelope,
+) -> axum::response::Response {
+    let repo = repo_for(state);
     let mut prepared = Vec::with_capacity(envelope.extension_settings.len());
     for bundle in &envelope.extension_settings {
         let fingerprint = match state
@@ -439,13 +448,11 @@ async fn import_into(
         bundle.schema_fingerprint = fingerprint;
     }
 
-    // Derive missing dependencies host-side from the envelope vs the registry —
-    // never trust a client-supplied list to set persisted restore_state.
     let missing = nexus_deployments::service::import::missing_extensions(&envelope, |id| {
         state.extension_registry.get_extension(id).is_some()
     });
     let svc = DeploymentImportService::new(repo);
-    match svc.import_into(&did, envelope, missing).await {
+    match svc.import_into(did, envelope, missing).await {
         Ok((res, _events)) => {
             #[derive(Serialize)]
             struct I {
