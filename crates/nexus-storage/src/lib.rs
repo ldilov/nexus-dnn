@@ -16,7 +16,7 @@ pub use records::{
 };
 pub use sqlite::SqliteDatabase;
 pub use sqlite::deployments::{
-    DeploymentMappers, DeploymentRowRaw, RawExtensionSettings, ReplaceInPlaceSettings,
+    DeploymentMappers, DeploymentRowRaw, RawExtensionSettings, RawPreset, ReplaceInPlaceSettings,
     RevisionRowRaw,
 };
 pub use sqlite::extensions::{upsert_icon, upsert_primary_refs};

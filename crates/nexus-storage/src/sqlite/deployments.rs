@@ -861,6 +861,94 @@ impl DeploymentMappers {
             .await?;
         Ok(())
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_preset(
+        &self,
+        id: &str,
+        recipe_key: &str,
+        source_extension_id: Option<&str>,
+        name: &str,
+        description: Option<&str>,
+        payload_json: &str,
+        integrity_digest: &str,
+        created_from_deployment_id: Option<&str>,
+        created_at: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO deployment_presets (id, recipe_key, source_extension_id, name, description, payload_json, integrity_digest, created_from_deployment_id, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(recipe_key)
+        .bind(source_extension_id)
+        .bind(name)
+        .bind(description)
+        .bind(payload_json)
+        .bind(integrity_digest)
+        .bind(created_from_deployment_id)
+        .bind(created_at)
+        .bind(updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_presets_by_recipe_key(
+        &self,
+        recipe_key: &str,
+    ) -> Result<Vec<RawPreset>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, recipe_key, source_extension_id, name, description, payload_json, integrity_digest, created_from_deployment_id, created_at, updated_at \
+             FROM deployment_presets WHERE recipe_key = ? ORDER BY name",
+        )
+        .bind(recipe_key)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .iter()
+            .map(map_preset_row)
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub async fn get_preset(&self, id: &str) -> Result<Option<RawPreset>, StorageError> {
+        let row = sqlx::query(
+            "SELECT id, recipe_key, source_extension_id, name, description, payload_json, integrity_digest, created_from_deployment_id, created_at, updated_at \
+             FROM deployment_presets WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| map_preset_row(&r)).transpose()?)
+    }
+
+    pub async fn update_preset_meta(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+        updated_at: &str,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            "UPDATE deployment_presets SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(name)
+        .bind(description)
+        .bind(updated_at)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn delete_preset(&self, id: &str) -> Result<u64, StorageError> {
+        let res = sqlx::query("DELETE FROM deployment_presets WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
 }
 
 pub struct DeploymentRowRaw {
@@ -914,6 +1002,19 @@ pub struct RawExtensionSettings {
     pub updated_at: String,
 }
 
+pub struct RawPreset {
+    pub id: String,
+    pub recipe_key: String,
+    pub source_extension_id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub payload_json: String,
+    pub integrity_digest: String,
+    pub created_from_deployment_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Borrowed inputs for one extension-settings row passed to
 /// [`DeploymentMappers::replace_in_place`].
 pub struct ReplaceInPlaceSettings<'a> {
@@ -936,6 +1037,21 @@ fn map_extension_settings_row(r: &sqlx::sqlite::SqliteRow) -> RawExtensionSettin
         created_at: r.try_get("created_at").unwrap_or_default(),
         updated_at: r.try_get("updated_at").unwrap_or_default(),
     }
+}
+
+fn map_preset_row(r: &sqlx::sqlite::SqliteRow) -> Result<RawPreset, sqlx::Error> {
+    Ok(RawPreset {
+        id: r.try_get("id")?,
+        recipe_key: r.try_get("recipe_key")?,
+        source_extension_id: r.try_get::<Option<String>, _>("source_extension_id")?,
+        name: r.try_get("name")?,
+        description: r.try_get::<Option<String>, _>("description")?,
+        payload_json: r.try_get("payload_json")?,
+        integrity_digest: r.try_get("integrity_digest")?,
+        created_from_deployment_id: r.try_get::<Option<String>, _>("created_from_deployment_id")?,
+        created_at: r.try_get("created_at")?,
+        updated_at: r.try_get("updated_at")?,
+    })
 }
 
 fn row_to_deployment(r: sqlx::sqlite::SqliteRow) -> DeploymentRowRaw {

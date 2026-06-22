@@ -2,13 +2,14 @@ use crate::error::DeploymentError;
 use crate::id::{DeploymentId, DeploymentRevisionId};
 use crate::repository::{
     DeploymentRepository, DeploymentRow, ExtensionSettingsRow, ListFilter, MetadataPatch,
-    NewArtifactBinding, NewDeployment, NewModelBinding, NewParameter, NewRestoreDiagnostic,
-    NewRevision, NewRunLink, NewRuntimeBinding, NewSnapshot, NewSourceLink, NewValidation,
-    ReplaceInPlace, RevisionRow,
+    NewArtifactBinding, NewDeployment, NewModelBinding, NewParameter, NewPreset,
+    NewRestoreDiagnostic, NewRevision, NewRunLink, NewRuntimeBinding, NewSnapshot, NewSourceLink,
+    NewValidation, PresetRow, ReplaceInPlace, RevisionRow,
 };
 use async_trait::async_trait;
 use nexus_storage::DeploymentMappers;
 use nexus_storage::RawExtensionSettings;
+use nexus_storage::RawPreset;
 use nexus_storage::ReplaceInPlaceSettings;
 use std::str::FromStr;
 
@@ -541,6 +542,65 @@ impl DeploymentRepository for SqliteDeploymentRepository {
             .await?;
         Ok(revision_number)
     }
+
+    async fn insert_preset(&self, row: NewPreset) -> Result<(), DeploymentError> {
+        self.inner
+            .insert_preset(
+                &row.id,
+                &row.recipe_key,
+                row.source_extension_id.as_deref(),
+                &row.name,
+                row.description.as_deref(),
+                &row.payload_json,
+                &row.integrity_digest,
+                row.created_from_deployment_id.as_deref(),
+                &row.created_at,
+                &row.updated_at,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn list_presets_by_recipe_key(
+        &self,
+        recipe_key: &str,
+    ) -> Result<Vec<PresetRow>, DeploymentError> {
+        let raws = self.inner.list_presets_by_recipe_key(recipe_key).await?;
+        Ok(raws.into_iter().map(to_preset_row).collect())
+    }
+
+    async fn get_preset(&self, id: &str) -> Result<PresetRow, DeploymentError> {
+        self.inner
+            .get_preset(id)
+            .await?
+            .map(to_preset_row)
+            .ok_or_else(|| DeploymentError::PresetNotFound(id.to_owned()))
+    }
+
+    async fn update_preset_meta(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<(), DeploymentError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let affected = self
+            .inner
+            .update_preset_meta(id, name, description, &now)
+            .await?;
+        if affected == 0 {
+            return Err(DeploymentError::PresetNotFound(id.to_owned()));
+        }
+        Ok(())
+    }
+
+    async fn delete_preset(&self, id: &str) -> Result<(), DeploymentError> {
+        let affected = self.inner.delete_preset(id).await?;
+        if affected == 0 {
+            return Err(DeploymentError::PresetNotFound(id.to_owned()));
+        }
+        Ok(())
+    }
 }
 
 fn to_settings_row(raw: RawExtensionSettings) -> ExtensionSettingsRow {
@@ -550,6 +610,21 @@ fn to_settings_row(raw: RawExtensionSettings) -> ExtensionSettingsRow {
         extension_id: raw.extension_id,
         settings_json: raw.settings_json,
         settings_schema_fingerprint: raw.settings_schema_fingerprint,
+        created_at: raw.created_at,
+        updated_at: raw.updated_at,
+    }
+}
+
+fn to_preset_row(raw: RawPreset) -> PresetRow {
+    PresetRow {
+        id: raw.id,
+        recipe_key: raw.recipe_key,
+        source_extension_id: raw.source_extension_id,
+        name: raw.name,
+        description: raw.description,
+        payload_json: raw.payload_json,
+        integrity_digest: raw.integrity_digest,
+        created_from_deployment_id: raw.created_from_deployment_id,
         created_at: raw.created_at,
         updated_at: raw.updated_at,
     }
