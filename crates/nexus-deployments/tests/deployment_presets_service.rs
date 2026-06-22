@@ -41,7 +41,10 @@ async fn new_deployment(repo: &Arc<dyn DeploymentRepository>, slug: &str) -> Dep
         ui_restore_json: None,
         execution_policy_json: None,
     };
-    let (saved, _) = DeploymentSaveService::new(repo.clone()).save(req).await.unwrap();
+    let (saved, _) = DeploymentSaveService::new(repo.clone())
+        .save(req)
+        .await
+        .unwrap();
     saved.deployment_id
 }
 
@@ -64,7 +67,10 @@ async fn create_from_deployment_snapshots_settings_under_recipe_key() {
     assert_eq!(row.recipe_key, RK);
     assert_eq!(row.name, "Cinematic");
     // payload is the export envelope; it must contain the snapshot settings.
-    assert!(row.payload_json.contains("\"speed\""), "payload carries settings");
+    assert!(
+        row.payload_json.contains("\"speed\""),
+        "payload carries settings"
+    );
 
     let listed = svc.list(RK).await.unwrap();
     assert_eq!(listed.len(), 1);
@@ -76,7 +82,9 @@ async fn duplicate_name_in_same_recipe_is_conflict() {
     let repo = repo().await;
     let dep = new_deployment(&repo, "a").await;
     let svc = DeploymentPresetService::new(repo.clone());
-    svc.create_from_deployment(&dep, RK, None, "dup", None).await.unwrap();
+    svc.create_from_deployment(&dep, RK, None, "dup", None)
+        .await
+        .unwrap();
     let err = svc
         .create_from_deployment(&dep, RK, None, "dup", None)
         .await
@@ -103,11 +111,13 @@ async fn create_from_envelope_rejects_secret_payload() {
         package_version: 1,
         deployment: json!({ "display_name": "x" }),
         revisions: vec![json!({})],
-        extension_settings: vec![nexus_deployments::service::export::ExtensionSettingsBundle {
-            extension_id: "test.ext".into(),
-            settings: json!({ "password": "hunter2" }),
-            schema_fingerprint: None,
-        }],
+        extension_settings: vec![
+            nexus_deployments::service::export::ExtensionSettingsBundle {
+                extension_id: "test.ext".into(),
+                settings: json!({ "password": "hunter2" }),
+                schema_fingerprint: None,
+            },
+        ],
         integrity: nexus_deployments::service::export::Integrity {
             hash_algo: "x".into(),
             digest: "0".repeat(64),
@@ -130,7 +140,10 @@ async fn rename_then_delete() {
     let repo = repo().await;
     let dep = new_deployment(&repo, "a").await;
     let svc = DeploymentPresetService::new(repo.clone());
-    let row = svc.create_from_deployment(&dep, RK, None, "one", None).await.unwrap();
+    let row = svc
+        .create_from_deployment(&dep, RK, None, "one", None)
+        .await
+        .unwrap();
 
     let renamed = svc.rename(&row.id, "two", Some("d2")).await.unwrap();
     assert_eq!(renamed.name, "two");

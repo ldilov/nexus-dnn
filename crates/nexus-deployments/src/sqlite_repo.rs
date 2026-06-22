@@ -2,9 +2,9 @@ use crate::error::DeploymentError;
 use crate::id::{DeploymentId, DeploymentRevisionId};
 use crate::repository::{
     DeploymentRepository, DeploymentRow, ExtensionSettingsRow, ListFilter, MetadataPatch,
-    NewArtifactBinding, NewDeployment, NewModelBinding, NewParameter, NewPreset, NewRestoreDiagnostic,
-    NewRevision, NewRunLink, NewRuntimeBinding, NewSnapshot, NewSourceLink, NewValidation,
-    PresetRow, ReplaceInPlace, RevisionRow,
+    NewArtifactBinding, NewDeployment, NewModelBinding, NewParameter, NewPreset,
+    NewRestoreDiagnostic, NewRevision, NewRunLink, NewRuntimeBinding, NewSnapshot, NewSourceLink,
+    NewValidation, PresetRow, ReplaceInPlace, RevisionRow,
 };
 use async_trait::async_trait;
 use nexus_storage::DeploymentMappers;

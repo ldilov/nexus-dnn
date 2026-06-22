@@ -144,13 +144,22 @@ mod secret_scan_tests {
                 settings,
                 schema_fingerprint: None,
             }],
-            integrity: Integrity { hash_algo: "x".into(), digest: "0".repeat(64) },
+            integrity: Integrity {
+                hash_algo: "x".into(),
+                digest: "0".repeat(64),
+            },
         }
     }
 
     #[test]
     fn flags_secret_in_settings_and_passes_clean() {
-        assert!(envelope_contains_secret(&env(json!({}), json!({"api_key": "sk-1"}))));
-        assert!(!envelope_contains_secret(&env(json!({"display_name": "ok"}), json!({"speed": 1.5}))));
+        assert!(envelope_contains_secret(&env(
+            json!({}),
+            json!({"api_key": "sk-1"})
+        )));
+        assert!(!envelope_contains_secret(&env(
+            json!({"display_name": "ok"}),
+            json!({"speed": 1.5})
+        )));
     }
 }
