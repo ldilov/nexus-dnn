@@ -204,3 +204,57 @@ async fn release_is_idempotent() {
     lease.release().await.unwrap();
     assert_eq!(lease.state(), LeaseState::Released);
 }
+
+/// Regression: when the worker dies on its own (crash / exit, NOT a clean
+/// release), the reader's EOF must flip the lease to `Failed` so the lease
+/// provider discards and replaces it. Before the fix the state stayed
+/// `Ready`, every later RPC hit the dead writer with `WorkerCrashed`, and
+/// only a host restart recovered.
+#[tokio::test]
+async fn worker_exit_flips_lease_to_failed_for_recovery() {
+    // A worker that exits immediately, closing stdout → reader hits EOF.
+    let stub_script = "import sys\nsys.exit(0)\n";
+    let tmp = tempfile::tempdir().unwrap();
+    let stub_path = tmp.path().join("exit_worker.py");
+    std::fs::write(&stub_path, stub_script).unwrap();
+    let spec = LaunchSpec {
+        program: PathBuf::from(python_executable()),
+        args: vec!["-u".into(), stub_path.display().to_string()],
+        env: HashMap::new(),
+        working_dir: None,
+    };
+
+    let Ok(lease) = StdioLease::spawn(spec, RuntimeLeaseId::new()).await else {
+        eprintln!("test skipped — python unavailable");
+        return;
+    };
+
+    // Simulate a live lease (a successful handshake would set this).
+    lease.set_state(LeaseState::Ready);
+
+    // Condition-based wait: poll until the reader observes EOF and flips state.
+    let mut state = lease.state();
+    for _ in 0..40 {
+        if state == LeaseState::Failed {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        state = lease.state();
+    }
+    assert_eq!(
+        state,
+        LeaseState::Failed,
+        "worker exit must flip the lease to Failed for recovery"
+    );
+
+    // The accept gate must now reject new RPCs fast (RuntimeUnavailable),
+    // not block or surface a raw WorkerCrashed from the dead writer.
+    let err = lease
+        .send_rpc("echo", serde_json::json!({"text": "after-crash"}))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, LeaseError::RuntimeUnavailable),
+        "a Failed lease must reject RPCs with RuntimeUnavailable, got {err:?}"
+    );
+}

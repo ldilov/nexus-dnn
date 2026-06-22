@@ -107,21 +107,24 @@ impl StdioLease {
         let matchmaker = Arc::new(Matchmaker::new());
         let fanout = NotificationFanout::new(lease_id);
         let (writer_tx, writer_rx) = mpsc::channel::<WriterCmd>(64);
+        let state = Arc::new(Mutex::new(LeaseState::Starting));
 
         // Writer task — owns ChildStdin.
         let writer_task = tokio::spawn(writer_loop(stdin, writer_rx));
 
-        // Reader task — owns ChildStdout, dispatches to matchmaker + fanout.
+        // Reader task — owns ChildStdout; also flips a live lease to `Failed`
+        // on worker EOF so the dead lease is replaced, not reused (recovery).
         let matchmaker_rd = matchmaker.clone();
         let fanout_rd = fanout.clone();
-        let reader_task = tokio::spawn(reader_loop(stdout, matchmaker_rd, fanout_rd));
+        let state_rd = state.clone();
+        let reader_task = tokio::spawn(reader_loop(stdout, matchmaker_rd, fanout_rd, state_rd));
 
         // Stderr forwarder — log to tracing. Small dedicated task.
         tokio::spawn(stderr_forwarder(stderr, lease_id));
 
         Ok(Arc::new(Self {
             lease_id,
-            state: Arc::new(Mutex::new(LeaseState::Starting)),
+            state,
             matchmaker,
             fanout,
             writer_tx,
@@ -337,6 +340,7 @@ async fn reader_loop(
     stdout: tokio::process::ChildStdout,
     matchmaker: Arc<Matchmaker>,
     fanout: NotificationFanout,
+    state: Arc<Mutex<LeaseState>>,
 ) {
     let mut buf = BufReader::new(stdout);
     loop {
@@ -349,16 +353,38 @@ async fn reader_loop(
                 tracing::warn!(error = e, "worker emitted malformed frame");
             }
             Ok(None) => {
-                // EOF — worker closed stdout.
+                // EOF — worker closed stdout (crash or exit).
+                mark_worker_gone(&state);
                 matchmaker.fail_all(MatchmakerFailure::WorkerCrashed);
                 return;
             }
             Err(e) => {
                 tracing::warn!(error = %e, "reader loop terminated");
+                mark_worker_gone(&state);
                 matchmaker.fail_all(MatchmakerFailure::WorkerCrashed);
                 return;
             }
         }
+    }
+}
+
+/// Flip a live lease to `Failed` when its worker's stdout closes, so the RPC
+/// accept gate rejects further calls and `LeaseProvider` discards and replaces
+/// it. A lease already `Stopping`/`Released`/`Failed` is left untouched — a
+/// clean `release()` closes stdin and the resulting reader EOF is not a crash.
+fn mark_worker_gone(state: &Arc<Mutex<LeaseState>>) {
+    let mut guard = state.lock().expect("lease state mutex poisoned");
+    if let Some(next) = reader_exit_state(*guard) {
+        *guard = next;
+    }
+}
+
+/// State to move to when the reader observes the worker going away, or `None`
+/// to leave the current state (already shutting down or terminal).
+fn reader_exit_state(current: LeaseState) -> Option<LeaseState> {
+    match current {
+        LeaseState::Stopping | LeaseState::Released | LeaseState::Failed => None,
+        LeaseState::Starting | LeaseState::Ready | LeaseState::Busy => Some(LeaseState::Failed),
     }
 }
 
@@ -427,6 +453,29 @@ fn extract_python_logging_level(line: &str) -> Option<StderrLevel> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod reader_exit_tests {
+    use super::*;
+
+    #[test]
+    fn live_states_flip_to_failed() {
+        for s in [LeaseState::Starting, LeaseState::Ready, LeaseState::Busy] {
+            assert_eq!(reader_exit_state(s), Some(LeaseState::Failed), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn shutting_down_or_terminal_states_are_spared() {
+        for s in [
+            LeaseState::Stopping,
+            LeaseState::Released,
+            LeaseState::Failed,
+        ] {
+            assert_eq!(reader_exit_state(s), None, "{s:?}");
+        }
+    }
 }
 
 #[cfg(test)]
