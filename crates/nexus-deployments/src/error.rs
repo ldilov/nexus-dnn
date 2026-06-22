@@ -32,6 +32,12 @@ pub enum DeploymentError {
     HashMismatch,
     #[error("path outside workspace allow-list: {0}")]
     PathOutsideWorkspace(String),
+    #[error("preset {0} not found")]
+    PresetNotFound(String),
+    #[error("a preset named '{0}' already exists for this recipe")]
+    PresetNameConflict(String),
+    #[error("presets are not supported for this deployment: {0}")]
+    PresetUnsupported(String),
     #[error("storage error: {0}")]
     Storage(#[from] nexus_storage::error::StorageError),
     #[error("serde error: {0}")]

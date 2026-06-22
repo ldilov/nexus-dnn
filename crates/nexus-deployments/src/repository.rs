@@ -250,6 +250,37 @@ pub struct ExtensionSettingsRow {
     pub updated_at: String,
 }
 
+/// A persisted, recipe-keyed deployment preset. `payload_json` is the full
+/// `ExportEnvelope` serialized as JSON — opaque to the host.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetRow {
+    pub id: String,
+    pub recipe_key: String,
+    pub source_extension_id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub payload_json: String,
+    pub integrity_digest: String,
+    pub created_from_deployment_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Insert DTO for a new preset.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewPreset {
+    pub id: String,
+    pub recipe_key: String,
+    pub source_extension_id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub payload_json: String,
+    pub integrity_digest: String,
+    pub created_from_deployment_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// One extension-settings bundle for an in-place replace.
 #[derive(Debug, Clone)]
 pub struct ReplaceSettingsBundle {
@@ -400,4 +431,29 @@ pub trait DeploymentRepository: Send + Sync {
     /// Atomically replace a deployment's active config (a new revision) and its
     /// full extension-settings. Returns the new revision number.
     async fn replace_in_place(&self, input: ReplaceInPlace) -> Result<i64, DeploymentError>;
+
+    /// Insert a new preset. The `UNIQUE(recipe_key, name)` index rejects a
+    /// duplicate name within a recipe family (surfaced as a storage error;
+    /// the service pre-checks for a clean `PresetNameConflict`).
+    async fn insert_preset(&self, row: NewPreset) -> Result<(), DeploymentError>;
+
+    /// All presets in a recipe family, ordered by name.
+    async fn list_presets_by_recipe_key(
+        &self,
+        recipe_key: &str,
+    ) -> Result<Vec<PresetRow>, DeploymentError>;
+
+    /// Fetch one preset by id. `PresetNotFound` when absent.
+    async fn get_preset(&self, id: &str) -> Result<PresetRow, DeploymentError>;
+
+    /// Rename / re-describe a preset. `PresetNotFound` when absent.
+    async fn update_preset_meta(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<(), DeploymentError>;
+
+    /// Delete a preset by id. `PresetNotFound` when absent.
+    async fn delete_preset(&self, id: &str) -> Result<(), DeploymentError>;
 }
