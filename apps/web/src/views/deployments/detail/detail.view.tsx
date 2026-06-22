@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { mutate as globalMutate } from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import type { LayoutSummary, ModuleSummary } from "../../../api/client";
 import { ConfirmDialog } from "../../../components/base/confirm_dialog";
 import {
@@ -19,8 +19,18 @@ import {
   isExportEnvelope,
   type ExportEnvelope,
 } from "../../../services/deployment_transfer";
+import {
+  applyPreset,
+  createPresetFromCurrent,
+  createPresetFromEnvelope,
+  deletePreset,
+  listPresets,
+  type PresetSummary,
+} from "../../../services/deployment_presets";
 import { useRootOutletContext } from "../../../root_layout";
 import { DeploymentDetailUI, type DetailTabId } from "./detail.ui";
+import { PresetMenu } from "./preset_menu";
+import { SavePresetDialog } from "./save_preset_dialog";
 
 export interface DeploymentDetailPlaceholderProps {
   deploymentId: string;
@@ -38,6 +48,14 @@ export function DeploymentDetailPlaceholder({
   const [importBusy, setImportBusy] = useState(false);
   const pendingEnvelope = useRef<ExportEnvelope | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const presetsKey = ["deployment-presets", deploymentId] as const;
+  const { data: presets } = useSWR<PresetSummary[]>(presetsKey, () => listPresets(deploymentId));
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [pendingApply, setPendingApply] = useState<PresetSummary | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveTitle, setSaveTitle] = useState("Save deployment preset");
+  const saveEnvelope = useRef<ExportEnvelope | null>(null);
 
   // Live execution state from the host event bus (shared root subscription).
   // Lights up the Workflow Graph tab with per-node run status (P0 wire-up).
@@ -197,10 +215,22 @@ export function DeploymentDetailPlaceholder({
       void globalMutate("deployments");
       setImportOpen(false);
       pendingEnvelope.current = null;
+      // Offer to keep the just-imported file as a reusable preset.
+      const importedEnvelope = envelope;
       toast.success(
         result.diagnostics_count > 0
           ? `Deployment replaced — ${result.diagnostics_count} missing dependency(ies)`
           : "Deployment replaced from file",
+        {
+          action: {
+            label: "Save as preset",
+            onClick: () => {
+              saveEnvelope.current = importedEnvelope;
+              setSaveTitle("Save imported settings as preset");
+              setSaveOpen(true);
+            },
+          },
+        },
       );
     } catch (err) {
       const message =
@@ -210,6 +240,81 @@ export function DeploymentDetailPlaceholder({
       setImportBusy(false);
     }
   }, [deploymentId]);
+
+  const refreshAfterMutation = useCallback(() => {
+    void globalMutate(presetsKey);
+    void globalMutate(["deployment", deploymentId]);
+    void globalMutate("deployments");
+  }, [deploymentId, presetsKey]);
+
+  const handleApplyPreset = useCallback((preset: PresetSummary) => {
+    setPendingApply(preset);
+  }, []);
+
+  const handleConfirmApply = useCallback(async () => {
+    const preset = pendingApply;
+    if (!preset) return;
+    setPresetBusy(true);
+    try {
+      const result = await applyPreset(deploymentId, preset.id);
+      refreshAfterMutation();
+      setPendingApply(null);
+      toast.success(
+        result.diagnostics_count > 0
+          ? `Applied "${preset.name}" — ${result.diagnostics_count} missing dependency(ies)`
+          : `Applied preset "${preset.name}"`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to apply preset");
+    } finally {
+      setPresetBusy(false);
+    }
+  }, [deploymentId, pendingApply, refreshAfterMutation]);
+
+  const handleDeletePreset = useCallback(
+    async (preset: PresetSummary) => {
+      setPresetBusy(true);
+      try {
+        await deletePreset(deploymentId, preset.id);
+        void globalMutate(presetsKey);
+        toast.success(`Deleted preset "${preset.name}"`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to delete preset");
+      } finally {
+        setPresetBusy(false);
+      }
+    },
+    [deploymentId, presetsKey],
+  );
+
+  const handleSaveCurrent = useCallback(() => {
+    saveEnvelope.current = null;
+    setSaveTitle("Save deployment preset");
+    setSaveOpen(true);
+  }, []);
+
+  const handleSave = useCallback(
+    async (name: string, description: string) => {
+      setPresetBusy(true);
+      try {
+        const fromEnvelope = saveEnvelope.current;
+        if (fromEnvelope) {
+          await createPresetFromEnvelope(deploymentId, name, fromEnvelope, description || undefined);
+        } else {
+          await createPresetFromCurrent(deploymentId, name, description || undefined);
+        }
+        void globalMutate(presetsKey);
+        setSaveOpen(false);
+        saveEnvelope.current = null;
+        toast.success(`Saved preset "${name}"`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to save preset");
+      } finally {
+        setPresetBusy(false);
+      }
+    },
+    [deploymentId, presetsKey],
+  );
 
   return (
     <>
@@ -232,6 +337,15 @@ export function DeploymentDetailPlaceholder({
         onRequestDelete={() => setDeleteOpen(true)}
         onRequestExport={handleExport}
         onRequestImport={handleRequestImport}
+        presetMenu={
+          <PresetMenu
+            presets={presets ?? []}
+            busy={presetBusy}
+            onApply={handleApplyPreset}
+            onDelete={handleDeletePreset}
+            onSaveCurrent={handleSaveCurrent}
+          />
+        }
       />
       <input
         ref={fileInputRef}
@@ -280,6 +394,36 @@ export function DeploymentDetailPlaceholder({
           if (!importBusy) {
             setImportOpen(false);
             pendingEnvelope.current = null;
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={pendingApply !== null}
+        eyebrow="Destructive action"
+        title={pendingApply ? `Replace all settings from "${pendingApply.name}"?` : "Apply preset?"}
+        description="The selected preset replaces this deployment's configuration and all extension settings. This cannot be undone from here."
+        impactLines={[
+          "This deployment's configuration is replaced by a new revision from the preset.",
+          "All extension settings are replaced by the preset's settings.",
+          "Identity (name, slug) and past revisions are kept.",
+        ]}
+        confirmLabel="Apply preset"
+        destructive
+        busy={presetBusy}
+        onConfirm={handleConfirmApply}
+        onCancel={() => {
+          if (!presetBusy) setPendingApply(null);
+        }}
+      />
+      <SavePresetDialog
+        open={saveOpen}
+        title={saveTitle}
+        busy={presetBusy}
+        onSave={handleSave}
+        onCancel={() => {
+          if (!presetBusy) {
+            setSaveOpen(false);
+            saveEnvelope.current = null;
           }
         }}
       />

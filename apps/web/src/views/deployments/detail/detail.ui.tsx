@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import type { LayoutSummary, Workflow } from "../../../api/client";
 import { Button } from "../../../components/base/button";
 import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
@@ -104,6 +104,9 @@ export interface DeploymentDetailUIProps {
   /** Callback to begin an in-deployment import-replace (file picker + confirm).
    * When omitted, the Import button is hidden. */
   onRequestImport?: () => void;
+  /** Host preset control rendered in the header actions. Generic node so the
+   * presentational shell stays agnostic about preset behavior. */
+  presetMenu?: ReactNode;
 }
 
 function renderTitle(moduleName: string | null, name: string) {
@@ -204,6 +207,7 @@ export function DeploymentDetailUI({
   onRequestDelete,
   onRequestExport,
   onRequestImport,
+  presetMenu,
 }: DeploymentDetailUIProps) {
   const name = displayName ?? "Deployment detail";
   const titleAriaLabel = buildTitleAriaLabel(moduleName, name);
@@ -353,6 +357,7 @@ export function DeploymentDetailUI({
                 onInvoke={handleInvoke}
               />
             )}
+            {presetMenu}
             {onRequestImport && (
               <Button
                 type="button"
