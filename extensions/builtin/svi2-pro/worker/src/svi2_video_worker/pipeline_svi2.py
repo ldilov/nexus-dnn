@@ -110,6 +110,38 @@ _SWITCH_BOUNDARY = 0.9
 _NUM_INFERENCE_STEPS = 50
 _SIGMA_SHIFT = 5.0
 
+# Named sigma schedules for distilled models (lightx2v NVFP4 Sparse / Wan2.2
+# Lightning). distilled_4step = shift-5 of timesteps [1000,750,500,250].
+_SIGMA_PRESETS: dict[str, list[float]] = {
+    "distilled_4step": [1.0, 0.9375, 0.8333333, 0.625, 0.0],
+}
+
+
+def _sigma_preset_name(params: dict[str, Any]) -> str:
+    return str(params.get("sigma_preset", "auto")).strip().lower()
+
+
+def _is_distilled_sigma_preset(params: dict[str, Any]) -> bool:
+    return _sigma_preset_name(params) in _SIGMA_PRESETS
+
+
+def _resolve_fixed_sigmas(params: dict[str, Any]) -> Optional[list[float]]:
+    """Explicit ``fixed_sigmas`` wins (custom); else expand a named
+    ``sigma_preset``; else None (auto flow-match). The worker owns the canonical
+    distilled sigma lists so the UI never hardcodes numbers."""
+    explicit = params.get("fixed_sigmas")
+    if explicit:
+        return [float(x) for x in explicit]
+    return _SIGMA_PRESETS.get(_sigma_preset_name(params))
+
+
+def _resolve_cfg_scale(params: dict[str, Any]) -> float:
+    """CFG-distilled presets REQUIRE guidance off (cfg=1); CFG>1 burns them to
+    garbage. Force 1.0 for a distilled preset, otherwise honour the request."""
+    if _is_distilled_sigma_preset(params):
+        return 1.0
+    return float(params.get("cfg_scale", 5.0))
+
 _TEACACHE_MULTIPLIER_THRESH: dict[float, float] = {
     1.0: 0.0,
     1.25: 0.04,
@@ -292,7 +324,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "resolution_warning": res_warning,
         "fps": int(params.get("fps", 15)),
         "frames_per_clip": frames_per_clip,
-        "cfg_scale": float(params.get("cfg_scale", 5.0)),
+        "cfg_scale": _resolve_cfg_scale(params),
         "num_inference_steps": int(params.get("num_inference_steps", _NUM_INFERENCE_STEPS)),
         "sigma_shift": float(params.get("sigma_shift", _SIGMA_SHIFT)),
         "switch_boundary": float(params.get("switch_boundary", _SWITCH_BOUNDARY)),
@@ -334,7 +366,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "user_loras": _normalize_user_loras(params.get("user_loras")),
         "dit_high_path": params.get("dit_high_path"),
         "dit_low_path": params.get("dit_low_path"),
-        "fixed_sigmas": params.get("fixed_sigmas"),
+        "sigma_preset": _sigma_preset_name(params),
+        "fixed_sigmas": _resolve_fixed_sigmas(params),
         "solver": str(params.get("solver", "euler")).lower()
         if str(params.get("solver", "euler")).lower() in {"euler", "heun", "euler_ancestral"}
         else "euler",
@@ -751,6 +784,7 @@ def _dynamo_counter_diff(before: dict[str, int], after: dict[str, int]) -> dict[
 _LOGGED_INPUT_KEYS = (
     "dit_high_path", "dit_low_path", "svi_lora_tier", "num_inference_steps",
     "cfg_scale", "sigma_shift", "switch_boundary", "solver", "seed",
+    "sigma_preset", "fixed_sigmas",
     "seed_multiplier", "fps", "interpolate_fps", "interpolate_method",
     "upscale_factor", "upscale_model", "upscale_quality", "num_clips",
     "frames_per_clip", "width", "height", "use_torch_compile",
@@ -781,6 +815,8 @@ def _log_render_inputs(raw: dict[str, Any], validated: dict[str, Any]) -> None:
         f"[svi2-params] steps={validated.get('num_inference_steps')} "
         f"cfg={validated.get('cfg_scale')} shift={validated.get('sigma_shift')} "
         f"boundary={validated.get('switch_boundary')} solver={validated.get('solver')} "
+        f"sigma_preset={validated.get('sigma_preset')} "
+        f"fixed_sigmas={validated.get('fixed_sigmas')} "
         f"seed={validated.get('seed')} seed_mult={validated.get('seed_multiplier')}",
         f"[svi2-params] {validated.get('width')}x{validated.get('height')} "
         f"clips={validated.get('num_clips')} frames_per_clip={validated.get('frames_per_clip')} "

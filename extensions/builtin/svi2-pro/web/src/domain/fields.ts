@@ -222,6 +222,18 @@ export const FIELDS: FieldSpec[] = [
     help: "Euler = standard flow step (fast). Euler ancestral = re-noises each step; matches ComfyUI euler_ancestral for distill (lightx2v) models. Heun = 2nd-order, ~2× render time. Heun disables TeaCache.",
   },
   {
+    key: "sigma_preset",
+    label: "Schedule",
+    tier: "quality",
+    control: "select",
+    default: "auto",
+    options: [
+      { value: "auto", label: "Auto (flow-match)" },
+      { value: "distilled_4step", label: "Distilled 4-step (lightx2v / Lightning)" },
+    ],
+    help: "Auto = standard flow-match for fp8/bf16 base models. Distilled 4-step = exact lightx2v/Lightning sigmas [1.0, 0.9375, 0.833, 0.625] for NVFP4-Sparse / Lightning-distilled weights — forces 4 steps (2 high + 2 low) + CFG off; Steps / Guidance / Sigma-shift are ignored. Pure-noise output on distilled weights means you need this.",
+  },
+  {
     key: "seed_multiplier",
     label: "Seed multiplier",
     tier: "quality",
