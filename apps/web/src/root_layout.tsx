@@ -16,6 +16,8 @@ import { Tabs } from "./components/base/tabs";
 import { PulseFloor } from "./components/pulse_floor/pulse_floor";
 import { CursorRoot } from "./components/cursor/cursor_root";
 import { FocusedBlockProvider } from "./hooks/use_focused_block";
+import { DownloadManagerProvider } from "./services/download_manager";
+import { DownloadTray } from "./layout/downloads/download_tray";
 import { sweepStaleDrafts } from "./views/modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { useRuntimeStatus } from "./hooks/use_runtime_status";
@@ -369,6 +371,7 @@ export default function RootLayout() {
 
   return (
     <FocusedBlockProvider>
+      <DownloadManagerProvider>
       <Shell
         topBar={
           <TopBar
@@ -437,6 +440,8 @@ export default function RootLayout() {
       />
       <CursorRoot />
       <PulseFloor />
+      <DownloadTray />
+      </DownloadManagerProvider>
     </FocusedBlockProvider>
   );
 }

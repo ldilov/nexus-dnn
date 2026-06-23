@@ -1,4 +1,4 @@
-import { apiFetch } from "./api_client";
+import { apiFetch, ContractError } from "./api_client";
 
 /**
  * Sole I/O boundary for the Models Search screen (Principle XII.4).
@@ -631,6 +631,27 @@ export function resumeDownload(
     `/model-store/downloads/${encodeURIComponent(jobId)}/resume`,
     { method: "POST", signal },
   );
+}
+
+/**
+ * Cancel an in-flight or queued download. The host stops the transfer and
+ * drops the job. A 404 (the job already finished or was already cancelled)
+ * resolves as success — the caller only cares that the job is gone. Any
+ * other failure rejects so the UI can surface it.
+ */
+export async function cancelDownload(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await apiFetch(
+      `/model-store/downloads/${encodeURIComponent(jobId)}/cancel`,
+      { method: "POST", expect: "raw", signal },
+    );
+  } catch (err) {
+    if (err instanceof ContractError && err.status === 404) return;
+    throw err;
+  }
 }
 
 export function isTerminalState(state: DownloadState | undefined): boolean {

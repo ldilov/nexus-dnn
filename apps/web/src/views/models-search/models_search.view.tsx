@@ -8,19 +8,12 @@ import {
 import { toast } from "sonner";
 import useSWR from "swr";
 import {
-  createDirectDownload,
-  createDownload,
-  directTargetFromFamily,
   fetchBackends,
-  fetchDownloadStatus,
   fetchInstalled,
   fetchSearch,
-  isTerminalState,
   parseSearchParams,
-  pauseDownload,
   deleteInstalled,
   resolveUrl,
-  resumeDownload,
   serializeSearchParams,
   uploadModelWithProgress,
   type BackendCapability,
@@ -34,11 +27,9 @@ import {
   dispatchModelsChanged,
   subscribeModelsChanged,
 } from "../../services/model_events";
+import { useDownloadManager } from "../../services/download_manager";
 import { ModelsSearchUI } from "./models_search.ui";
-import type {
-  DownloadKind,
-  ModelOnDiskIdentity,
-} from "./components/ModelCard";
+import type { ModelOnDiskIdentity } from "./components/ModelCard";
 import type { ActiveUpload } from "../../services/model_store";
 
 export interface ModelsSearchLoaderData {
@@ -100,8 +91,8 @@ export function ModelsSearchView() {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState(loaderData.params.q);
-  const [activeJobs, setActiveJobs] = useState<Record<string, DownloadJob>>({});
-  const [jobVariantMap, setJobVariantMap] = useState<Record<string, string>>({});
+  const manager = useDownloadManager();
+  const { jobs, jobVariantMap } = manager;
   const [resolved, setResolved] = useState<ModelFamily | null>(null);
   const [resolving, setResolving] = useState(false);
   const [uploads, setUploads] = useState<Record<string, ActiveUpload>>({});
@@ -172,73 +163,40 @@ export function ModelsSearchView() {
     return () => window.clearTimeout(handle);
   }, [query, loaderData.params.q, mutateParams]);
 
-  const activeJobKey = useMemo(() => {
-    const ids = Object.values(activeJobs)
-      .filter((j) => !isTerminalState(j.state))
-      .map((j) => j.job_id)
-      .sort();
-    return ids.length ? `model-store/downloads:${ids.join(",")}` : null;
-  }, [activeJobs]);
-
-  useSWR(
-    activeJobKey,
-    async (key: string) => {
-      const ids = key.split(":")[1]?.split(",") ?? [];
-      const updates = await Promise.all(
-        ids.map((jid) => fetchDownloadStatus(jid).catch(() => null)),
-      );
-      setActiveJobs((prev) => {
-        const next = { ...prev };
-        for (const job of updates) {
-          if (!job) continue;
-          const prior = prev[job.job_id];
-          const wasNonTerminal = prior && !isTerminalState(prior.state);
-          if (wasNonTerminal && job.state === "downloaded") {
-            dispatchModelsChanged({ family_id: job.family_id });
-          }
-          next[job.job_id] = job;
-        }
-        return next;
-      });
-      return updates;
-    },
-    { refreshInterval: 1200 },
-  );
-
   const jobStateByVariant = useMemo<Record<string, DownloadState | undefined>>(
     () => {
       const out: Record<string, DownloadState | undefined> = {};
-      for (const j of Object.values(activeJobs)) {
+      for (const j of Object.values(jobs)) {
         const vid = jobVariantMap[j.job_id];
         if (vid) out[vid] = j.state;
       }
       return out;
     },
-    [activeJobs, jobVariantMap],
+    [jobs, jobVariantMap],
   );
 
   const jobIdByVariant = useMemo<Record<string, string | undefined>>(
     () => {
       const out: Record<string, string | undefined> = {};
-      for (const j of Object.values(activeJobs)) {
+      for (const j of Object.values(jobs)) {
         const vid = jobVariantMap[j.job_id];
         if (vid) out[vid] = j.job_id;
       }
       return out;
     },
-    [activeJobs, jobVariantMap],
+    [jobs, jobVariantMap],
   );
 
   const jobByVariant = useMemo<Record<string, DownloadJob | undefined>>(
     () => {
       const out: Record<string, DownloadJob | undefined> = {};
-      for (const j of Object.values(activeJobs)) {
+      for (const j of Object.values(jobs)) {
         const vid = jobVariantMap[j.job_id];
         if (vid) out[vid] = j;
       }
       return out;
     },
-    [activeJobs, jobVariantMap],
+    [jobs, jobVariantMap],
   );
 
   const jobByFamily = useMemo<Record<string, DownloadJob | undefined>>(
@@ -254,7 +212,7 @@ export function ModelsSearchView() {
         auth_required: 0,
       };
       const out: Record<string, DownloadJob | undefined> = {};
-      for (const j of Object.values(activeJobs)) {
+      for (const j of Object.values(jobs)) {
         const existing = out[j.family_id];
         if (!existing) {
           out[j.family_id] = j;
@@ -276,7 +234,7 @@ export function ModelsSearchView() {
       }
       return out;
     },
-    [activeJobs],
+    [jobs],
   );
 
   const jobStateByFamily = useMemo<Record<string, DownloadState | undefined>>(
@@ -316,14 +274,14 @@ export function ModelsSearchView() {
   const jobByArtifact = useMemo<Record<string, DownloadJob | undefined>>(
     () => {
       const out: Record<string, DownloadJob | undefined> = {};
-      for (const j of Object.values(activeJobs)) {
+      for (const j of Object.values(jobs)) {
         for (const t of j.targets) {
           out[t.artifact_id] = j;
         }
       }
       return out;
     },
-    [activeJobs],
+    [jobs],
   );
 
   const jobStateByArtifact = useMemo<Record<string, DownloadState | undefined>>(
@@ -347,95 +305,6 @@ export function ModelsSearchView() {
     },
     [jobByArtifact],
   );
-
-  const startDownload = useCallback(
-    async (family: ModelFamily, target: DownloadKind) => {
-      if (family.repository.source_provider !== "huggingface") {
-        const direct = directTargetFromFamily(family);
-        if (!direct) return;
-        try {
-          const job = await createDirectDownload(family.family_id, direct);
-          const canonical =
-            typeof job.state === "string" && typeof job.family_id === "string"
-              ? job
-              : await fetchDownloadStatus(job.job_id);
-          setActiveJobs((prev) => ({ ...prev, [canonical.job_id]: canonical }));
-          toast.success("Download queued");
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Download failed";
-          toast.error(msg);
-        }
-        return;
-      }
-
-      const body = {
-        family_id: family.family_id,
-        target:
-          target.kind === "primary"
-            ? { kind: "primary" as const, artifact_id: target.artifactId }
-            : target.kind === "variant"
-              ? { kind: "variant" as const, variant_id: target.variantId }
-              : { kind: "bundle" as const },
-        include_dependencies: target.kind === "bundle",
-      };
-      try {
-        const job = await createDownload(body);
-        const canonical =
-          typeof job.state === "string" && typeof job.family_id === "string"
-            ? job
-            : await fetchDownloadStatus(job.job_id);
-        setActiveJobs((prev) => ({ ...prev, [canonical.job_id]: canonical }));
-        if (target.kind === "variant") {
-          setJobVariantMap((prev) => ({
-            ...prev,
-            [canonical.job_id]: target.variantId,
-          }));
-        }
-        const isDownloadOnly = family.compat === "downloadable_but_not_runnable";
-        const baseMessage =
-          target.kind === "variant"
-            ? "Queued download"
-            : target.kind === "bundle"
-              ? "Bundle download queued"
-              : "Download queued";
-        if (isDownloadOnly) {
-          toast.success(baseMessage, {
-            description:
-              "This format can't run in Local Chat — no compatible backend (need GGUF for llama.cpp).",
-            duration: 7000,
-          });
-        } else {
-          toast.success(baseMessage);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Download failed";
-        toast.error(msg);
-      }
-    },
-    [],
-  );
-
-  const onPause = useCallback(async (jobId: string) => {
-    try {
-      const updated = await pauseDownload(jobId);
-      setActiveJobs((prev) => ({ ...prev, [updated.job_id]: updated }));
-      toast("Download paused");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Pause failed";
-      toast.error(msg);
-    }
-  }, []);
-
-  const onResume = useCallback(async (jobId: string) => {
-    try {
-      const updated = await resumeDownload(jobId);
-      setActiveJobs((prev) => ({ ...prev, [updated.job_id]: updated }));
-      toast.success("Download resumed");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Resume failed";
-      toast.error(msg);
-    }
-  }, []);
 
   const onAuthRequired = useCallback((family: ModelFamily) => {
     toast.info(
@@ -610,9 +479,9 @@ export function ModelsSearchView() {
       },
       onPageSizeChange: (pageSize: number) =>
         mutateParams({ pageSize, page: 1 }),
-      onDownload: startDownload,
-      onPause,
-      onResume,
+      onDownload: manager.startDownload,
+      onPause: manager.pauseJob,
+      onResume: manager.resumeJob,
       onAuthRequired,
       onRetry: () => navigate(0),
       onRevalidated: () => {
@@ -624,9 +493,9 @@ export function ModelsSearchView() {
       loaderData.params,
       mutateParams,
       navigate,
-      startDownload,
-      onPause,
-      onResume,
+      manager.startDownload,
+      manager.pauseJob,
+      manager.resumeJob,
       onAuthRequired,
       refreshInstalled,
       location.pathname,
