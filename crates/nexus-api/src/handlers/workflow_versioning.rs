@@ -1,6 +1,8 @@
 use nexus_extension::OperatorDefinition;
 use nexus_storage::{Database, WorkflowVersionRecord};
-use nexus_workflow::Workflow;
+use nexus_workflow::{
+    NodeInstance, OutputBinding, Stage, Workflow, WorkflowPort, WorkflowVersionSnapshot,
+};
 
 use crate::error::ApiError;
 
@@ -56,6 +58,47 @@ pub async fn append_workflow_version_if_changed(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(new_version)
+}
+
+/// Parse an immutable version record's JSON columns into a host `Workflow`
+/// and assemble the C2 `WorkflowVersionSnapshot` (caller passes the registry
+/// slice, keeping `nexus-workflow` registry-free).
+pub fn record_to_snapshot(
+    record: &WorkflowVersionRecord,
+    operators: &[OperatorDefinition],
+) -> Result<WorkflowVersionSnapshot, ApiError> {
+    let nodes: Vec<NodeInstance> = serde_json::from_str(&record.nodes)
+        .map_err(|e| ApiError::Internal(format!("workflow version nodes: {e}")))?;
+    let inputs: Vec<WorkflowPort> = parse_json_array(record.inputs.as_deref())?;
+    let outputs: Vec<OutputBinding> = parse_json_array(record.outputs.as_deref())?;
+    let stages: Vec<Stage> = parse_json_array(record.stages.as_deref())?;
+
+    let workflow = Workflow {
+        id: record.workflow_id.clone(),
+        title: String::new(),
+        version: record.label.clone().unwrap_or_default(),
+        inputs,
+        outputs,
+        nodes,
+        stages,
+        created_at: record.created_at.clone(),
+        updated_at: record.created_at.clone(),
+    };
+
+    Ok(WorkflowVersionSnapshot::from_workflow(
+        record.workflow_id.clone(),
+        record.version.clone(),
+        record.canonical_hash.clone(),
+        workflow,
+        operators,
+    ))
+}
+
+fn parse_json_array<T: serde::de::DeserializeOwned>(raw: Option<&str>) -> Result<Vec<T>, ApiError> {
+    match raw {
+        Some(s) => serde_json::from_str(s).map_err(|e| ApiError::Internal(e.to_string())),
+        None => Ok(Vec::new()),
+    }
 }
 
 fn build_version_record(
@@ -119,6 +162,39 @@ mod tests {
     use nexus_workflow::{NodeInstance, Workflow};
 
     use super::*;
+
+    #[test]
+    fn record_to_snapshot_parses_columns_and_assembles() {
+        let nodes = serde_json::to_string(&serde_json::json!([
+            {"id":"gen","operator":"synth@1.0.0","stage":null,"inputs":{},"config":{"steps":16}},
+            {"id":"post","operator":"postproc@1.0.0","stage":null,"inputs":{},"config":null}
+        ]))
+        .unwrap();
+        let record = WorkflowVersionRecord {
+            workflow_id: "wf1".into(),
+            version: "v2".into(),
+            label: Some("1.2.0".into()),
+            canonical_hash: "abc".into(),
+            operator_schema_hash: "oph".into(),
+            nodes,
+            edges: "[]".into(),
+            inputs: Some("[]".into()),
+            outputs: Some("[]".into()),
+            stages: Some("[]".into()),
+            author_kind: "user".into(),
+            extension_id: None,
+            extension_version: None,
+            created_at: "t0".into(),
+        };
+
+        let snapshot = record_to_snapshot(&record, &[]).unwrap();
+        assert_eq!(snapshot.version, "v2");
+        assert_eq!(snapshot.canonical_hash, "abc");
+        assert_eq!(snapshot.workflow.id, "wf1");
+        assert_eq!(snapshot.workflow.version, "1.2.0");
+        assert_eq!(snapshot.workflow.nodes.len(), 2);
+        assert_eq!(snapshot.operator_schema_hashes.len(), 2);
+    }
 
     async fn db_with_workflow(id: &str) -> SqliteDatabase {
         let db = SqliteDatabase::new("sqlite::memory:").await.unwrap();
