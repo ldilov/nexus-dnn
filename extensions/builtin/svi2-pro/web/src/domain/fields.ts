@@ -59,14 +59,14 @@ export const TIERS: TierMeta[] = [
   },
   {
     id: "transform",
-    title: "Transform",
-    description: "ICN conditioning noise. Off = rigid ref-lock (recommended).",
+    title: "Transform (let the prompt change the scene)",
+    description: "Loosen the input-image grip so the prompt can reshape the scene. Off = input stays locked (default).",
     defaultCollapsed: true,
   },
   {
     id: "identity",
-    title: "Identity (advanced crutches)",
-    description: "Off = canonical. Levers for off-budget drift only.",
+    title: "Identity (keep the look steady)",
+    description: "Hold colour & identity steady across chained clips. Off = default; turn up only if later clips drift.",
     defaultCollapsed: true,
   },
   {
@@ -206,7 +206,7 @@ export const FIELDS: FieldSpec[] = [
     max: 1,
     step: 0.05,
     default: 0.9,
-    help: "High→low expert switch. Wan2.2 i2v = 0.9. Rarely changed.",
+    help: "When the high-noise (structure) expert hands off to the low-noise (detail) expert. Higher = switch sooner = more detail steps; lower = more structure steps. Wan2.2 = 0.9 (2 high + 2 low at 4 steps).",
   },
   {
     key: "solver",
@@ -306,7 +306,7 @@ export const FIELDS: FieldSpec[] = [
     max: 1,
     step: 0.05,
     default: 0.0,
-    help: "Noise the anchor so the prompt can override the input. 0 = rigid. ~0.7 swaps subject. Prefer edit-then-animate.",
+    help: "Loosens the input image's grip so the prompt can change the scene. 0 = input locked (default). 0.3–0.45 = transforms while keeping identity. 0.7+ = swaps the subject entirely.",
   },
   {
     key: "image_cond_noise_bg_protect",
@@ -317,7 +317,7 @@ export const FIELDS: FieldSpec[] = [
     max: 1,
     step: 0.05,
     default: 0.0,
-    help: "Spatially mask ICN toward frame centre. 0 = uniform, 1 = corners protected.",
+    help: "Protects edges/background from the Transform change, focusing it on the centre. 0 = whole frame changes; 1 = corners/background kept.",
   },
   {
     key: "ref_pad_num",
@@ -328,7 +328,7 @@ export const FIELDS: FieldSpec[] = [
     max: 16,
     step: 1,
     default: 0,
-    help: "Bias padding toward the anchor. 0 = off (canonical). -1 = all (freezes motion).",
+    help: "Anchors each new clip back to the first frame — holds the look/identity, but costs motion. 0 = off (default). Higher = stronger anchor. -1 = max (freezes motion).",
   },
   {
     key: "adain_factor",
@@ -339,7 +339,7 @@ export const FIELDS: FieldSpec[] = [
     max: 1,
     step: 0.05,
     default: 0.0,
-    help: "Per-channel stat-match toward clip-0. Caps colour drift, not geometry. 0.1–0.5 typical.",
+    help: "Keeps colour & skin-tone consistent across clips by matching each clip to clip 1. Fixes colour/brightness drift in later clips — not shape. 0 = off; 0.2–0.3 if colours shift; 0.5 = strong.",
   },
   {
     key: "blocks_to_swap",
