@@ -32,7 +32,7 @@ pub use ui::{LayoutSummaryDto, UIContributionDto};
 pub use workflows::{
     WorkflowDto, WorkflowEdgeDto, WorkflowNodeDto, WorkflowNodeInputDto, WorkflowOutputBindingDto,
     WorkflowPortDto, WorkflowStageDefDto, WorkflowStageDto, WorkflowStatusDto,
-    WorkflowUpdatePayloadDto, WorkflowValidationErrorDto,
+    WorkflowUpdatePayloadDto, WorkflowValidationErrorDto, WorkflowVersionDto,
 };
 
 #[cfg(test)]
@@ -112,5 +112,6 @@ mod export_tests {
         WorkflowStageDefDto::export_all().unwrap();
         WorkflowStatusDto::export_all().unwrap();
         WorkflowValidationErrorDto::export_all().unwrap();
+        WorkflowVersionDto::export_all().unwrap();
     }
 }

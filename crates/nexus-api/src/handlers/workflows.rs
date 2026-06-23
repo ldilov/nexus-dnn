@@ -13,7 +13,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::dto::{
     CanvasStateDto, ListResponseDto, WorkflowDto, WorkflowUpdatePayloadDto,
-    WorkflowValidationErrorDto,
+    WorkflowValidationErrorDto, WorkflowVersionDto,
 };
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
@@ -272,18 +272,31 @@ pub async fn update_workflow_graph(
     Ok(ApiResponse::ok(WorkflowDto::from(&fresh)))
 }
 
-/// `POST /workflows/:id/revert` — clear the user-edit stamp so the next boot
-/// reapplies the shipped extension YAML. The current row contents are left
-/// in place until the backend restarts (low-risk, no destructive writes).
+/// `POST /workflows/:id/revert` — re-point the head to the latest
+/// extension-authored version immediately (no reboot): mirror that version's
+/// content onto the row, clear the user-edit stamp, advance `current_version`.
+/// The user's edit stays in version history. When no extension version exists
+/// (e.g. a purely user-authored workflow), fall back to clearing the user-edit
+/// stamp so the next boot reapplies any shipped YAML.
 pub async fn revert_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<ApiResponse<WorkflowDto>, ApiError> {
-    state
-        .db
-        .clear_workflow_user_edit(&id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let now = Utc::now().to_rfc3339();
+    let reverted = crate::handlers::workflow_versioning::revert_head_to_latest_extension(
+        state.db.as_ref(),
+        &id,
+        &now,
+    )
+    .await?;
+
+    if !reverted {
+        state
+            .db
+            .clear_workflow_user_edit(&id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+    }
 
     let fresh = state
         .db
@@ -292,6 +305,43 @@ pub async fn revert_workflow(
         .map_err(|e| ApiError::NotFound(e.to_string()))?;
 
     Ok(ApiResponse::ok(WorkflowDto::from(&fresh)))
+}
+
+/// `GET /workflows/:id/versions` — list the immutable version history for a
+/// workflow, oldest first. Unknown workflow → 404.
+pub async fn list_workflow_versions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<ApiResponse<ListResponseDto<WorkflowVersionDto>>, ApiError> {
+    state
+        .db
+        .get_workflow(&id)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+
+    let versions = state
+        .db
+        .list_workflow_versions(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let items = versions.iter().map(WorkflowVersionDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
+}
+
+/// `GET /workflows/:id/versions/:version` — fetch one immutable version.
+/// Missing → 404.
+pub async fn get_workflow_version(
+    State(state): State<AppState>,
+    Path((id, version)): Path<(String, String)>,
+) -> Result<ApiResponse<WorkflowVersionDto>, ApiError> {
+    let record = state
+        .db
+        .get_workflow_version(&id, &version)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+
+    Ok(ApiResponse::ok(WorkflowVersionDto::from(&record)))
 }
 
 /// `POST /workflows/validate` — structural validation over a pending draft,

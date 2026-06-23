@@ -278,6 +278,16 @@ pub fn build(state: AppState) -> Router {
             axum::routing::put(workflows::update_workflow_graph),
         )
         .route("/workflows/{id}/revert", post(workflows::revert_workflow))
+        // P0 is the sole registrar of the /workflows/{id}/versions[/{version}]
+        // subtree; the adjacent slot is reserved for P6 exposable-targets.
+        .route(
+            "/workflows/{id}/versions",
+            get(workflows::list_workflow_versions),
+        )
+        .route(
+            "/workflows/{id}/versions/{version}",
+            get(workflows::get_workflow_version),
+        )
         .route(
             "/workflows/{id}/canvas",
             get(workflows::get_workflow_canvas).put(workflows::put_workflow_canvas),
