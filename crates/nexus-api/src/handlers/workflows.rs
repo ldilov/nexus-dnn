@@ -113,6 +113,18 @@ pub async fn update_workflow(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
+    crate::handlers::workflow_versioning::append_workflow_version_if_changed(
+        state.db.as_ref(),
+        &workflow,
+        &operators,
+        "user",
+        None,
+        None,
+        Some(&workflow.version),
+        &now,
+    )
+    .await?;
+
     Ok(ApiResponse::ok(WorkflowMutationResponseDto {
         id: workflow.id,
         title: workflow.title,
@@ -142,6 +154,18 @@ pub async fn create_workflow(
         .insert_workflow(&record)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    crate::handlers::workflow_versioning::append_workflow_version_if_changed(
+        state.db.as_ref(),
+        &workflow,
+        &operators,
+        "user",
+        None,
+        None,
+        Some(&workflow.version),
+        &now,
+    )
+    .await?;
 
     Ok(ApiResponse::created(WorkflowMutationResponseDto {
         id: workflow.id,
@@ -215,7 +239,7 @@ pub async fn update_workflow_graph(
     let now = Utc::now().to_rfc3339();
     let mut record = build_workflow_record(&workflow, &now)?;
     record.created_at = existing.created_at.clone();
-    record.user_edited_at = Some(now);
+    record.user_edited_at = Some(now.clone());
     record.extension_id = existing.extension_id.clone();
     record.extension_version = existing.extension_version.clone();
     record.extension_version_first_seen = existing.extension_version_first_seen.clone();
@@ -225,6 +249,19 @@ pub async fn update_workflow_graph(
         .update_workflow(&record)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    crate::handlers::workflow_versioning::append_workflow_version_if_changed(
+        state.db.as_ref(),
+        &workflow,
+        &operators,
+        "user",
+        existing.extension_id.as_deref(),
+        existing.extension_version.as_deref(),
+        Some(&workflow.version),
+        &now,
+    )
+    .await?;
+    // P1: refresh_status_for_workflow hook site (version-advance site #1)
 
     let fresh = state
         .db
