@@ -33,15 +33,8 @@ pub async fn append_workflow_version_if_changed(
     }
 
     let operator_schema_hash = nexus_workflow::operator_schema_hash(workflow, operators);
-    let count = db
-        .count_workflow_versions(&workflow.id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-    let new_version = format!("v{}", count + 1);
-
     let record = build_version_record(
         workflow,
-        &new_version,
         &canonical,
         &operator_schema_hash,
         author_kind,
@@ -50,14 +43,9 @@ pub async fn append_workflow_version_if_changed(
         label,
         now,
     )?;
-    db.insert_workflow_version(&record)
+    db.append_workflow_version(&record, now)
         .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-    db.set_current_version(&workflow.id, &new_version, now)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(new_version)
+        .map_err(|e| ApiError::Internal(e.to_string()))
 }
 
 /// Forward data migration: seed exactly one immutable version per existing
@@ -162,31 +150,12 @@ pub async fn revert_head_to_latest_extension(
         .get_workflow(workflow_id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let head_version = ext_version
+        .label
+        .clone()
+        .unwrap_or_else(|| existing.version.clone());
 
-    let head = WorkflowRecord {
-        id: existing.id.clone(),
-        title: existing.title.clone(),
-        version: ext_version
-            .label
-            .clone()
-            .unwrap_or_else(|| existing.version.clone()),
-        inputs: ext_version.inputs.clone(),
-        outputs: ext_version.outputs.clone(),
-        nodes: ext_version.nodes.clone(),
-        edges: ext_version.edges.clone(),
-        stages: ext_version.stages.clone(),
-        created_at: existing.created_at.clone(),
-        updated_at: now.to_owned(),
-        user_edited_at: None,
-        extension_id: existing.extension_id.clone(),
-        extension_version: existing.extension_version.clone(),
-        extension_version_first_seen: existing.extension_version_first_seen.clone(),
-    };
-
-    db.update_workflow(&head)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-    db.set_current_version(workflow_id, &ext_version.version, now)
+    db.revert_head_to_version(&ext_version, &head_version, now)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
@@ -257,9 +226,10 @@ fn parse_json_array<T: serde::de::DeserializeOwned>(raw: Option<&str>) -> Result
     }
 }
 
+/// Build the immutable version record. `version` is left empty — the server
+/// allocates the monotonic id atomically inside `Database::append_workflow_version`.
 fn build_version_record(
     workflow: &Workflow,
-    version: &str,
     canonical_hash: &str,
     operator_schema_hash: &str,
     author_kind: &str,
@@ -283,7 +253,7 @@ fn build_version_record(
 
     Ok(WorkflowVersionRecord {
         workflow_id: workflow.id.clone(),
-        version: version.to_owned(),
+        version: String::new(),
         label: label.map(str::to_owned),
         canonical_hash: canonical_hash.to_owned(),
         operator_schema_hash: operator_schema_hash.to_owned(),

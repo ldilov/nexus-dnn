@@ -151,3 +151,118 @@ async fn set_and_get_current_version_round_trip() {
         Some("v3".to_string())
     );
 }
+
+#[tokio::test]
+async fn set_current_version_errors_when_workflow_missing() {
+    let db = fresh_db().await;
+    assert!(
+        db.set_current_version("nope", "v1", "t1").await.is_err(),
+        "setting the head of a non-existent workflow must error, not silently no-op"
+    );
+}
+
+#[tokio::test]
+async fn append_workflow_version_allocates_sequential_and_sets_head() {
+    let db = fresh_db().await;
+    db.insert_workflow(&make_workflow("wf1")).await.unwrap();
+
+    let v1 = db
+        .append_workflow_version(&version_record("wf1", "-", "extension", "h1"), "t1")
+        .await
+        .unwrap();
+    let v2 = db
+        .append_workflow_version(&version_record("wf1", "-", "user", "h2"), "t2")
+        .await
+        .unwrap();
+
+    assert_eq!(v1, "v1");
+    assert_eq!(v2, "v2");
+    assert_eq!(
+        db.get_current_version("wf1").await.unwrap(),
+        Some("v2".to_string())
+    );
+    assert_eq!(db.count_workflow_versions("wf1").await.unwrap(), 2);
+}
+
+#[tokio::test]
+async fn append_workflow_version_rolls_back_when_workflow_row_missing() {
+    let db = fresh_db().await;
+    let res = db
+        .append_workflow_version(&version_record("ghost", "-", "extension", "h1"), "t1")
+        .await;
+
+    assert!(
+        res.is_err(),
+        "append must fail when the head row is missing"
+    );
+    assert_eq!(
+        db.count_workflow_versions("ghost").await.unwrap(),
+        0,
+        "the version insert must roll back when the head update affects no row"
+    );
+}
+
+#[tokio::test]
+async fn revert_head_to_version_rewrites_content_and_head_atomically() {
+    let db = fresh_db().await;
+    db.insert_workflow(&make_workflow("wf1")).await.unwrap();
+    let mut ext = version_record("wf1", "v1", "extension", "h1");
+    ext.nodes = r#"[{"id":"gen"}]"#.into();
+    db.insert_workflow_version(&ext).await.unwrap();
+    db.set_current_version("wf1", "v2", "t0").await.unwrap();
+
+    db.revert_head_to_version(&ext, "2.0.0", "t9")
+        .await
+        .unwrap();
+
+    let head = db.get_workflow("wf1").await.unwrap();
+    assert_eq!(head.nodes, r#"[{"id":"gen"}]"#);
+    assert_eq!(head.version, "2.0.0");
+    assert!(head.user_edited_at.is_none());
+    assert_eq!(
+        db.get_current_version("wf1").await.unwrap(),
+        Some("v1".to_string())
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_appends_allocate_distinct_versions() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite:{}?mode=rwc",
+        dir.path()
+            .join("conc.db")
+            .to_string_lossy()
+            .replace('\\', "/")
+    );
+    let db = std::sync::Arc::new(SqliteDatabase::new(&url).await.unwrap());
+    db.insert_workflow(&make_workflow("wf1")).await.unwrap();
+
+    let mut handles = Vec::new();
+    for i in 0..8 {
+        let dbc = db.clone();
+        handles.push(tokio::spawn(async move {
+            dbc.append_workflow_version(
+                &version_record("wf1", "-", "extension", &format!("h{i}")),
+                "t",
+            )
+            .await
+        }));
+    }
+
+    let mut versions = std::collections::HashSet::new();
+    for h in handles {
+        versions.insert(
+            h.await
+                .unwrap()
+                .expect("no PRIMARY KEY collision under concurrency"),
+        );
+    }
+
+    assert_eq!(
+        versions.len(),
+        8,
+        "every concurrent append got a distinct version"
+    );
+    assert_eq!(db.count_workflow_versions("wf1").await.unwrap(), 8);
+}

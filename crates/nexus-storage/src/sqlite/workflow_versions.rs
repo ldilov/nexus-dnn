@@ -92,12 +92,110 @@ pub async fn set_current_version(
     version: &str,
     updated_at: &str,
 ) -> Result<(), StorageError> {
-    sqlx::query("UPDATE workflows SET current_version = ?, updated_at = ? WHERE id = ?")
+    let res = sqlx::query("UPDATE workflows SET current_version = ?, updated_at = ? WHERE id = ?")
         .bind(version)
         .bind(updated_at)
         .bind(workflow_id)
         .execute(pool)
         .await?;
+    if res.rows_affected() == 0 {
+        return Err(StorageError::NotFound {
+            entity: "workflow".into(),
+            id: workflow_id.into(),
+        });
+    }
+    Ok(())
+}
+
+/// Allocate the next monotonic `vN` and append it as one immutable row, then
+/// advance the head — all in a single transaction. Allocation is a single
+/// `INSERT ... SELECT count+1 ... RETURNING`, so the version number is computed
+/// under the INSERT's write lock; concurrent callers serialize and each gets a
+/// distinct version (no `(workflow_id, version)` PK collision). Rolls back if
+/// the head `workflows` row is missing. `record.version` is ignored — the
+/// server owns the id.
+pub async fn append_workflow_version(
+    pool: &SqlitePool,
+    r: &WorkflowVersionRecord,
+    head_updated_at: &str,
+) -> Result<String, StorageError> {
+    let mut tx = pool.begin().await?;
+
+    let version: String = sqlx::query_scalar(
+        "INSERT INTO workflow_versions \
+         (workflow_id, version, label, canonical_hash, operator_schema_hash, \
+          nodes, edges, inputs, outputs, stages, author_kind, extension_id, \
+          extension_version, created_at) \
+         SELECT ?, 'v' || (COALESCE((SELECT COUNT(*) FROM workflow_versions WHERE workflow_id = ?), 0) + 1), \
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? \
+         RETURNING version",
+    )
+    .bind(&r.workflow_id)
+    .bind(&r.workflow_id)
+    .bind(&r.label)
+    .bind(&r.canonical_hash)
+    .bind(&r.operator_schema_hash)
+    .bind(&r.nodes)
+    .bind(&r.edges)
+    .bind(&r.inputs)
+    .bind(&r.outputs)
+    .bind(&r.stages)
+    .bind(&r.author_kind)
+    .bind(&r.extension_id)
+    .bind(&r.extension_version)
+    .bind(&r.created_at)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let res = sqlx::query("UPDATE workflows SET current_version = ?, updated_at = ? WHERE id = ?")
+        .bind(&version)
+        .bind(head_updated_at)
+        .bind(&r.workflow_id)
+        .execute(&mut *tx)
+        .await?;
+    if res.rows_affected() == 0 {
+        return Err(StorageError::NotFound {
+            entity: "workflow".into(),
+            id: r.workflow_id.clone(),
+        });
+    }
+
+    tx.commit().await?;
+    Ok(version)
+}
+
+/// Re-point a workflow head to an immutable version's content in ONE atomic
+/// UPDATE: rewrite the content columns from `r`, set `current_version` to its
+/// id, clear `user_edited_at`, and stamp `updated_at`. Single statement, so the
+/// content and the head pointer can never split-brain on partial failure.
+/// `head_version` is the human-facing version string written to `workflows.version`.
+pub async fn revert_head_to_version(
+    pool: &SqlitePool,
+    r: &WorkflowVersionRecord,
+    head_version: &str,
+    now: &str,
+) -> Result<(), StorageError> {
+    let res = sqlx::query(
+        "UPDATE workflows SET version = ?, inputs = ?, outputs = ?, nodes = ?, edges = ?, \
+         stages = ?, updated_at = ?, user_edited_at = NULL, current_version = ? WHERE id = ?",
+    )
+    .bind(head_version)
+    .bind(&r.inputs)
+    .bind(&r.outputs)
+    .bind(&r.nodes)
+    .bind(&r.edges)
+    .bind(&r.stages)
+    .bind(now)
+    .bind(&r.version)
+    .bind(&r.workflow_id)
+    .execute(pool)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Err(StorageError::NotFound {
+            entity: "workflow".into(),
+            id: r.workflow_id.clone(),
+        });
+    }
     Ok(())
 }
 

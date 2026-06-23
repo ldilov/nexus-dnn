@@ -80,6 +80,21 @@ pub trait Database: Send + Sync {
         updated_at: &str,
     ) -> Result<(), StorageError>;
     async fn get_current_version(&self, workflow_id: &str) -> Result<Option<String>, StorageError>;
+    /// Atomically allocate the next `vN`, append the immutable version row, and
+    /// advance the head — collision-safe under concurrency. Returns the new id.
+    async fn append_workflow_version(
+        &self,
+        record: &WorkflowVersionRecord,
+        head_updated_at: &str,
+    ) -> Result<String, StorageError>;
+    /// Atomically rewrite a workflow head from an immutable version (content +
+    /// `current_version` + cleared user edit) in a single UPDATE.
+    async fn revert_head_to_version(
+        &self,
+        record: &WorkflowVersionRecord,
+        head_version: &str,
+        now: &str,
+    ) -> Result<(), StorageError>;
 
     async fn insert_run(&self, record: &RunRecord) -> Result<(), StorageError>;
     async fn get_run(&self, id: &str) -> Result<RunRecord, StorageError>;

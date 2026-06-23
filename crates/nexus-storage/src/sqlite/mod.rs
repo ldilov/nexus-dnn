@@ -177,6 +177,23 @@ impl Database for SqliteDatabase {
         workflow_versions::get_current_version(&self.pool, workflow_id).await
     }
 
+    async fn append_workflow_version(
+        &self,
+        record: &WorkflowVersionRecord,
+        head_updated_at: &str,
+    ) -> Result<String, StorageError> {
+        workflow_versions::append_workflow_version(&self.pool, record, head_updated_at).await
+    }
+
+    async fn revert_head_to_version(
+        &self,
+        record: &WorkflowVersionRecord,
+        head_version: &str,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        workflow_versions::revert_head_to_version(&self.pool, record, head_version, now).await
+    }
+
     async fn insert_run(&self, r: &RunRecord) -> Result<(), StorageError> {
         runs::insert_run(&self.pool, r).await
     }
