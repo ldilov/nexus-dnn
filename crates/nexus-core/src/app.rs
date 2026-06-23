@@ -209,6 +209,25 @@ impl NexusApp {
 
         let extension_registry = Arc::new(extension_registry);
 
+        // Forward data migration (idempotent, non-fatal): seed one immutable
+        // version per pre-existing workflow BEFORE extension re-persist.
+        let seed_now = chrono::Utc::now().to_rfc3339();
+        let seed_operators =
+            nexus_extension::ExtensionRegistry::list_operators(extension_registry.as_ref());
+        match nexus_api::handlers::workflow_versioning::seed_workflow_versions(
+            db.as_ref(),
+            &seed_operators,
+            &seed_now,
+        )
+        .await
+        {
+            Ok(seeded) if seeded > 0 => {
+                tracing::info!(seeded, "seeded immutable workflow versions");
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(error = %e, "seed_workflow_versions failed"),
+        }
+
         persist_discovery_to_db(&db, &extension_registry).await?;
 
         let worker_manager = Arc::new(DefaultWorkerManager::new(event_bus.clone()));
@@ -535,12 +554,13 @@ async fn persist_discovery_to_db(
     registry: &Arc<InMemoryExtensionRegistry>,
 ) -> anyhow::Result<()> {
     let extensions = registry.list_extensions();
+    let operators = nexus_extension::ExtensionRegistry::list_operators(registry.as_ref());
 
     for ext in &extensions {
         persist_extension_record(db, ext).await?;
         persist_operator_records(db, ext).await?;
         persist_recipe_records(db, ext).await?;
-        persist_workflow_records(db, ext).await?;
+        persist_workflow_records(db, ext, &operators).await?;
         persist_ui_contribution_records(db, ext).await?;
     }
 
@@ -550,6 +570,7 @@ async fn persist_discovery_to_db(
 async fn persist_workflow_records(
     db: &Arc<SqliteDatabase>,
     ext: &ActivatedExtension,
+    operators: &[nexus_extension::OperatorDefinition],
 ) -> anyhow::Result<()> {
     // Collect unique workflow template paths referenced by this extension's recipes.
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -639,8 +660,39 @@ async fn persist_workflow_records(
             }
         };
 
+        // INSERT OR REPLACE nulls the out-of-band `current_version`; capture the
+        // prior head so we can restore it if appending fails.
+        let prev_current = db.get_current_version(&workflow.id).await.ok().flatten();
+
         if let Err(e) = db.insert_workflow(&record).await {
             tracing::debug!(workflow_id = %workflow.id, error = %e, "insert_workflow failed");
+            continue;
+        }
+
+        match nexus_api::handlers::workflow_versioning::append_workflow_version_if_changed(
+            db.as_ref(),
+            &workflow,
+            operators,
+            "extension",
+            Some(&ext.manifest.extension.id),
+            Some(&ext.manifest.extension.version),
+            Some(&workflow.version),
+            &now,
+        )
+        .await
+        {
+            Ok(version) => {
+                if let Err(e) = db.set_current_version(&workflow.id, &version, &now).await {
+                    tracing::debug!(workflow_id = %workflow.id, error = %e, "set_current_version failed");
+                }
+                // P1: refresh_status_for_workflow hook site (version-advance site #2)
+            }
+            Err(e) => {
+                tracing::warn!(workflow_id = %workflow.id, error = %e, "append extension workflow version failed");
+                if let Some(prev) = prev_current {
+                    let _ = db.set_current_version(&workflow.id, &prev, &now).await;
+                }
+            }
         }
     }
 
