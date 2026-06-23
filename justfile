@@ -176,3 +176,53 @@ _dgx-exec cmd:
     [ -f "$key" ] || { echo "fatal: ssh key '$key' not found (set DGX_KEY)." >&2; exit 1; }
     enc="$(printf '%s' '{{cmd}}' | base64 | tr -d '\n')"
     ssh -i "$key" -o StrictHostKeyChecking=no "$user@$host" "echo $enc | base64 -d | bash"
+
+# Rebuild a built-in extension's web dist (or "all") from source, locally.
+# Refreshes the committed dist; the image rebuilds it too (Dockerfile).
+[no-cd]
+ext-build ext="all":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    build_one() {
+        d="$1"
+        [ -f "$d/package.json" ] || { echo "skip $d (no package.json)"; return 0; }
+        [ -d "$d/node_modules" ] || { echo "skip $d (no node_modules — install deps there first)"; return 0; }
+        echo ">>> building $d"
+        ( cd "$d" && node node_modules/typescript/bin/tsc --noEmit && node node_modules/vite/bin/vite.js build )
+        echo ">>> done $d"
+    }
+    if [ "{{ext}}" = "all" ]; then
+        for pj in "$root"/extensions/builtin/*/web/package.json; do build_one "$(dirname "$pj")"; done
+    else
+        build_one "$root/extensions/builtin/{{ext}}/web"
+    fi
+
+# Typecheck + lint a web surface (path to a dir with package.json). Tests if present.
+[no-cd]
+web-verify dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{dir}}"
+    echo "=== tsc ==="; node node_modules/typescript/bin/tsc --noEmit
+    if [ -x node_modules/@biomejs/biome/bin/biome ]; then echo "=== biome lint ==="; node node_modules/@biomejs/biome/bin/biome lint src; fi
+    if [ -f node_modules/vitest/vitest.mjs ]; then echo "=== vitest ==="; node node_modules/vitest/vitest.mjs run; fi
+
+# Fail if any committed extension dist is stale vs a fresh build.
+[no-cd]
+dist-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just --justfile "{{justfile()}}" ext-build all
+    root="{{justfile_directory()}}"
+    if ! git -C "$root" diff --quiet -- 'extensions/builtin/*/web/dist'; then
+        echo "STALE DIST — committed dist differs from a fresh build:"
+        git -C "$root" --no-pager diff --stat -- 'extensions/builtin/*/web/dist'
+        exit 1
+    fi
+    echo "OK: all extension dists match source."
+
+# Show the live nexusdnn image tag + every dgx-fixNN image on the Spark.
+[no-cd]
+dgx-tag:
+    @just --justfile "{{justfile()}}" _dgx-exec 'echo "live:"; docker ps --filter name=nexusdnn --format "{{{{.Image}}"; echo "images:"; docker images ldilov/nexusdnn --format "{{{{.Tag}}" | sort'

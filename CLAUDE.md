@@ -15,6 +15,10 @@ just dgx-ps                 # list containers
 just dgx-logs nexusdnn 300 1     # tail logs (follow)
 just dgx-ssh "df -h /"      # one-off remote command (keep it $-free; see below)
 just dgx-push <src> <dest>  # / dgx-pull — file transfer
+just dgx-tag                # live image tag + all dgx-fixNN images on the Spark
+just ext-build [ext]        # rebuild a built-in extension's web dist (default: all)
+just web-verify <web-dir>   # tsc + biome lint (+ vitest) for a web surface
+just dist-check             # fail if any committed extension dist is stale
 ```
 
 `dgx-deploy` flow: `fetch` → `checkout -B <branch> origin/<branch>` → build image with `--build-arg NEXUS_BUILD_ID=<sha>` (UI cache-bust, required) → **build-first, swap only on success** (old container serves until the new image is ready) → health-check `localhost:3000`. Keeps name `nexusdnn` + port 3000 so the cloudflared tunnel survives. Current live tag: `dgx-fix41`.
@@ -27,6 +31,14 @@ just dgx-push <src> <dest>  # / dgx-pull — file transfer
 ## Host ↔ extension boundary (non-negotiable)
 
 The host is a generic runtime; extensions are domain consumers. **No extension-specific logic/types/routes/table-names in host paths** (`crates/nexus-*`, `apps/web/` outside the generic extension renderer, root `migrations/`). Full rule: [`.claude/rules/host-extension-boundary.md`](.claude/rules/host-extension-boundary.md). Sole sanctioned coupling point: `crates/nexus-builtins`.
+
+## Extension UI: how it's served (read this before editing extension web)
+
+The runtime serves each extension's UI from `extensions/builtin/<ext>/web/dist/` (route `/api/v1/extensions/<id>/ui/<file>`). The image **rebuilds extension web from source** in the Dockerfile builder (best-effort per extension), so a deploy always reflects source — you no longer have to hand-rebuild + commit dist for prod. The committed `web/dist/` is the local-dev copy and the per-extension fallback if its in-image build fails.
+
+- After editing extension `.css.ts`/`.tsx`: `just ext-build <ext>` to refresh the committed dist (keeps local dev + the diff honest), or just deploy and let the image rebuild it.
+- `just dist-check` fails if any committed dist drifted from source — wire it into review.
+- Note: vanilla-extract class names are path/name-derived, so `@media`-only changes alter `dist/*.css` but leave `dist/*.js` byte-identical.
 
 ## Web build / verify (extension + shell frontends)
 

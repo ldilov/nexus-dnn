@@ -45,6 +45,18 @@ ENV NEXUS_BUILD_ID=${NEXUS_BUILD_ID}
 # here makes it deterministic; build.rs may rebuild it later, which is a no-op.
 RUN pnpm --dir apps/web install \
  && pnpm --dir apps/web run build
+# Rebuild each built-in extension's web bundle from source (runtime serves
+# <ext>/web/dist). Best-effort: a failure keeps that ext's committed dist + logs.
+RUN for pj in extensions/builtin/*/web/package.json; do \
+      dir="$(dirname "$pj")"; \
+      node -e "process.exit((require('./$pj').scripts||{}).build?0:1)" || continue; \
+      echo ">>> building extension web: $dir"; \
+      if pnpm --dir "$dir" install && pnpm --dir "$dir" run build; then \
+        echo ">>> ok: $dir"; \
+      else \
+        echo "!!! WARNING: $dir web build FAILED — shipping its committed dist"; \
+      fi; \
+    done
 RUN cargo build --release -p nexus-core --bin nexus-dnn \
  && cp target/release/nexus-dnn /usr/local/bin/nexus-dnn
 
