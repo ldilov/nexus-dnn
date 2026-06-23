@@ -166,7 +166,7 @@ fn build_operator_map(operators: &[OperatorDefinition]) -> OperatorMap<'_> {
         .collect()
 }
 
-fn parse_operator_ref(operator_ref: &str) -> (String, String) {
+pub(crate) fn parse_operator_ref(operator_ref: &str) -> (String, String) {
     match operator_ref.rsplit_once('@') {
         Some((id, version)) => (id.to_string(), version.to_string()),
         None => (operator_ref.to_string(), String::new()),

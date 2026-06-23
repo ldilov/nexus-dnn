@@ -6,6 +6,7 @@ mod migrations;
 mod namespaces;
 mod operators;
 mod runs;
+mod workflow_versions;
 mod workflows;
 
 use std::str::FromStr;
@@ -17,7 +18,7 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
 };
 pub struct SqliteDatabase {
     pool: SqlitePool,
@@ -129,6 +130,51 @@ impl Database for SqliteDatabase {
         updated_at: &str,
     ) -> Result<(), StorageError> {
         workflows::set_canvas_state(&self.pool, workflow_id, payload, updated_at).await
+    }
+
+    async fn insert_workflow_version(&self, r: &WorkflowVersionRecord) -> Result<(), StorageError> {
+        workflow_versions::insert_workflow_version(&self.pool, r).await
+    }
+
+    async fn list_workflow_versions(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Vec<WorkflowVersionRecord>, StorageError> {
+        workflow_versions::list_workflow_versions(&self.pool, workflow_id).await
+    }
+
+    async fn get_workflow_version(
+        &self,
+        workflow_id: &str,
+        version: &str,
+    ) -> Result<WorkflowVersionRecord, StorageError> {
+        workflow_versions::get_workflow_version(&self.pool, workflow_id, version).await
+    }
+
+    async fn latest_workflow_version_for_author(
+        &self,
+        workflow_id: &str,
+        author_kind: &str,
+    ) -> Result<Option<WorkflowVersionRecord>, StorageError> {
+        workflow_versions::latest_workflow_version_for_author(&self.pool, workflow_id, author_kind)
+            .await
+    }
+
+    async fn count_workflow_versions(&self, workflow_id: &str) -> Result<i64, StorageError> {
+        workflow_versions::count_workflow_versions(&self.pool, workflow_id).await
+    }
+
+    async fn set_current_version(
+        &self,
+        workflow_id: &str,
+        version: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError> {
+        workflow_versions::set_current_version(&self.pool, workflow_id, version, updated_at).await
+    }
+
+    async fn get_current_version(&self, workflow_id: &str) -> Result<Option<String>, StorageError> {
+        workflow_versions::get_current_version(&self.pool, workflow_id).await
     }
 
     async fn insert_run(&self, r: &RunRecord) -> Result<(), StorageError> {

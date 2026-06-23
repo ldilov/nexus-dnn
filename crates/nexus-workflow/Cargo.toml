@@ -14,3 +14,4 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
 nexus-extension = { path = "../nexus-extension" }
+sha2 = "0.10"

@@ -97,6 +97,27 @@ pub struct WorkflowRecord {
     pub extension_version_first_seen: Option<String>,
 }
 
+/// One immutable row in the append-only `workflow_versions` history.
+/// `version` is the server-owned monotonic id (`v1`, `v2`, ...); `label`
+/// preserves the author-declared semver at author time.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkflowVersionRecord {
+    pub workflow_id: String,
+    pub version: String,
+    pub label: Option<String>,
+    pub canonical_hash: String,
+    pub operator_schema_hash: String,
+    pub nodes: String,
+    pub edges: String,
+    pub inputs: Option<String>,
+    pub outputs: Option<String>,
+    pub stages: Option<String>,
+    pub author_kind: String,
+    pub extension_id: Option<String>,
+    pub extension_version: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunRecord {
     pub id: String,

@@ -71,6 +71,25 @@ pub fn map_workflow_row(row: SqliteRow) -> WorkflowRecord {
     }
 }
 
+pub fn map_workflow_version_row(row: SqliteRow) -> crate::records::WorkflowVersionRecord {
+    crate::records::WorkflowVersionRecord {
+        workflow_id: row.get("workflow_id"),
+        version: row.get("version"),
+        label: row.try_get("label").ok().flatten(),
+        canonical_hash: row.get("canonical_hash"),
+        operator_schema_hash: row.get("operator_schema_hash"),
+        nodes: row.get("nodes"),
+        edges: row.get("edges"),
+        inputs: row.try_get("inputs").ok().flatten(),
+        outputs: row.try_get("outputs").ok().flatten(),
+        stages: row.try_get("stages").ok().flatten(),
+        author_kind: row.get("author_kind"),
+        extension_id: row.try_get("extension_id").ok().flatten(),
+        extension_version: row.try_get("extension_version").ok().flatten(),
+        created_at: row.get("created_at"),
+    }
+}
+
 pub fn map_run_row(row: SqliteRow) -> RunRecord {
     RunRecord {
         id: row.get("id"),

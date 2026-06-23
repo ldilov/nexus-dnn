@@ -160,6 +160,19 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         false,
     )
     .await?;
+    // 026 workflow versioning — CREATE (false) + ALTER current_version (true)
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/026_workflow_versions.sql"),
+        false,
+    )
+    .await?;
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/026_workflow_versions_alter.sql"),
+        true,
+    )
+    .await?;
     Ok(())
 }
 

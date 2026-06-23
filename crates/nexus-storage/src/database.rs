@@ -2,7 +2,7 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
 };
 
 #[allow(async_fn_in_trait)]
@@ -50,6 +50,36 @@ pub trait Database: Send + Sync {
         payload: &str,
         updated_at: &str,
     ) -> Result<(), StorageError>;
+
+    /// Append-only `workflow_versions` history (immutable rows) + the
+    /// `workflows.current_version` head pointer (managed out-of-band so adding
+    /// the column does not touch the `WorkflowRecord` shape).
+    async fn insert_workflow_version(
+        &self,
+        record: &WorkflowVersionRecord,
+    ) -> Result<(), StorageError>;
+    async fn list_workflow_versions(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Vec<WorkflowVersionRecord>, StorageError>;
+    async fn get_workflow_version(
+        &self,
+        workflow_id: &str,
+        version: &str,
+    ) -> Result<WorkflowVersionRecord, StorageError>;
+    async fn latest_workflow_version_for_author(
+        &self,
+        workflow_id: &str,
+        author_kind: &str,
+    ) -> Result<Option<WorkflowVersionRecord>, StorageError>;
+    async fn count_workflow_versions(&self, workflow_id: &str) -> Result<i64, StorageError>;
+    async fn set_current_version(
+        &self,
+        workflow_id: &str,
+        version: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError>;
+    async fn get_current_version(&self, workflow_id: &str) -> Result<Option<String>, StorageError>;
 
     async fn insert_run(&self, record: &RunRecord) -> Result<(), StorageError>;
     async fn get_run(&self, id: &str) -> Result<RunRecord, StorageError>;
