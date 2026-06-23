@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import type { LayoutSummary, Workflow } from "../../../api/client";
 import { Button } from "../../../components/base/button";
+import {
+  OverflowMenu,
+  type OverflowMenuItem,
+} from "../../../components/base/overflow_menu";
 import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
 import { GraphView } from "../../workflows/components/canvas/graph_view";
 import { ExtensionLayoutView } from "../../extensions/layout/layout.view";
@@ -152,6 +156,18 @@ const TONE_TO_VARIANT: Record<ExtensionActionTone, "primary" | "secondary" | "da
   secondary: "secondary",
   danger: "danger",
 };
+
+/** A host-owned header action (Import / Export / Delete). The same descriptor
+ * feeds both the inline button row and the collapsed overflow menu so labels,
+ * icons, and handlers never drift between the two responsive presentations. */
+interface HostAction {
+  id: string;
+  label: string;
+  icon: string;
+  variant: "secondary" | "danger";
+  ariaLabel: string;
+  onSelect: () => void;
+}
 
 interface ExtensionActionButtonProps {
   action: ExtensionActionDeclaration;
@@ -304,6 +320,44 @@ export function DeploymentDetailUI({
     );
   }, [hostEl]);
 
+  const hostActions: HostAction[] = [];
+  if (onRequestImport) {
+    hostActions.push({
+      id: "import",
+      label: "Import",
+      icon: "upload",
+      variant: "secondary",
+      ariaLabel: displayName
+        ? `Import into deployment ${displayName}`
+        : "Import into deployment",
+      onSelect: onRequestImport,
+    });
+  }
+  if (onRequestExport) {
+    hostActions.push({
+      id: "export",
+      label: "Export",
+      icon: "download",
+      variant: "secondary",
+      ariaLabel: displayName
+        ? `Export deployment ${displayName}`
+        : "Export deployment",
+      onSelect: onRequestExport,
+    });
+  }
+  if (onRequestDelete) {
+    hostActions.push({
+      id: "delete",
+      label: "Delete",
+      icon: "delete",
+      variant: "danger",
+      ariaLabel: displayName
+        ? `Delete deployment ${displayName}`
+        : "Delete deployment",
+      onSelect: onRequestDelete,
+    });
+  }
+
   return (
     <div className={s.root}>
       <button type="button" className={s.backLink} onClick={onBack}>
@@ -358,68 +412,42 @@ export function DeploymentDetailUI({
               />
             )}
             {presetMenu}
-            {onRequestImport && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={onRequestImport}
-                aria-label={
-                  displayName
-                    ? `Import into deployment ${displayName}`
-                    : "Import into deployment"
-                }
-              >
-                <span
-                  className={`material-symbols-outlined ${s.actionIcon}`}
-                  aria-hidden="true"
-                >
-                  upload
+            {hostActions.length > 0 && (
+              <>
+                <span className={s.hostInline}>
+                  {hostActions.map((action) => (
+                    <Button
+                      key={action.id}
+                      type="button"
+                      variant={action.variant}
+                      size="sm"
+                      onClick={action.onSelect}
+                      aria-label={action.ariaLabel}
+                    >
+                      <span
+                        className={`material-symbols-outlined ${s.actionIcon}`}
+                        aria-hidden="true"
+                      >
+                        {action.icon}
+                      </span>
+                      {action.label}
+                    </Button>
+                  ))}
                 </span>
-                Import
-              </Button>
-            )}
-            {onRequestExport && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={onRequestExport}
-                aria-label={
-                  displayName
-                    ? `Export deployment ${displayName}`
-                    : "Export deployment"
-                }
-              >
-                <span
-                  className={`material-symbols-outlined ${s.actionIcon}`}
-                  aria-hidden="true"
-                >
-                  download
-                </span>
-                Export
-              </Button>
-            )}
-            {onRequestDelete && (
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={onRequestDelete}
-                aria-label={
-                  displayName
-                    ? `Delete deployment ${displayName}`
-                    : "Delete deployment"
-                }
-              >
-                <span
-                  className={`material-symbols-outlined ${s.actionIcon}`}
-                  aria-hidden="true"
-                >
-                  delete
-                </span>
-                Delete
-              </Button>
+                <OverflowMenu
+                  className={s.hostOverflow}
+                  label="More deployment actions"
+                  items={hostActions.map(
+                    (action): OverflowMenuItem => ({
+                      id: action.id,
+                      label: action.label,
+                      icon: action.icon,
+                      danger: action.variant === "danger",
+                      onSelect: action.onSelect,
+                    }),
+                  )}
+                />
+              </>
             )}
           </div>
         </div>

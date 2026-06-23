@@ -1,4 +1,5 @@
 import { keyframes, style } from "@vanilla-extract/css";
+import { media } from "../../../theme/breakpoints";
 import { vars } from "../../../theme/contract.css";
 
 export const root = style({
@@ -132,7 +133,38 @@ export const actions = style({
   display: "flex",
   gap: vars.density.d2,
   flexWrap: "wrap",
+  alignItems: "center",
   flexShrink: 0,
+  "@media": {
+    // Below tablet the cluster takes its own row (parent .headerRow already
+    // wraps) and pins right so it never crowds the clamped title.
+    [media.maxTablet]: {
+      flex: "1 1 100%",
+      justifyContent: "flex-end",
+    },
+  },
+});
+
+// Host Import/Export/Delete shown inline on roomy viewports; collapsed into
+// the overflow menu at phone widths so the title row stays uncrowded.
+export const hostInline = style({
+  display: "contents",
+  "@media": {
+    [media.maxMobile]: {
+      display: "none",
+    },
+  },
+});
+
+// The "More" overflow trigger — only reachable at phone widths, where the
+// inline host actions are hidden. Keeps a single keyboard-tabbable set.
+export const hostOverflow = style({
+  display: "none",
+  "@media": {
+    [media.maxMobile]: {
+      display: "inline-block",
+    },
+  },
 });
 
 export const actionIcon = style({

@@ -19,7 +19,7 @@ export const buttonRecipe = recipe({
     lineHeight: vars.font.lineHeight.tight,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, opacity ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, opacity ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationInstant} ${vars.motion.easingDefault}`,
     selectors: {
       "&:disabled, &[aria-disabled='true']": {
         opacity: 0.55,
@@ -28,9 +28,24 @@ export const buttonRecipe = recipe({
       "&[aria-busy='true']": {
         cursor: "progress",
       },
+      // Compositor-friendly press: a subtle settle on pointer-down, shared
+      // by every variant. Per-variant tone shifts layer on top below.
+      "&:active:not(:disabled):not([aria-disabled='true'])": {
+        transform: "scale(0.97)",
+      },
       "&:focus-visible": {
         outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
         outlineOffset: vars.focus.offset,
+      },
+    },
+    "@media": {
+      "(prefers-reduced-motion: reduce)": {
+        transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, opacity ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+        selectors: {
+          "&:active:not(:disabled):not([aria-disabled='true'])": {
+            transform: "none",
+          },
+        },
       },
     },
   },
@@ -45,6 +60,10 @@ export const buttonRecipe = recipe({
             background: vars.color.accent.primaryHover,
             color: vars.color.text.primary,
           },
+          "&:active:not(:disabled)": {
+            background: vars.color.accent.primaryDim,
+            color: vars.color.text.primary,
+          },
         },
       },
       secondary: {
@@ -56,6 +75,11 @@ export const buttonRecipe = recipe({
             backgroundColor: vars.color.bg.hover,
             boxShadow: `inset 0 0 0 1px ${vars.color.outline.base}`,
           },
+          // Press darkens further and tints the inset edge toward accent.
+          "&:active:not(:disabled)": {
+            backgroundColor: vars.color.bg.lowest,
+            boxShadow: `inset 0 0 0 1px ${vars.color.accent.accentDim}`,
+          },
         },
       },
       ghost: {
@@ -66,6 +90,10 @@ export const buttonRecipe = recipe({
             backgroundColor: vars.color.bg.hover,
             color: vars.color.text.primary,
           },
+          "&:active:not(:disabled)": {
+            backgroundColor: vars.color.bg.lowest,
+            color: vars.color.text.primary,
+          },
         },
       },
       danger: {
@@ -73,6 +101,7 @@ export const buttonRecipe = recipe({
         color: vars.color.text.inverse,
         selectors: {
           "&:hover:not(:disabled)": { opacity: 0.9 },
+          "&:active:not(:disabled)": { opacity: 0.8 },
         },
       },
       // Aliases — kept for back-compat with existing call sites. Prefer the
@@ -86,6 +115,11 @@ export const buttonRecipe = recipe({
             backgroundColor: vars.color.accent.tertiaryDim,
             color: vars.color.text.primary,
           },
+          "&:active:not(:disabled)": {
+            backgroundColor: vars.color.accent.tertiaryDim,
+            color: vars.color.text.primary,
+            opacity: 0.85,
+          },
         },
       },
       success: {
@@ -93,6 +127,7 @@ export const buttonRecipe = recipe({
         color: vars.color.text.inverse,
         selectors: {
           "&:hover:not(:disabled)": { opacity: 0.9 },
+          "&:active:not(:disabled)": { opacity: 0.8 },
         },
       },
       accent: {
@@ -100,12 +135,12 @@ export const buttonRecipe = recipe({
         color: vars.color.onColor.tertiary,
         selectors: {
           "&:hover:not(:disabled)": { opacity: 0.9 },
+          "&:active:not(:disabled)": { opacity: 0.8 },
         },
       },
     },
     size: {
-      // audit-allow: px — Button-specific touch-target scale, intentionally
-      // distinct from form-control heights.
+      // audit-allow: px — Button-specific touch-target scale, distinct from form heights
       xs: { height: "24px", padding: `0 ${vars.space.insetSm}`, fontSize: vars.font.size.caption },
       // audit-allow: px — Button-specific touch-target scale.
       sm: { height: "32px", padding: `0 ${vars.space.insetMd}`, fontSize: vars.font.size.caption },

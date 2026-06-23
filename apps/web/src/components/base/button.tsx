@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactElement } from "react";
+import type { ButtonHTMLAttributes, ReactElement, Ref } from "react";
 import { buttonRecipe } from "./button.css";
 import * as styles from "./button_spinner.css";
 
@@ -17,6 +17,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: ButtonSize;
   iconOnly?: boolean;
   loading?: boolean;
+  ref?: Ref<HTMLButtonElement>;
 };
 
 export function Button({
@@ -27,6 +28,7 @@ export function Button({
   className,
   disabled,
   children,
+  ref,
   ...rest
 }: ButtonProps): ReactElement {
   const cls = [buttonRecipe({ variant, size, iconOnly }), className]
@@ -34,6 +36,7 @@ export function Button({
     .join(" ");
   return (
     <button
+      ref={ref}
       className={cls}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
