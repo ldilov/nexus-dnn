@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import { Button } from "../../../components/base/button";
+import { Input } from "../../../components/base/input";
 import * as s from "../../../components/base/confirm_dialog.css";
+import * as f from "./save_preset_dialog.css";
 
 export interface SavePresetDialogProps {
   readonly open: boolean;
@@ -18,6 +20,8 @@ export function SavePresetDialog({
   onCancel,
 }: SavePresetDialogProps) {
   const titleId = useId();
+  const nameId = useId();
+  const descId = useId();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -60,30 +64,37 @@ export function SavePresetDialog({
           </h2>
         </header>
 
-        <div className={s.body}>
-          <label>
-            Name
-            <input
+        <div className={f.body}>
+          <div className={f.field}>
+            <label className={f.fieldLabel} htmlFor={nameId}>
+              Name
+            </label>
+            <Input
+              id={nameId}
               type="text"
               value={name}
               autoFocus
               disabled={busy}
               maxLength={120}
+              placeholder="e.g. Production (fp8)"
               onChange={(e) => setName(e.target.value)}
-              aria-label="Preset name"
             />
-          </label>
-          <label>
-            Description (optional)
+          </div>
+          <div className={f.field}>
+            <label className={f.fieldLabel} htmlFor={descId}>
+              Description (optional)
+            </label>
             <textarea
+              id={descId}
+              className={f.textarea}
               value={description}
               disabled={busy}
-              rows={2}
+              rows={3}
               maxLength={500}
+              placeholder="What does this preset capture?"
               onChange={(e) => setDescription(e.target.value)}
-              aria-label="Preset description"
             />
-          </label>
+          </div>
         </div>
 
         <footer className={s.footer}>
