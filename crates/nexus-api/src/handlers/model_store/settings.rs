@@ -131,8 +131,7 @@ mod tests {
 
     #[test]
     fn civitai_token_request_deserializes() {
-        let r: SetCivitaiTokenRequest =
-            serde_json::from_str(r#"{ "token": "abc" }"#).unwrap();
+        let r: SetCivitaiTokenRequest = serde_json::from_str(r#"{ "token": "abc" }"#).unwrap();
         assert_eq!(r.token, "abc");
     }
 }

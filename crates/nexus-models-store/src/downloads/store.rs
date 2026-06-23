@@ -674,6 +674,24 @@ impl JobStore {
         Ok(())
     }
 
+    /// Delete a job and all of its artifact rows. Run inside a single
+    /// transaction so the parent and children never diverge. Idempotent:
+    /// deleting a missing job is a no-op, not an error (the orchestrator's
+    /// cancel relies on this to stay race-tolerant).
+    pub async fn delete(&self, id: &JobId) -> JobStoreResult<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM download_job_artifacts WHERE job_id = ?1")
+            .bind(id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM download_jobs WHERE job_id = ?1")
+            .bind(id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn update_target_progress(
         &self,
         id: &JobId,
@@ -1041,6 +1059,25 @@ mod tests {
         let j = store.get(&job.job_id).await.unwrap().unwrap();
         assert_eq!(j.progress_bytes, 512_000);
         assert_eq!(j.targets[0].downloaded_bytes, 512_000);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_job_and_targets_and_is_idempotent() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let job = store.create(sample_params()).await.unwrap();
+        assert!(store.get(&job.job_id).await.unwrap().is_some());
+
+        store.delete(&job.job_id).await.unwrap();
+        assert!(
+            store.get(&job.job_id).await.unwrap().is_none(),
+            "job row must be gone after delete"
+        );
+
+        store
+            .delete(&job.job_id)
+            .await
+            .expect("deleting a missing job is a no-op, not an error");
     }
 
     #[tokio::test]

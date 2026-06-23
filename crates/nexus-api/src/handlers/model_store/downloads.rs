@@ -552,6 +552,40 @@ pub async fn resume_download(
     }
 }
 
+/// `POST /api/v1/model-store/downloads/:job_id/cancel` — stops the
+/// in-flight (or queued) download, discards the partial bytes, and removes
+/// the job. Idempotent: an already-absent job is reported as canceled.
+pub async fn cancel_download(
+    State(state): State<AppState>,
+    Path(job_id): Path<String>,
+) -> Response {
+    let Some(orchestrator) = state.download_orchestrator.as_ref() else {
+        return ApiResponse::<()>::err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "not_ready",
+            "downloads",
+            "Download orchestrator not yet initialised.".into(),
+        )
+        .into_response();
+    };
+    let Ok(uuid) = uuid::Uuid::from_str(&job_id) else {
+        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}")).into_response();
+    };
+    let id = JobId::from_uuid(uuid);
+
+    match orchestrator.cancel(id).await {
+        Ok(()) => ApiResponse::ok(serde_json::json!({
+            "job_id": job_id,
+            "canceled": true,
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::error!(%job_id, error = %e, "cancel failed");
+            ApiResponse::<()>::internal("cancel failed".into()).into_response()
+        }
+    }
+}
+
 /// `GET /api/v1/model-store/downloads/:job_id` — returns the current
 /// persisted snapshot of the job.
 pub async fn get_download_status(

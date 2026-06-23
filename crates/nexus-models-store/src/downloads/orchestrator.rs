@@ -202,6 +202,88 @@ impl DownloadOrchestrator {
         }
     }
 
+    /// Cancel a download outright — stop the work, discard the partial
+    /// bytes, and drop the job from the store so polling 404s and the UI
+    /// clears the row. Best-effort and race-tolerant: an unknown job is a
+    /// no-op, never a panic.
+    ///
+    /// A **terminal** job (`Downloaded`/`Failed`/etc.) is left untouched: its
+    /// files in `sink_root/<job_id>/` are the real model weights the install
+    /// map references, so cancel is a no-op on a finished download — nuking
+    /// them would orphan the install.
+    ///
+    /// Steps for a cancellable (`queued`/`downloading`/`paused`) job:
+    /// 1. Signal an active stream to exit ([`Self::pause`]); if it was only
+    ///    queued, drop it from the FIFO ([`Self::cancel_queued`]).
+    /// 2. If a worker was active, wait (bounded) for it to drop its pause
+    ///    signal — i.e. for `run_job` to return. This is a FILE concern only:
+    ///    it stops the worker writing one more chunk after we wipe the dir and
+    ///    leaving an orphan partial. It is NOT what keeps the row deleted.
+    /// 3. Remove the per-job sink dir. A missing dir is fine; any other error
+    ///    is logged, never fatal.
+    /// 4. Delete the job row + its targets. A missing row is tolerated.
+    ///
+    /// Zombie-row safety does NOT rely on this ordering. It rests on the fact
+    /// that `run_job`'s terminal write (`update_state` / `update_target_state`)
+    /// is UPDATE-only — it matches `WHERE job_id = ?`, never INSERTs — so once
+    /// the row is deleted a late worker write touches 0 rows and silently
+    /// no-ops. A future refactor that turns those into UPSERTs would reintroduce
+    /// a zombie row regardless of any wait here.
+    ///
+    /// Known narrow race (bounded, not eliminated): a cancel arriving in the
+    /// ~1-2ms after a worker pops the queue but before it registers its pause
+    /// signal sees neither an active signal nor a queue entry, so the wait is
+    /// skipped and that worker may leave a stray partial FILE (the row is still
+    /// deleted, per above). A future orphan-sink GC sweep reclaims the bytes.
+    /// Closing it fully would need a per-job `CancellationToken` in `run_job` —
+    /// out of scope here.
+    pub async fn cancel(&self, job_id: JobId) -> Result<(), JobStoreError> {
+        if let Some(job) = self.inner.store.get(&job_id).await?
+            && job.state.is_terminal()
+        {
+            return Ok(());
+        }
+
+        let was_active = self.pause(job_id).await;
+        if !was_active {
+            self.cancel_queued(job_id).await;
+        } else {
+            self.await_worker_release(job_id).await;
+        }
+
+        let sink_dir = self.inner.sink_root.join(job_id.to_string());
+        if let Err(e) = tokio::fs::remove_dir_all(&sink_dir).await
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                %job_id,
+                error = %e,
+                "cancel: failed to remove partial sink dir (continuing)"
+            );
+        }
+
+        self.inner.store.delete(&job_id).await
+    }
+
+    /// Poll until the active worker drops its pause signal (set on `run_job`
+    /// return) so it can no longer write to the sink dir. Bounded to ~2s of
+    /// 50ms ticks; on timeout we proceed anyway — the row delete is the
+    /// authority, a stray partial is reclaimable.
+    async fn await_worker_release(&self, job_id: JobId) {
+        const TICK: Duration = Duration::from_millis(50);
+        const MAX_TICKS: u32 = 40;
+        for _ in 0..MAX_TICKS {
+            if !self.inner.pause_signals.lock().await.contains_key(&job_id) {
+                return;
+            }
+            tokio::time::sleep(TICK).await;
+        }
+        tracing::warn!(
+            %job_id,
+            "cancel: worker did not release within timeout; proceeding"
+        );
+    }
+
     /// Resume a paused job — flips the persisted state back to
     /// `queued` and enqueues it. Idempotent.
     pub async fn resume(&self, job_id: JobId) -> Result<(), JobStoreError> {
@@ -1079,6 +1161,193 @@ mod tests {
         assert_eq!(
             finished.progress_bytes, expected_total,
             "progress must reach the now-known summed total"
+        );
+    }
+
+    /// Cancel of a queued job: it must drop from the FIFO, delete the row
+    /// (so `get` returns None), and remove the per-job partial sink dir.
+    #[tokio::test]
+    async fn cancel_queued_job_deletes_row_and_sink_dir() {
+        use crate::downloads::store::{CreateJobParams, JobTargetInput};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().to_path_buf();
+        let (orch, store) = build_orchestrator_with_store(sink_root.clone()).await;
+
+        let params = CreateJobParams::builder(
+            crate::ids::FamilyId::from("direct_url:m.bin"),
+            "direct_url",
+            "m.bin",
+            RequestedKind::Primary,
+        )
+        .target(JobTargetInput {
+            artifact_id: ArtifactId::from("direct_url:m.bin#0"),
+            filename: "m.bin".into(),
+            role: DependencyRole::Primary,
+            download_url: "https://example.invalid/m.bin".into(),
+            expected_bytes: None,
+            sha256: None,
+        })
+        .build();
+        let job = store.create(params).await.unwrap();
+        let job_id = job.job_id;
+
+        // Simulate partial bytes already on disk for this job.
+        let sink_dir = sink_root.join(job_id.to_string());
+        tokio::fs::create_dir_all(&sink_dir).await.unwrap();
+        tokio::fs::write(sink_dir.join("m.bin"), b"partial")
+            .await
+            .unwrap();
+
+        orch.cancel(job_id).await.unwrap();
+
+        assert!(
+            store.get(&job_id).await.unwrap().is_none(),
+            "cancel must delete the job row"
+        );
+        assert!(
+            !sink_dir.exists(),
+            "cancel must remove the per-job partial sink dir"
+        );
+
+        orch.cancel(job_id)
+            .await
+            .expect("cancel of an already-gone job must be a no-op");
+    }
+
+    /// Cancel of an ACTIVELY-downloading job. A throttled, large body holds the
+    /// worker mid-flight long enough that cancel deterministically takes the
+    /// active branch ([`Self::await_worker_release`]). Cancel must stop it,
+    /// delete the row, and the row must stay gone — the terminal-state write in
+    /// `run_job` is UPDATE-only, so it touches the now-deleted row and no zombie
+    /// resurrects.
+    #[tokio::test]
+    async fn cancel_active_download_deletes_row_with_no_zombie() {
+        use crate::downloads::store::{CreateJobParams, JobTargetInput};
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // 64 MiB held behind a 1s delay: the worker is provably still streaming
+        // (and its pause signal registered) when cancel runs, even under fast IO.
+        let body = vec![9u8; 64 * 1024 * 1024];
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_secs(1))
+                    .set_body_bytes(body),
+            )
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().to_path_buf();
+        let (orch, store) = build_orchestrator_with_store(sink_root.clone()).await;
+
+        let params = CreateJobParams::builder(
+            crate::ids::FamilyId::from("direct_url:big.bin"),
+            "direct_url",
+            "big.bin",
+            RequestedKind::Primary,
+        )
+        .target(JobTargetInput {
+            artifact_id: ArtifactId::from("direct_url:big.bin#0"),
+            filename: "big.bin".into(),
+            role: DependencyRole::Primary,
+            download_url: format!("{}/big.bin", server.uri()),
+            expected_bytes: None,
+            sha256: None,
+        })
+        .build();
+        let job = store.create(params).await.unwrap();
+        let job_id = job.job_id;
+        orch.enqueue(job_id).await;
+
+        // Hard-gate the active branch: assert the worker registered its pause
+        // signal (it is now actively streaming) before we cancel mid-flight.
+        let mut active = false;
+        for _ in 0..200 {
+            if orch.inner.pause_signals.lock().await.contains_key(&job_id) {
+                active = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            active,
+            "worker must be actively streaming so cancel exercises await_worker_release"
+        );
+        assert_eq!(
+            store.get(&job_id).await.unwrap().unwrap().state,
+            DownloadState::Downloading,
+            "job must be in Downloading when cancelled"
+        );
+
+        orch.cancel(job_id).await.unwrap();
+
+        assert!(
+            store.get(&job_id).await.unwrap().is_none(),
+            "cancel must delete the actively-downloading job row"
+        );
+        assert!(
+            !sink_root.join(job_id.to_string()).exists(),
+            "cancel must remove the partial sink dir"
+        );
+
+        // Past the response delay: a zombie row would have reappeared by now.
+        tokio::time::sleep(Duration::from_millis(1300)).await;
+        assert!(
+            store.get(&job_id).await.unwrap().is_none(),
+            "no zombie row may reappear after the worker unwinds"
+        );
+    }
+
+    /// Cancel of a `Downloaded` (terminal) job is a NO-OP: the real model
+    /// weights in the sink dir and the install-map-referenced row must both
+    /// survive — cancel must never orphan a finished install.
+    #[tokio::test]
+    async fn cancel_terminal_job_is_a_noop_and_keeps_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().to_path_buf();
+        let (orch, store) = build_orchestrator_with_store(sink_root.clone()).await;
+
+        let params = crate::downloads::store::CreateJobParams::builder(
+            crate::ids::FamilyId::from("direct_url:done.bin"),
+            "direct_url",
+            "done.bin",
+            RequestedKind::Primary,
+        )
+        .target(crate::downloads::store::JobTargetInput {
+            artifact_id: ArtifactId::from("direct_url:done.bin#0"),
+            filename: "done.bin".into(),
+            role: DependencyRole::Primary,
+            download_url: "https://example.invalid/done.bin".into(),
+            expected_bytes: Some(7),
+            sha256: None,
+        })
+        .build();
+        let job = store.create(params).await.unwrap();
+        let job_id = job.job_id;
+        store
+            .update_state(&job_id, DownloadState::Downloaded, None)
+            .await
+            .unwrap();
+
+        // Real weights on disk for a finished download.
+        let sink_dir = sink_root.join(job_id.to_string());
+        tokio::fs::create_dir_all(&sink_dir).await.unwrap();
+        let weight_path = sink_dir.join("done.bin");
+        tokio::fs::write(&weight_path, b"weights").await.unwrap();
+
+        orch.cancel(job_id).await.unwrap();
+
+        assert!(
+            store.get(&job_id).await.unwrap().is_some(),
+            "cancel must NOT delete a terminal job's row"
+        );
+        assert!(
+            weight_path.exists(),
+            "cancel must NOT remove a finished download's weights"
         );
     }
 

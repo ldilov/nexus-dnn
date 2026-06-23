@@ -480,6 +480,10 @@ pub fn build(state: AppState) -> Router {
             post(handlers::model_store::downloads::resume_download),
         )
         .route(
+            "/model-store/downloads/{jobId}/cancel",
+            post(handlers::model_store::downloads::cancel_download),
+        )
+        .route(
             "/model-store/resolve-url",
             post(handlers::model_store::resolve::resolve_url),
         )
