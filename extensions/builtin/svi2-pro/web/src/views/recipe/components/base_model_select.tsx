@@ -1,12 +1,13 @@
 import { type ReactElement, useCallback, useMemo } from "react";
 import useSWR from "swr";
+import * as fc from "../../../components/form/field_control.css";
+import { SearchableSelect } from "../../../components/form/searchable_select";
 import { SVI_LORA_TIER_OPTIONS } from "../../../domain/settings_defaults";
 import { listExpertFiles } from "../../../domain/wan_models";
 import { listInstalledModels } from "../../../services/model_store_client";
 import { saveSettings } from "../../../services/settings_client";
 import type { SviLoraTier } from "../../../services/types";
 import { useRenderRequest } from "../../../store/render_request_store";
-import * as fc from "../../../components/form/field_control.css";
 import * as styles from "./quick_controls.css";
 
 const BUNDLED_VALUE = "__bundled__";
@@ -43,27 +44,32 @@ function ModelSelect({
   includeBundled: boolean;
   onChange: (path: string | undefined) => void;
 }): ReactElement {
+  const comboOptions = useMemo(() => {
+    const base = includeBundled
+      ? [{ value: BUNDLED_VALUE, label: "Bundled Wan2.2 (default)" }, ...options]
+      : options;
+    // A path from a preset/settings may point at a since-removed file. Keep it
+    // visible (and re-selectable) instead of silently showing the placeholder.
+    if (value && value !== BUNDLED_VALUE && !base.some((o) => o.value === value)) {
+      const name = value.split(/[\\/]/).pop() || value;
+      return [...base, { value, label: `${name} (not installed)` }];
+    }
+    return base;
+  }, [includeBundled, options, value]);
   return (
     <div className={styles.group}>
       <label className={styles.groupLabel} htmlFor={id}>
         {label}
       </label>
-      <div className={styles.selectWrap}>
-        <select
-          id={id}
-          className={styles.select}
-          value={value ?? BUNDLED_VALUE}
-          onChange={(e) => onChange(e.target.value === BUNDLED_VALUE ? undefined : e.target.value)}
-        >
-          {includeBundled && <option value={BUNDLED_VALUE}>Bundled Wan2.2 (default)</option>}
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <Chevron />
-      </div>
+      <SearchableSelect
+        id={id}
+        value={value ?? BUNDLED_VALUE}
+        options={comboOptions}
+        onChange={(v) => onChange(v === BUNDLED_VALUE ? undefined : v)}
+        placeholder="Select a model file"
+        searchPlaceholder="Search models…"
+        searchLabel={`${label} — search installed models`}
+      />
     </div>
   );
 }
@@ -84,7 +90,9 @@ export function BaseModelSelect(): ReactElement {
   const isSingleFile = linked;
 
   const failed = installedQuery.error !== undefined;
-  const sviTier: SviLoraTier = (settings.sviLoraTier ?? params.svi_lora_tier ?? "high") as SviLoraTier;
+  const sviTier: SviLoraTier = (settings.sviLoraTier ??
+    params.svi_lora_tier ??
+    "high") as SviLoraTier;
 
   const applyPaths = useCallback(
     (high: string | undefined, low: string | undefined) => {
