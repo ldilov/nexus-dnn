@@ -22,6 +22,7 @@ export function ExtensionsGallery({
 }: ExtensionsGalleryProps = {}) {
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [action, setAction] = useState<GalleryActionState>(IDLE);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [setupRequired, setSetupRequired] = useState<
@@ -36,7 +37,8 @@ export function ExtensionsGallery({
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Failed to load extensions"),
-      );
+      )
+      .finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -98,6 +100,7 @@ export function ExtensionsGallery({
       builtins={builtins}
       externals={externals}
       totalCount={extensions.length}
+      isLoading={!loaded}
       action={action}
       onToggle={setStatus}
       errorMessage={error}

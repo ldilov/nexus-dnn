@@ -122,24 +122,24 @@ type ExtensionActionProps = {
 function ExtensionAction({ status, busy, onEnable, onDisable }: ExtensionActionProps) {
   if (status === "active") {
     return (
-      <Button variant="ghost" size="sm" disabled={busy} onClick={onDisable}>
-        {busy ? "..." : "Disable"}
+      <Button variant="ghost" size="sm" loading={busy} onClick={onDisable}>
+        Disable
       </Button>
     );
   }
 
   if (status === "disabled") {
     return (
-      <Button variant="primary" size="sm" disabled={busy} onClick={onEnable}>
-        {busy ? "..." : "Enable"}
+      <Button variant="primary" size="sm" loading={busy} onClick={onEnable}>
+        Enable
       </Button>
     );
   }
 
   if (status === "available_builtin") {
     return (
-      <Button variant="accent" size="sm" disabled={busy} onClick={onEnable}>
-        {busy ? "..." : "Activate"}
+      <Button variant="accent" size="sm" loading={busy} onClick={onEnable}>
+        Activate
       </Button>
     );
   }

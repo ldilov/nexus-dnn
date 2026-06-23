@@ -4,6 +4,8 @@ import type { Extension } from "../../../api/client";
 import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
 import { PageHero } from "../../../components/base/page_hero";
 import { Section } from "../../../components/base/section";
+import { SkeletonGrid } from "../../../components/base/skeleton";
+import { Spinner } from "../../../components/base/spinner";
 import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
 import { EmptyState } from "../../../components/layout/empty_state";
 import * as s from "./gallery.css";
@@ -17,6 +19,8 @@ export interface ExtensionsGalleryUIProps {
   builtins: Extension[];
   externals: Extension[];
   totalCount: number;
+  /** First-load gate — before the initial fetch resolves, render skeletons not the empty state. */
+  isLoading?: boolean;
   action: GalleryActionState;
   onToggle: (id: string, enable: boolean) => void;
   errorMessage: string | null;
@@ -49,6 +53,7 @@ export function ExtensionsGalleryUI({
   builtins,
   externals,
   totalCount,
+  isLoading,
   action,
   onToggle,
   errorMessage,
@@ -96,7 +101,11 @@ export function ExtensionsGalleryUI({
             />
           </div>
 
-          {totalCount === 0 ? (
+          {isLoading && totalCount === 0 ? (
+            <Section number="01" title="Built-in">
+              <SkeletonGrid count={4} />
+            </Section>
+          ) : totalCount === 0 ? (
             <EmptyState
               count="0"
               line="No extensions are loaded. Install one from the gallery, or drop a NEXUS-DNN extension package onto the install dropzone below."
@@ -363,11 +372,16 @@ function ExtensionCard({
             Set up
           </Link>
         ) : (
-          <Toggle
-            on={active}
-            disabled={busy || invalid}
-            onToggle={(next) => onToggle(extension.id, next)}
-          />
+          <span
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.5em" }}
+          >
+            {busy ? <Spinner size="sm" /> : null}
+            <Toggle
+              on={active}
+              disabled={busy || invalid}
+              onToggle={(next) => onToggle(extension.id, next)}
+            />
+          </span>
         )}
       </div>
     </article>

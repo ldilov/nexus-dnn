@@ -4,6 +4,8 @@ import {
   installExtensionFromZip,
   type ZipInstallResult,
 } from "../../api/client";
+import { ProgressBar } from "../base/progress_bar";
+import { Spinner } from "../base/spinner";
 import * as s from "./install_extension_drawer.css";
 
 type UploadState =
@@ -177,10 +179,22 @@ export function InstallExtensionDrawer({
 
           {state.kind === "uploading" && (
             <div className={`${s.state} ${s.info}`} role="status">
-              <p className={s.stateTitle}>Installing {state.file.name}…</p>
+              <p className={s.stateTitle}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5em",
+                  }}
+                >
+                  <Spinner size="sm" />
+                  Installing {state.file.name}…
+                </span>
+              </p>
               <p className={s.stateMessage}>
                 Validating archive, extracting manifest, and publishing…
               </p>
+              <ProgressBar value={null} />
             </div>
           )}
 

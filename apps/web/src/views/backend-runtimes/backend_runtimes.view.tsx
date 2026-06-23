@@ -9,6 +9,7 @@ import { BackendRuntimesUI } from "./backend_runtimes.ui";
 import { InstallModal } from "./components/install_modal";
 import { PipelineProgress } from "./components/pipeline_progress";
 import { PageHero } from "../../components/base/page_hero";
+import { SkeletonGrid } from "../../components/base/skeleton";
 import * as css from "./backend_runtimes.css";
 
 const REFRESH_INTERVAL_MS = 10_000;
@@ -53,8 +54,9 @@ export function BackendRuntimesView() {
         <PageHero
           eyebrow="Operator surface · Runtime catalog"
           title="Backend runtimes"
-          meta={<span>Loading…</span>}
+          meta={<span>Loading runtime catalog…</span>}
         />
+        <SkeletonGrid count={6} />
       </main>
     );
   }
