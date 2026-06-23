@@ -8,7 +8,7 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use fixtures::mock_lease::{FailingFactory, MockRenderFactory};
+use fixtures::mock_lease::{CrashingFactory, FailingFactory, MockRenderFactory};
 
 async fn body_json(resp: axum::response::Response) -> (StatusCode, Value) {
     let status = resp.status();
@@ -255,6 +255,167 @@ async fn render_failure_persists_error_fields_and_emits_error_frame() {
     let (_, job) = body_json(resp).await;
     assert_eq!(job["status"], "failed");
     assert_eq!(job["errorCode"], -32103);
+}
+
+async fn sse_methods(router: &axum::Router, job_id: &str) -> Vec<String> {
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/render/jobs/{job_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let raw = resp.into_body().collect().await.unwrap().to_bytes();
+    String::from_utf8(raw.to_vec())
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.strip_prefix("data:"))
+        .filter_map(|d| serde_json::from_str::<Value>(d.trim()).ok())
+        .filter_map(|v| v["method"].as_str().map(str::to_string))
+        .collect()
+}
+
+async fn start_render_with(router: &axum::Router, params: Value) -> String {
+    let body = serde_json::json!({ "params": params });
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/render/start")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK, "start response: {body}");
+    body["jobId"].as_str().expect("jobId present").to_string()
+}
+
+/// A worker process-crash (`WorkerCrashed`) AFTER the output is fully written
+/// but BEFORE `render_report.json` is created (the real GB10 OOM signature)
+/// must salvage the newest complete mp4 — Tier B — not discard the render.
+#[tokio::test]
+async fn worker_crash_salvages_newest_output_without_report() {
+    let pool = fixtures::memory_pool().await;
+    let workspace = std::env::temp_dir().join(format!("svi2-salvage-b-{}", ulid::Ulid::new()));
+    let render_dir = workspace.join("renders").join("job");
+    std::fs::create_dir_all(&render_dir).unwrap();
+    // Sub-threshold base render is ignored; the completed upscale is recovered.
+    std::fs::write(render_dir.join("out.mp4"), vec![0u8; 1024]).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    std::fs::write(render_dir.join("out_swinir_l_x2.mp4"), vec![0u8; 8192]).unwrap();
+
+    let router = svi2_pro_extension::build_router_with_factory(
+        pool,
+        Arc::new(CrashingFactory),
+        workspace.clone(),
+    );
+    let out_path = render_dir.join("out.mp4").to_string_lossy().into_owned();
+    let job_id = start_render_with(
+        &router,
+        serde_json::json!({ "prompts": ["x"], "ref_image_path": "ref.png", "output_path": out_path }),
+    )
+    .await;
+
+    let methods = sse_methods(&router, &job_id).await;
+    assert!(
+        methods.contains(&"svi2.video.done".to_string()),
+        "expected salvage done frame: {methods:?}"
+    );
+    assert!(
+        !methods.contains(&"svi2.video.error".to_string()),
+        "salvaged render must not emit an error frame: {methods:?}"
+    );
+
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/render/jobs/{job_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (_, job) = body_json(resp).await;
+    assert_eq!(job["status"], "succeeded", "job: {job}");
+    assert!(
+        job["outputPath"]
+            .as_str()
+            .unwrap()
+            .ends_with("out_swinir_l_x2.mp4"),
+        "expected upscaled output salvaged, got {}",
+        job["outputPath"]
+    );
+}
+
+/// When `render_report.json` IS present (Tier A), salvage uses it verbatim —
+/// authoritative output path plus the persisted report.
+#[tokio::test]
+async fn worker_crash_salvages_via_render_report() {
+    let pool = fixtures::memory_pool().await;
+    let workspace = std::env::temp_dir().join(format!("svi2-salvage-a-{}", ulid::Ulid::new()));
+    let render_dir = workspace.join("renders").join("job");
+    std::fs::create_dir_all(&render_dir).unwrap();
+    let final_path = render_dir.join("out_final.mp4");
+    std::fs::write(&final_path, vec![0u8; 8192]).unwrap();
+    let report = serde_json::json!({
+        "output_path": final_path.to_string_lossy(),
+        "frames": 245,
+        "upscale_factor": 2,
+    });
+    std::fs::write(
+        render_dir.join("render_report.json"),
+        serde_json::to_string(&report).unwrap(),
+    )
+    .unwrap();
+
+    let router = svi2_pro_extension::build_router_with_factory(
+        pool,
+        Arc::new(CrashingFactory),
+        workspace.clone(),
+    );
+    let out_path = render_dir.join("out.mp4").to_string_lossy().into_owned();
+    let job_id = start_render_with(
+        &router,
+        serde_json::json!({ "prompts": ["x"], "ref_image_path": "ref.png", "output_path": out_path }),
+    )
+    .await;
+
+    let methods = sse_methods(&router, &job_id).await;
+    assert!(
+        methods.contains(&"svi2.video.done".to_string()),
+        "{methods:?}"
+    );
+
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/render/jobs/{job_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (_, job) = body_json(resp).await;
+    assert_eq!(job["status"], "succeeded", "job: {job}");
+    assert!(
+        job["outputPath"]
+            .as_str()
+            .unwrap()
+            .ends_with("out_final.mp4"),
+        "got {}",
+        job["outputPath"]
+    );
+    assert_eq!(
+        job["renderReport"]["frames"], 245,
+        "report persisted: {job}"
+    );
 }
 
 #[tokio::test]

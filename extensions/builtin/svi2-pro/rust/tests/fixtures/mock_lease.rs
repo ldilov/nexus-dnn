@@ -192,3 +192,35 @@ impl BackendRuntimeLease for FailingLease {
         Ok(())
     }
 }
+
+/// Factory whose worker "process-crashes" on render (`WorkerCrashed`) — used to
+/// assert the dispatcher salvages a completed output left on disk.
+pub struct CrashingFactory;
+
+#[async_trait]
+impl LeaseFactory for CrashingFactory {
+    async fn acquire(&self) -> ExtResult<SharedLease> {
+        Ok(Arc::new(CrashingLease) as SharedLease)
+    }
+}
+
+struct CrashingLease;
+
+#[async_trait]
+impl BackendRuntimeLease for CrashingLease {
+    fn state(&self) -> LeaseState {
+        LeaseState::Ready
+    }
+    async fn send_rpc(&self, method: &str, _params: Value) -> Result<Value, LeaseError> {
+        if method == "svi2.video.render.start" {
+            return Err(LeaseError::WorkerCrashed);
+        }
+        Ok(json!({}))
+    }
+    async fn subscribe_notifications(&self) -> NotificationStream {
+        Box::pin(stream::empty()) as BoxStream<'static, NotificationEnvelope>
+    }
+    async fn release(&self) -> Result<(), LeaseError> {
+        Ok(())
+    }
+}

@@ -111,6 +111,91 @@ impl Default for RenderChannels {
     }
 }
 
+/// Minimum plausible size (bytes) for a salvaged mp4 — guards against marking
+/// a truncated or empty encode as a completed render.
+const MIN_SALVAGE_BYTES: u64 = 4096;
+
+/// A completed render output recovered from disk after a worker process-death
+/// crash. `report_json` is the verbatim `render_report.json` when present.
+struct SalvagedOutput {
+    output_path: String,
+    report_json: Option<String>,
+    report_value: JsonValue,
+}
+
+/// After a worker *process* crash (stdout EOF → `WorkerCrashed`), the render
+/// may have finished writing its output to disk before the worker died — only
+/// the RPC reply was lost. Look in the job's render dir for a completed output
+/// and recover it instead of discarding a near-complete render.
+///
+/// Tier A: `render_report.json` (the worker writes it only on a fully
+/// successful render) is authoritative — use its `output_path` and the report
+/// verbatim. Tier B: no report, but the newest non-trivial `*.mp4` in the dir
+/// is the final encode (the pipeline writes base → upscaled → interpolated in
+/// order, so newest = final). Returns `None` when nothing recoverable exists.
+async fn salvage_completed_output(params: &JsonValue) -> Option<SalvagedOutput> {
+    let base = params.get("output_path").and_then(JsonValue::as_str)?;
+    let dir = std::path::Path::new(base).parent()?;
+
+    let report_path = dir.join("render_report.json");
+    if let Ok(text) = tokio::fs::read_to_string(&report_path).await {
+        if let Ok(value) = serde_json::from_str::<JsonValue>(&text) {
+            if let Some(out) = value.get("output_path").and_then(JsonValue::as_str) {
+                if is_nontrivial_file(out).await {
+                    return Some(SalvagedOutput {
+                        output_path: out.to_string(),
+                        report_json: Some(text),
+                        report_value: value,
+                    });
+                }
+            }
+        }
+    }
+
+    let newest = newest_mp4(dir).await?;
+    Some(SalvagedOutput {
+        output_path: newest,
+        report_json: None,
+        report_value: JsonValue::Null,
+    })
+}
+
+async fn is_nontrivial_file(path: &str) -> bool {
+    matches!(
+        tokio::fs::metadata(path).await,
+        Ok(meta) if meta.is_file() && meta.len() >= MIN_SALVAGE_BYTES
+    )
+}
+
+/// Newest `*.mp4` in `dir` whose size clears [`MIN_SALVAGE_BYTES`].
+async fn newest_mp4(dir: &std::path::Path) -> Option<String> {
+    let mut entries = tokio::fs::read_dir(dir).await.ok()?;
+    let mut best: Option<(std::time::SystemTime, String)> = None;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("mp4") {
+            continue;
+        }
+        let Ok(meta) = entry.metadata().await else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() < MIN_SALVAGE_BYTES {
+            continue;
+        }
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        let is_newer = match &best {
+            Some((seen, _)) => modified > *seen,
+            None => true,
+        };
+        if is_newer {
+            best = Some((modified, path.to_string_lossy().into_owned()));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
 pub struct RenderTask {
     pub job_id: JobId,
     pub params: JsonValue,
@@ -184,7 +269,7 @@ pub fn spawn_render(task: RenderTask) {
         });
 
         let outcome = client
-            .call_long_running(methods::RENDER_START, params)
+            .call_long_running(methods::RENDER_START, params.clone())
             .await;
 
         relay.abort();
@@ -231,28 +316,68 @@ pub fn spawn_render(task: RenderTask) {
                     .await;
             }
             Err(err) => {
-                let (code, message) = match &err {
-                    crate::domain::Svi2Error::Rpc { code, message } => (*code, message.clone()),
-                    other => (-32603, other.to_string()),
+                // Salvage a process-death crash whose output finished on disk
+                // (RPC reply lost). A real `Rpc` error is never salvaged.
+                let salvaged = if matches!(err, crate::domain::Svi2Error::RuntimeUnavailable(_)) {
+                    salvage_completed_output(&params).await
+                } else {
+                    None
                 };
-                let _ = store
-                    .mark_failed(&job_id, Some(&code.to_string()), &message)
-                    .await;
-                if let Some(em) = &emitter {
-                    let transitions = { tracker.lock().await.on_failure() };
-                    for transition in &transitions {
-                        emit_transition(em, transition);
+                if let Some(salvage) = salvaged {
+                    tracing::warn!(
+                        job_id = %job_id.as_str(),
+                        output = %salvage.output_path,
+                        "worker crashed but a completed output was on disk — salvaged render"
+                    );
+                    let _ = store
+                        .mark_completed(
+                            &job_id,
+                            Some(&salvage.output_path),
+                            salvage.report_json.as_deref(),
+                        )
+                        .await;
+                    if let Some(em) = &emitter {
+                        let transitions = { tracker.lock().await.on_success() };
+                        for transition in &transitions {
+                            emit_transition(em, transition);
+                        }
                     }
+                    channels
+                        .push(
+                            job_id.as_str(),
+                            NotificationEnvelope {
+                                method: "svi2.video.done".to_string(),
+                                params: json!({
+                                    "output_path": salvage.output_path,
+                                    "render_report": salvage.report_value,
+                                }),
+                            },
+                        )
+                        .await;
+                } else {
+                    let (code, message) = match &err {
+                        crate::domain::Svi2Error::Rpc { code, message } => (*code, message.clone()),
+                        other => (-32603, other.to_string()),
+                    };
+                    let _ = store
+                        .mark_failed(&job_id, Some(&code.to_string()), &message)
+                        .await;
+                    if let Some(em) = &emitter {
+                        let transitions = { tracker.lock().await.on_failure() };
+                        for transition in &transitions {
+                            emit_transition(em, transition);
+                        }
+                    }
+                    channels
+                        .push(
+                            job_id.as_str(),
+                            NotificationEnvelope {
+                                method: "svi2.video.error".to_string(),
+                                params: json!({ "code": code, "message": message }),
+                            },
+                        )
+                        .await;
                 }
-                channels
-                    .push(
-                        job_id.as_str(),
-                        NotificationEnvelope {
-                            method: "svi2.video.error".to_string(),
-                            params: json!({ "code": code, "message": message }),
-                        },
-                    )
-                    .await;
             }
         }
 
