@@ -39,6 +39,7 @@ The runtime serves each extension's UI from `extensions/builtin/<ext>/web/dist/`
 - After editing extension `.css.ts`/`.tsx`: `just ext-build <ext>` to refresh the committed dist (keeps local dev + the diff honest), or just deploy and let the image rebuild it.
 - `just dist-check` fails if any committed dist drifted from source — wire it into review.
 - Note: vanilla-extract class names are path/name-derived, so `@media`-only changes alter `dist/*.css` but leave `dist/*.js` byte-identical.
+- New extension web? Add `web/pnpm-workspace.yaml` with `allowBuilds:` declaring every build-script dep (`esbuild: true`, plus `'@biomejs/biome': false` if biome is a dep) — pnpm 11 aborts the in-image install on any *undeclared* build-script dep, and the build falls back to stale committed dist.
 
 ## Web build / verify (extension + shell frontends)
 
