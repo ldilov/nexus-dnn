@@ -26,4 +26,5 @@ pub mod tools;
 pub mod ui_components;
 pub mod ui_contributions;
 pub mod ui_layouts;
+pub mod workflow_versioning;
 pub mod workflows;
