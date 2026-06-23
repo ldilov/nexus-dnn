@@ -3,7 +3,22 @@ import asyncio, os, sys
 
 
 def _hijack_stdout() -> None:
-    sys.__nexus_jsonrpc_stdout__ = sys.stdout
+    """Isolate the JSON-RPC wire (fd 1) from every subprocess.
+
+    The host lease reads newline-delimited JSON from the worker's stdout (fd 1).
+    A child process (ffmpeg, sd.cpp via qwen_edit, RIFE) inherits fd 1 and any
+    byte it prints there corrupts the NDJSON frame — an oversize line trips the
+    host framer's 8 MB cap and the lease reports the worker "crashed".
+
+    We duplicate fd 1 to a private fd for the RPC writer, then redirect fd 1 (and
+    Python-level stdout) to stderr, so subprocess output can never reach the wire.
+    Falls back to a Python-level rebind if the OS dup is unavailable."""
+    try:
+        rpc_fd = os.dup(1)
+        os.dup2(2, 1)
+        sys.__nexus_jsonrpc_stdout__ = os.fdopen(rpc_fd, "w", encoding="utf-8", buffering=1)
+    except OSError:
+        sys.__nexus_jsonrpc_stdout__ = sys.stdout
     sys.stdout = sys.stderr
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(line_buffering=True)
