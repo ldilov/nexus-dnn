@@ -23,6 +23,27 @@ export const dropZone = style({
       background: `color-mix(in oklab, ${vars.color.accent} 12%, ${vars.color.surfaceMuted})`,
     },
   },
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      // Icon + copy share the top row; the Upload CTA drops to its own
+      // full-width row so nothing squeezes the title into a word column.
+      gridTemplateColumns: "auto 1fr",
+      gap: vars.space.md,
+      padding: vars.space.lg,
+    },
+  },
+});
+
+/* On narrow screens the Upload button spans both columns under the copy. */
+globalStyle(`${dropZone} > button`, {
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      gridColumn: "1 / -1",
+      width: "100%",
+    },
+  },
 });
 
 export const dropIcon = style({

@@ -6,9 +6,25 @@ export const root = style({
   alignItems: "stretch",
   gap: vars.space.lg,
   padding: 0,
+  maxWidth: "100%",
+  overflowX: "auto",
+  overscrollBehaviorX: "contain",
+  scrollbarWidth: "none",
   background: "transparent",
   borderRadius: 0,
   borderBottom: `1px solid ${vars.color.borderGhost}`,
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 768px)": {
+      gap: vars.space.md,
+    },
+  },
+});
+
+/* Hide the horizontal scrollbar — the strip scrolls on narrow viewports
+ * but the chrome stays invisible to keep the editorial underline clean. */
+globalStyle(`${root}::-webkit-scrollbar`, {
+  display: "none",
 });
 
 export const glyph = style({
@@ -26,6 +42,8 @@ const segmentBase = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.sm,
+  flexShrink: 0,
+  whiteSpace: "nowrap",
   minHeight: "2.25rem",
   paddingLeft: 0,
   paddingRight: 0,
