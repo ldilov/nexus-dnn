@@ -22,6 +22,9 @@ fn migration_files_are_monotonically_numbered_and_referenced() {
         })
         .collect();
     numbers.sort();
+    // A mixed migration may ship as multiple same-numbered files (026's
+    // CREATE + ALTER split, CONTRACTS C1); collapse before the no-gaps check.
+    numbers.dedup();
     assert!(
         !numbers.is_empty(),
         "no migrations found in {migrations_dir:?}"
