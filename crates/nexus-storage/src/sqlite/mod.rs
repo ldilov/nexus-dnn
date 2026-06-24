@@ -5,6 +5,7 @@ pub mod extensions;
 mod migrations;
 mod namespaces;
 mod operators;
+mod run_resolved_graphs;
 mod runs;
 mod workflow_versions;
 mod workflows;
@@ -18,7 +19,8 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
+    RecipeRecord, RunRecord, RunResolvedGraphRecord, UIContributionRecord, WorkflowRecord,
+    WorkflowVersionRecord,
 };
 pub struct SqliteDatabase {
     pool: SqlitePool,
@@ -245,6 +247,20 @@ impl Database for SqliteDatabase {
             error,
         )
         .await
+    }
+
+    async fn insert_run_resolved_graph(
+        &self,
+        r: &RunResolvedGraphRecord,
+    ) -> Result<(), StorageError> {
+        run_resolved_graphs::insert_run_resolved_graph(&self.pool, r).await
+    }
+
+    async fn get_run_resolved_graph(
+        &self,
+        run_id: &str,
+    ) -> Result<RunResolvedGraphRecord, StorageError> {
+        run_resolved_graphs::get_run_resolved_graph(&self.pool, run_id).await
     }
 
     async fn insert_artifact(&self, r: &ArtifactRecord) -> Result<(), StorageError> {

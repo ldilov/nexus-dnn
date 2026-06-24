@@ -133,6 +133,25 @@ pub struct RunRecord {
     pub predecessor_run_id: Option<String>,
 }
 
+/// Frozen snapshot of a compiled recipe run's resolved graph + inputs, keyed by
+/// run id (P3c). Written at `create_run_from_resolved` time so `execute_run`
+/// plans from this immutable copy instead of re-reading the mutable head
+/// `workflows` row. Every column is NOT NULL; empty collections serialize as
+/// `"[]"` / `"{}"` rather than NULL.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunResolvedGraphRecord {
+    pub run_id: String,
+    pub workflow_id: String,
+    pub workflow_version: String,
+    pub nodes: String,
+    pub edges: String,
+    pub inputs: String,
+    pub outputs: String,
+    pub stages: String,
+    pub resolved_inputs: String,
+    pub created_at: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeExecutionRecord {
     pub run_id: String,

@@ -26,4 +26,7 @@ pub enum RunError {
 
     #[error("run not found: {0}")]
     RunNotFound(String),
+
+    #[error("serialization error: {0}")]
+    Serialize(String),
 }

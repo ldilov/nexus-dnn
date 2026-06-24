@@ -180,6 +180,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    // 028 run resolved-graph freeze — pure CREATE (false)
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/028_run_resolved_graph.sql"),
+        false,
+    )
+    .await?;
     Ok(())
 }
 

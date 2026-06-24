@@ -2,7 +2,8 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
+    RecipeRecord, RunRecord, RunResolvedGraphRecord, UIContributionRecord, WorkflowRecord,
+    WorkflowVersionRecord,
 };
 
 #[allow(async_fn_in_trait)]
@@ -105,6 +106,20 @@ pub trait Database: Send + Sync {
         status: &str,
         error: Option<&str>,
     ) -> Result<(), StorageError>;
+
+    /// Persist a compiled recipe run's frozen resolved graph + inputs (P3c). The
+    /// run engine reads this at execute time so planning is pinned to the
+    /// snapshot, decoupled from later edits to the head `workflows` row.
+    async fn insert_run_resolved_graph(
+        &self,
+        record: &RunResolvedGraphRecord,
+    ) -> Result<(), StorageError>;
+    /// Fetch a run's frozen resolved graph. `NotFound` for legacy runs created
+    /// via `create_run` (no frozen snapshot) — callers fall back to the head.
+    async fn get_run_resolved_graph(
+        &self,
+        run_id: &str,
+    ) -> Result<RunResolvedGraphRecord, StorageError>;
 
     async fn insert_node_execution(&self, record: &NodeExecutionRecord)
     -> Result<(), StorageError>;

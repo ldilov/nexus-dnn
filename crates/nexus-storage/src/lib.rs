@@ -12,7 +12,8 @@ pub use manager::{IntegrityReport, StorageManager, UninstallReport};
 pub use records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, IconKind, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
+    RecipeRecord, RunRecord, RunResolvedGraphRecord, UIContributionRecord, WorkflowRecord,
+    WorkflowVersionRecord,
 };
 pub use sqlite::SqliteDatabase;
 pub use sqlite::deployments::{

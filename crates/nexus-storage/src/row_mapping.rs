@@ -3,7 +3,8 @@ use sqlx::sqlite::SqliteRow;
 
 use crate::records::{
     ArtifactRecord, ExtensionRecord, IconKind, LineageEdgeRecord, NodeExecutionRecord,
-    OperatorRecord, RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    OperatorRecord, RecipeRecord, RunRecord, RunResolvedGraphRecord, UIContributionRecord,
+    WorkflowRecord,
 };
 
 pub fn map_extension_row(row: SqliteRow) -> ExtensionRecord {
@@ -103,6 +104,21 @@ pub fn map_run_row(row: SqliteRow) -> RunRecord {
         run_label: row.try_get("run_label").ok().flatten(),
         execution_profile: row.try_get("execution_profile").ok().flatten(),
         predecessor_run_id: row.try_get("predecessor_run_id").ok().flatten(),
+    }
+}
+
+pub fn map_run_resolved_graph_row(row: SqliteRow) -> RunResolvedGraphRecord {
+    RunResolvedGraphRecord {
+        run_id: row.get("run_id"),
+        workflow_id: row.get("workflow_id"),
+        workflow_version: row.get("workflow_version"),
+        nodes: row.get("nodes"),
+        edges: row.get("edges"),
+        inputs: row.get("inputs"),
+        outputs: row.get("outputs"),
+        stages: row.get("stages"),
+        resolved_inputs: row.get("resolved_inputs"),
+        created_at: row.get("created_at"),
     }
 }
 

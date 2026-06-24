@@ -9,7 +9,9 @@ use nexus_events::types::NexusEvent;
 use nexus_scheduler::{Scheduler, create_execution_plan};
 use nexus_storage::Database;
 use nexus_storage::SqliteDatabase;
-use nexus_storage::records::{ArtifactRecord, NodeExecutionRecord, RunRecord};
+use nexus_storage::records::{
+    ArtifactRecord, NodeExecutionRecord, RunRecord, RunResolvedGraphRecord,
+};
 use nexus_worker::WorkerManager;
 
 use crate::error::RunError;
@@ -76,6 +78,50 @@ impl<W: WorkerManager + 'static> DefaultRunEngine<W> {
         Ok(run_id)
     }
 
+    /// Create a run from a compiled `ResolvedRun` and FREEZE its resolved graph +
+    /// inputs against the run id. `execute_run` later plans from this immutable
+    /// snapshot, so edits to the head `workflows` row never alter an in-flight
+    /// run's graph.
+    pub async fn create_run_from_resolved(
+        &self,
+        resolved: &nexus_recipe::ResolvedRun,
+    ) -> Result<String, RunError> {
+        let run_id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        let record = RunRecord {
+            id: run_id.clone(),
+            workflow_id: resolved.workflow_id.clone(),
+            workflow_version: resolved.workflow_version.clone(),
+            status: "created".to_owned(),
+            started_at: None,
+            completed_at: None,
+            error: None,
+            created_at: now.clone(),
+            run_label: None,
+            execution_profile: None,
+            predecessor_run_id: None,
+        };
+
+        self.db
+            .insert_run(&record)
+            .await
+            .map_err(|e| RunError::StorageError(e.to_string()))?;
+
+        self.event_bus.publish(NexusEvent::RunCreated {
+            run_id: run_id.clone(),
+            workflow_id: resolved.workflow_id.clone(),
+        });
+
+        let frozen = build_resolved_graph_record(&run_id, resolved, &now)?;
+        self.db
+            .insert_run_resolved_graph(&frozen)
+            .await
+            .map_err(|e| RunError::StorageError(e.to_string()))?;
+
+        Ok(run_id)
+    }
+
     pub async fn execute_run(&self, run_id: &str) -> Result<(), RunError> {
         self.update_run_status_with_event(run_id, "created", "planning")
             .await?;
@@ -86,13 +132,7 @@ impl<W: WorkerManager + 'static> DefaultRunEngine<W> {
             .await
             .map_err(|e| RunError::RunNotFound(e.to_string()))?;
 
-        let workflow_record = self
-            .db
-            .get_workflow(&run_record.workflow_id)
-            .await
-            .map_err(|e| RunError::WorkflowNotFound(e.to_string()))?;
-
-        let workflow = parse_workflow_from_record(&workflow_record)?;
+        let (workflow, _resolved_inputs) = self.resolve_run_workflow(&run_record).await?;
 
         let sorted_nodes = nexus_workflow::validate_dag(&workflow)
             .map_err(|e| RunError::WorkflowError(e.to_string()))?;
@@ -129,6 +169,42 @@ impl<W: WorkerManager + 'static> DefaultRunEngine<W> {
         self.update_run_status_with_event(run_id, "running", "completed")
             .await?;
         Ok(())
+    }
+
+    /// Resolve the workflow a run plans from. Prefers the FROZEN resolved graph
+    /// captured at `create_run_from_resolved` time; falls back to the mutable
+    /// head `workflows` row for legacy runs created via `create_run`. Returns the
+    /// workflow plus the run's resolved inputs (empty for legacy runs).
+    async fn resolve_run_workflow(
+        &self,
+        run_record: &RunRecord,
+    ) -> Result<
+        (
+            nexus_workflow::Workflow,
+            serde_json::Map<String, serde_json::Value>,
+        ),
+        RunError,
+    > {
+        match self.db.get_run_resolved_graph(&run_record.id).await {
+            Ok(frozen) => {
+                let workflow = build_workflow_from_resolved_graph(&frozen)?;
+                let resolved_inputs = serde_json::from_str(&frozen.resolved_inputs)
+                    .map_err(|e| RunError::Serialize(e.to_string()))?;
+                Ok((workflow, resolved_inputs))
+            }
+            Err(nexus_storage::StorageError::NotFound { .. }) => {
+                let workflow_record = self
+                    .db
+                    .get_workflow(&run_record.workflow_id)
+                    .await
+                    .map_err(|e| RunError::WorkflowNotFound(e.to_string()))?;
+                Ok((
+                    parse_workflow_from_record(&workflow_record)?,
+                    serde_json::Map::new(),
+                ))
+            }
+            Err(e) => Err(RunError::StorageError(e.to_string())),
+        }
     }
 
     pub async fn cancel_run(&self, run_id: &str) -> Result<(), RunError> {
@@ -355,6 +431,71 @@ impl<W: WorkerManager + 'static> DefaultRunEngine<W> {
 
         Ok(())
     }
+}
+
+/// Serialize a compiled `ResolvedRun` into the frozen run-graph row. Mirrors the
+/// JSON-column shape of `WorkflowRecord`: `nodes`/`inputs`/`outputs`/`stages`
+/// from the resolved workflow, `edges` derived via `extract_edges`, and the
+/// resolved inputs map. Empty collections serialize as `"[]"` / `"{}"`.
+fn build_resolved_graph_record(
+    run_id: &str,
+    resolved: &nexus_recipe::ResolvedRun,
+    created_at: &str,
+) -> Result<RunResolvedGraphRecord, RunError> {
+    let wf = &resolved.resolved_workflow;
+    let edge_values: Vec<serde_json::Value> = wf
+        .extract_edges()
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "source_node": e.source_node,
+                "source_port": e.source_port,
+                "target_node": e.target_node,
+                "target_port": e.target_port,
+            })
+        })
+        .collect();
+    Ok(RunResolvedGraphRecord {
+        run_id: run_id.to_owned(),
+        workflow_id: resolved.workflow_id.clone(),
+        workflow_version: resolved.workflow_version.clone(),
+        nodes: serde_json::to_string(&wf.nodes).map_err(serialize_err)?,
+        edges: serde_json::to_string(&edge_values).map_err(serialize_err)?,
+        inputs: serde_json::to_string(&wf.inputs).map_err(serialize_err)?,
+        outputs: serde_json::to_string(&wf.outputs).map_err(serialize_err)?,
+        stages: serde_json::to_string(&wf.stages).map_err(serialize_err)?,
+        resolved_inputs: serde_json::to_string(&resolved.resolved_inputs).map_err(serialize_err)?,
+        created_at: created_at.to_owned(),
+    })
+}
+
+/// Reconstruct a `Workflow` from a frozen run-graph row. Mirrors the column
+/// parsing of `parse_workflow_from_record` (the head-row path): `nodes`,
+/// `inputs`, `outputs`, `stages` are parsed identically. `edges` are NOT a
+/// `Workflow` field — they are derived on demand via `extract_edges`, so the
+/// stored `edges` column is intentionally not read back here.
+fn build_workflow_from_resolved_graph(
+    record: &RunResolvedGraphRecord,
+) -> Result<nexus_workflow::Workflow, RunError> {
+    Ok(nexus_workflow::Workflow {
+        id: record.workflow_id.clone(),
+        title: record.workflow_id.clone(),
+        version: record.workflow_version.clone(),
+        inputs: serde_json::from_str(&record.inputs)
+            .map_err(|e| RunError::WorkflowError(e.to_string()))?,
+        outputs: serde_json::from_str(&record.outputs)
+            .map_err(|e| RunError::WorkflowError(e.to_string()))?,
+        nodes: serde_json::from_str(&record.nodes)
+            .map_err(|e| RunError::WorkflowError(e.to_string()))?,
+        stages: serde_json::from_str(&record.stages)
+            .map_err(|e| RunError::WorkflowError(e.to_string()))?,
+        created_at: record.created_at.clone(),
+        updated_at: record.created_at.clone(),
+    })
+}
+
+fn serialize_err(e: serde_json::Error) -> RunError {
+    RunError::Serialize(e.to_string())
 }
 
 fn parse_workflow_from_record(

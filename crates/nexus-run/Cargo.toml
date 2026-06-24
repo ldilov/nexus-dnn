@@ -19,3 +19,8 @@ nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-artifact = { path = "../nexus-artifact" }
 nexus-events = { path = "../nexus-events" }
 nexus-storage = { path = "../nexus-storage" }
+nexus-recipe = { path = "../nexus-recipe" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
