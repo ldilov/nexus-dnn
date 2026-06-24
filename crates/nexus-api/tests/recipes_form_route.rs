@@ -299,6 +299,32 @@ fn control_hints_lift_input_port_type() {
     assert_eq!(hints[0].kind.as_deref(), Some("string"));
 }
 
+#[tokio::test]
+async fn get_recipe_form_includes_workflow_pin() {
+    let hf = std::sync::Arc::new(common::StubHf::default());
+    let h = common::harness_with(hf).await;
+    let proj = serde_json::to_string(&projection_with(vec![control(
+        "a",
+        ControlKind::Int,
+        Vec::new(),
+    )]))
+    .unwrap();
+    seed(&h, &recipe_record("r-pin", Some(proj))).await;
+
+    let (status, body) = get_form(h, "r-pin").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        body["data"]["workflow_id"].as_str(),
+        Some("wf-1"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body["data"]["workflow_version"].as_str(),
+        Some("v1"),
+        "body: {body}"
+    );
+}
+
 #[test]
 fn control_hint_emitted_for_binding_free_control() {
     let snapshot = snapshot_with(

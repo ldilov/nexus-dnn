@@ -7,13 +7,12 @@ import type { Section } from "../../api/generated/Section";
 import { RecipeFieldWidget } from "./RecipeFieldWidget";
 import { PresetRail } from "./PresetRail";
 import { ResultPanel } from "./ResultPanel";
+import { RecipePinnedGraph } from "./RecipePinnedGraph";
 import { validateControls } from "./validate";
 import * as styles from "./recipe_form.css";
 
 export interface RecipeFormProps {
   recipeId: string;
-  workflowId?: string | null;
-  workflowVersion?: string | null;
 }
 
 /** Seed initial values from `default_value`, but never for locked/hidden controls. */
@@ -60,6 +59,8 @@ export function RecipeForm({ recipeId }: RecipeFormProps): ReactElement {
 
   const projection = data?.projection;
   const hints = data?.control_hints ?? [];
+  const pinWorkflowId = data?.workflow_id ?? null;
+  const pinWorkflowVersion = data?.workflow_version ?? null;
 
   // Validation runs on current values.
   const { errors } = useMemo(() => {
@@ -322,6 +323,13 @@ export function RecipeForm({ recipeId }: RecipeFormProps): ReactElement {
           )}
         </div>
       </form>
+
+      {pinWorkflowId && pinWorkflowVersion && (
+        <RecipePinnedGraph
+          workflowId={pinWorkflowId}
+          workflowVersion={pinWorkflowVersion}
+        />
+      )}
     </div>
   );
 }

@@ -7,4 +7,4 @@ import type { RecipeProjection } from "./RecipeProjection";
  * resolved per-control hints. Legacy recipes (no projection) return an empty
  * projection + empty hints so the client falls back gracefully.
  */
-export type RecipeFormDto = { projection: RecipeProjection, control_hints: Array<ControlHintDto>, };
+export type RecipeFormDto = { projection: RecipeProjection, control_hints: Array<ControlHintDto>, workflow_id: string | null, workflow_version: string | null, };

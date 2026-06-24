@@ -56,6 +56,8 @@ pub struct ControlHintDto {
 pub struct RecipeFormDto {
     pub projection: RecipeProjection,
     pub control_hints: Vec<ControlHintDto>,
+    pub workflow_id: Option<String>,
+    pub workflow_version: Option<String>,
 }
 
 impl From<&RecipeRecord> for RecipeDto {

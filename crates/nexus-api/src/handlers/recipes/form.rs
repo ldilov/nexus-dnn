@@ -166,6 +166,9 @@ pub async fn get_recipe_form(
         other => ApiError::Internal(other.to_string()),
     })?;
 
+    let pin_workflow_id = recipe.workflow_id.clone();
+    let pin_workflow_version = recipe.workflow_version.clone();
+
     let projection = match recipe.projection.as_deref() {
         Some(json_str) => serde_json::from_str::<RecipeProjection>(json_str).map_err(|e| {
             ApiError::structured(
@@ -178,6 +181,8 @@ pub async fn get_recipe_form(
             return Ok(ApiResponse::ok(RecipeFormDto {
                 projection: RecipeProjection::empty(),
                 control_hints: Vec::new(),
+                workflow_id: pin_workflow_id,
+                workflow_version: pin_workflow_version,
             }));
         }
     };
@@ -186,6 +191,8 @@ pub async fn get_recipe_form(
         return Ok(ApiResponse::ok(RecipeFormDto {
             projection,
             control_hints: Vec::new(),
+            workflow_id: pin_workflow_id,
+            workflow_version: pin_workflow_version,
         }));
     }
 
@@ -228,5 +235,7 @@ pub async fn get_recipe_form(
     Ok(ApiResponse::ok(RecipeFormDto {
         projection,
         control_hints,
+        workflow_id: pin_workflow_id,
+        workflow_version: pin_workflow_version,
     }))
 }

@@ -332,11 +332,7 @@ export function BlueprintView({
             {effectiveRecipeId && (
               <section className={s.section}>
                 <h2 className={s.sectionNumber}>00 / Configure &amp; run</h2>
-                <RecipeForm
-                  recipeId={effectiveRecipeId}
-                  workflowId={workflowId ?? null}
-                  workflowVersion={null}
-                />
+                <RecipeForm recipeId={effectiveRecipeId} />
               </section>
             )}
 

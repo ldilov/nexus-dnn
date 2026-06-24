@@ -19,6 +19,20 @@ vi.mock("../../root_layout", () => ({
   useRootOutletContext: vi.fn(),
 }));
 
+vi.mock("./RecipePinnedGraph", () => ({
+  RecipePinnedGraph: ({
+    workflowId,
+    workflowVersion,
+  }: {
+    workflowId: string;
+    workflowVersion: string;
+  }) => (
+    <div data-testid="recipe-pinned-graph">
+      {workflowId}@{workflowVersion}
+    </div>
+  ),
+}));
+
 // scrollIntoView / matchMedia stubs for jsdom
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
   value: vi.fn(),
@@ -114,6 +128,8 @@ function makeFormDto(overrides: Partial<RecipeFormDto> = {}): RecipeFormDto {
       makeHint({ control_id: "prompt", required: true }),
       makeHint({ control_id: "steps", kind: "int", required: false, min: 1, max: 100 }),
     ],
+    workflow_id: "wf-1",
+    workflow_version: "v1",
     ...overrides,
   };
 }
@@ -287,5 +303,31 @@ describe("RecipeForm", () => {
     await waitFor(() => {
       expect(screen.getByTestId("recipe-form-empty")).toBeInTheDocument();
     });
+  });
+
+  it("renders the pinned graph when the DTO carries a workflow pin", async () => {
+    renderWithSwr(<RecipeForm recipeId="rec1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Basic")).toBeInTheDocument();
+    });
+
+    const pinned = screen.getByTestId("recipe-pinned-graph");
+    expect(pinned).toBeInTheDocument();
+    expect(pinned).toHaveTextContent("wf-1@v1");
+  });
+
+  it("does not render the pinned graph when the pin is null", async () => {
+    (fetchRecipeForm as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFormDto({ workflow_id: null, workflow_version: null }),
+    );
+
+    renderWithSwr(<RecipeForm recipeId="rec1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Basic")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("recipe-pinned-graph")).not.toBeInTheDocument();
   });
 });
