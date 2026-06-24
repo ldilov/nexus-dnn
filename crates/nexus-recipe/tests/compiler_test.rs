@@ -620,3 +620,44 @@ fn compile_default_only_control_applies() {
         .unwrap();
     assert_eq!(applied.source, ValueSource::Default);
 }
+
+/// P5 core invariant: selecting a preset (empty user values) resolves to the
+/// SAME graph + inputs as typing the preset's values by hand with no preset.
+#[test]
+fn preset_run_equals_manual_run_same_resolved_graph() {
+    let controls = vec![
+        control(
+            "alpha",
+            ControlMode::Basic,
+            json!(0.1),
+            vec!["node:synth.config.emotion.alpha"],
+        ),
+        control(
+            "steps",
+            ControlMode::Basic,
+            json!(16),
+            vec!["node:synth.config.steps"],
+        ),
+        control("seed_ctl", ControlMode::Basic, json!(1), vec!["input:seed"]),
+    ];
+    let preset_values = json!({ "alpha": 0.7, "steps": 40, "seed_ctl": 55 });
+    let presets = vec![preset("p", preset_values.clone())];
+    let proj = projection(controls, presets);
+    let snap = snapshot();
+
+    let via_preset = compile_recipe_run(&proj, &snap, &vals(&[]), Some("p")).unwrap();
+    let manual = vals(&[
+        ("alpha", json!(0.7)),
+        ("steps", json!(40)),
+        ("seed_ctl", json!(55)),
+    ]);
+    let via_manual = compile_recipe_run(&proj, &snap, &manual, None).unwrap();
+
+    let preset_wf = serde_json::to_value(&via_preset.resolved_workflow).unwrap();
+    let manual_wf = serde_json::to_value(&via_manual.resolved_workflow).unwrap();
+    assert_eq!(
+        preset_wf, manual_wf,
+        "preset-resolved graph must equal manually-typed graph"
+    );
+    assert_eq!(via_preset.resolved_inputs, via_manual.resolved_inputs);
+}

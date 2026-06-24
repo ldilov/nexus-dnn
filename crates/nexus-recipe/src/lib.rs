@@ -9,6 +9,7 @@
 
 pub mod compiler;
 pub mod error;
+pub mod explain;
 pub mod pin_backfill;
 pub mod projection;
 pub mod resolved;
@@ -17,6 +18,9 @@ pub mod status;
 
 pub use compiler::{ControlValues, compile_recipe_run};
 pub use error::BindingError;
+pub use explain::{
+    ControlDiff, PresetExplainEntry, PresetExplanation, diff_vs_defaults, explain_preset,
+};
 pub use pin_backfill::{PinResult, StemLookup, normalize_stem, resolve_pin};
 pub use projection::{
     Control, ControlKind, ControlMode, CustomUi, Output, Preset, PresetSource, RecipeProjection,

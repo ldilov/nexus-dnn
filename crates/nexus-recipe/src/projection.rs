@@ -21,6 +21,16 @@ pub struct RecipeProjection {
 }
 
 impl RecipeProjection {
+    /// Find a preset by its `preset_id`.
+    pub fn preset(&self, preset_id: &str) -> Option<&Preset> {
+        self.presets.iter().find(|p| p.preset_id == preset_id)
+    }
+
+    /// Iterate the presets contributed by a given source.
+    pub fn presets_by_source(&self, source: PresetSource) -> impl Iterator<Item = &Preset> {
+        self.presets.iter().filter(move |p| p.source == source)
+    }
+
     /// A binding-free projection used when a recipe has no stored projection yet
     /// (extension recipes pre-P4/P7). Status then reflects only pin currency.
     pub fn empty() -> Self {
