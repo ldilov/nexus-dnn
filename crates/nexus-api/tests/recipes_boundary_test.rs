@@ -1,10 +1,24 @@
-//! Boundary guard for the host-owned `handlers/recipes/` sub-tree (CONTRACTS
-//! C7). The ad-hoc recipe-run route is generic by `{id}` over host-owned rows;
-//! a regression that bakes in an extension id or a hardcoded node-id-shaped
-//! constant fails here. Scoped to `handlers/recipes/` ONLY — the deployment
-//! handler gets its own guard in a later step.
+//! Boundary guard for the host-owned recipe-run surfaces (CONTRACTS C7). Both
+//! the ad-hoc recipe-run route (`handlers/recipes/`) and the deployment
+//! recipe-run route are generic by `{id}` over host-owned rows; a regression
+//! that bakes in an extension id or a hardcoded node-id-shaped constant fails
+//! here. The scan also covers `nexus-deployments`' `service/execute.rs`, which
+//! computes the execution-context hash and must stay extension-agnostic.
 
 use std::path::{Path, PathBuf};
+
+/// Additional host-generic source files (beyond `handlers/recipes/`) that the
+/// deployment recipe-run route flows through. Paths are relative to this
+/// crate's manifest dir.
+const EXTRA_SCANNED: &[&str] = &[
+    "src/handlers/deployments/handlers.rs",
+    "../nexus-deployments/src/service/execute.rs",
+];
+
+fn extra_scanned_files() -> Vec<PathBuf> {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    EXTRA_SCANNED.iter().map(|rel| manifest.join(rel)).collect()
+}
 
 const FORBIDDEN: &[&str] = &[
     "local-llm",
@@ -51,6 +65,7 @@ fn recipes_handlers_have_no_extension_id_literals() {
         !files.is_empty(),
         "expected .rs files under handlers/recipes"
     );
+    files.extend(extra_scanned_files());
 
     for path in &files {
         let src = std::fs::read_to_string(path).expect("read source");
@@ -70,6 +85,7 @@ fn recipes_handlers_have_no_extension_id_literals() {
 fn recipes_handlers_have_no_node_id_shaped_constants() {
     let mut files = Vec::new();
     collect_rs_files(&recipes_dir(), &mut files);
+    files.extend(extra_scanned_files());
 
     for path in &files {
         let src = std::fs::read_to_string(path).expect("read source");

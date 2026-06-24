@@ -22,6 +22,11 @@ pub enum DeploymentError {
     InvalidEnvelope(String),
     #[error("module mismatch: target binding {expected}, envelope binding {found}")]
     ModuleMismatch { expected: String, found: String },
+    #[error("recipe pin {recipe_version} does not match revision pin {revision_version}")]
+    PinMismatch {
+        recipe_version: String,
+        revision_version: String,
+    },
     #[error("secret value detected in export payload")]
     ExportBlockedBySecret,
     #[error("revision is referenced by {0} run(s)")]

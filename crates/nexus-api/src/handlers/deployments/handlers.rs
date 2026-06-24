@@ -1,5 +1,7 @@
 use crate::AppState;
 use crate::envelope::ApiResponse;
+use crate::handlers::recipes::run::binding_error_to_api;
+use crate::handlers::workflow_versioning::record_to_snapshot;
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, Query, State};
@@ -20,7 +22,8 @@ use nexus_deployments::service::validate::DeploymentValidateService;
 use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
 use nexus_events::types::NexusEvent;
 use nexus_extension::ExtensionRegistry;
-use nexus_storage::DeploymentMappers;
+use nexus_recipe::{ControlValues, RecipeProjection, compile_recipe_run};
+use nexus_storage::{Database, DeploymentMappers};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -278,8 +281,22 @@ async fn load(
 #[derive(Debug, Deserialize, Default)]
 struct RunBody {
     revision_id: Option<String>,
+    /// Recipe-run control overrides. When present, the run is compiled via the
+    /// recipe binding compiler against the revision's pinned host workflow.
+    control_values: Option<Value>,
+    preset_id: Option<String>,
+    // deprecated: remove after one release — legacy inputs-blob path.
     inputs: Option<Value>,
+    /// Required only on the legacy inputs-blob path; the recipe path lets the
+    /// run engine mint the run id.
+    run_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct RunResponse {
     run_id: String,
+    deployment_revision_id: String,
+    execution_context_hash: String,
 }
 
 async fn run(
@@ -287,24 +304,151 @@ async fn run(
     Path(id): Path<String>,
     Json(body): Json<RunBody>,
 ) -> impl IntoResponse {
-    let repo = repo_for(&state);
-    let did = DeploymentId::from_str(&id).unwrap();
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return bad_id_response(),
+    };
+    if body.control_values.is_some() {
+        return run_recipe_path(&state, &did, &body).await;
+    }
+    run_legacy_path(&state, &id, &did, body).await
+}
+
+/// Recipe-run path: validate the recipe pin against the revision's authoritative
+/// pinned host workflow, compile + fan-out the control values, submit via the run
+/// engine, then record the deployment run link (the engine already minted the run
+/// id). Generic by `{id}` over host-owned rows.
+async fn run_recipe_path(
+    state: &AppState,
+    did: &DeploymentId,
+    body: &RunBody,
+) -> axum::response::Response {
+    let repo = repo_for(state);
+    let deployment = match repo.fetch_deployment(did).await {
+        Ok(d) => d,
+        Err(e) => return err_to_response(e),
+    };
+    // Reject a blocked restore_state BEFORE any compile/freeze so a rejected
+    // submit never orphans a frozen run + graph (mirrors execute.rs guard).
+    match deployment.restore_state.as_str() {
+        "restorable_read_only" => {
+            return err_to_response(nexus_deployments::DeploymentError::ExecuteBlocked(
+                nexus_deployments::RestoreState::RestorableReadOnly,
+            ));
+        }
+        "not_restorable" => {
+            return err_to_response(nexus_deployments::DeploymentError::ExecuteBlocked(
+                nexus_deployments::RestoreState::NotRestorable,
+            ));
+        }
+        _ => {}
+    }
+    let recipe_id = match deployment.source_recipe_id {
+        Some(ref r) => r.clone(),
+        None => {
+            return unprocessable(
+                "deployment.not_recipe_runnable",
+                "deployment is not recipe-runnable",
+            );
+        }
+    };
+    let target_rev = match body.revision_id.clone().or_else(|| {
+        deployment
+            .current_revision_id
+            .as_ref()
+            .map(|r| r.to_string())
+    }) {
+        Some(s) => match DeploymentRevisionId::from_str(&s) {
+            Ok(r) => r,
+            Err(_) => return bad_id_response(),
+        },
+        None => {
+            return unprocessable(
+                "deployment.no_revision",
+                "deployment has no resolvable revision",
+            );
+        }
+    };
+    let revision = match repo.fetch_revision(&target_rev).await {
+        Ok(r) => r,
+        Err(e) => return err_to_response(e),
+    };
+    let (base_workflow_ref, base_workflow_version_ref) = match (
+        revision.base_workflow_ref,
+        revision.base_workflow_version_ref,
+    ) {
+        (Some(wf), Some(ver)) => (wf, ver),
+        _ => {
+            return unprocessable(
+                "deployment.revision_not_pinned",
+                "revision not pinned to a host workflow version",
+            );
+        }
+    };
+
+    let recipe = match state.db.get_recipe(&recipe_id).await {
+        Ok(r) => r,
+        Err(nexus_storage::StorageError::NotFound { .. }) => {
+            return not_found(format!("recipe {recipe_id} not found"));
+        }
+        Err(e) => return internal_error(e.to_string()),
+    };
+    if recipe.workflow_version.as_deref() != Some(base_workflow_version_ref.as_str()) {
+        return err_to_response(nexus_deployments::DeploymentError::PinMismatch {
+            recipe_version: recipe.workflow_version.unwrap_or_default(),
+            revision_version: base_workflow_version_ref,
+        });
+    }
+
+    let resolved = match resolve_recipe_run(
+        state,
+        &recipe,
+        &base_workflow_ref,
+        &base_workflow_version_ref,
+        body,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(resp) => return resp,
+    };
+
+    let run_id = match state.run_engine.create_run_from_resolved(&resolved).await {
+        Ok(rid) => rid,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<()>::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "deployment.run_engine_error",
+                    "deployment",
+                    e.to_string(),
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    let control_payload = body
+        .control_values
+        .clone()
+        .unwrap_or_else(|| serde_json::json!({}));
     let svc = DeploymentExecuteService::new(repo);
-    let rev = body
-        .revision_id
-        .map(|s| DeploymentRevisionId::from_str(&s).unwrap());
-    let inputs = body.inputs.unwrap_or(serde_json::json!({}));
-    match svc.execute(&did, rev.as_ref(), &inputs, &body.run_id).await {
+    match svc
+        .execute(did, Some(&target_rev), &control_payload, &run_id)
+        .await
+    {
         Ok((res, _events)) => {
-            #[derive(Serialize)]
-            struct R {
-                run_id: String,
-                deployment_revision_id: String,
-                execution_context_hash: String,
-            }
+            let engine = state.run_engine.clone();
+            let rid = run_id.clone();
+            tokio::spawn(async move {
+                if let Err(e) = engine.execute_run(&rid).await {
+                    tracing::error!(run_id = %rid, error = %e, "deployment recipe run execution failed");
+                }
+            });
             (
                 StatusCode::ACCEPTED,
-                Json(ApiResponse::ok(R {
+                Json(ApiResponse::ok(RunResponse {
                     run_id: res.run_id,
                     deployment_revision_id: res.revision_id.to_string(),
                     execution_context_hash: res.execution_context_hash,
@@ -314,6 +458,148 @@ async fn run(
         }
         Err(e) => err_to_response(e),
     }
+}
+
+/// Resolve the recipe's projection + the pinned workflow snapshot, then compile
+/// the control values into a `ResolvedRun`. Maps every failure to a 4xx response.
+async fn resolve_recipe_run(
+    state: &AppState,
+    recipe: &nexus_storage::RecipeRecord,
+    base_workflow_ref: &str,
+    base_workflow_version_ref: &str,
+    body: &RunBody,
+) -> Result<nexus_recipe::ResolvedRun, axum::response::Response> {
+    let projection = match recipe.projection.as_deref() {
+        Some(json_str) => serde_json::from_str::<RecipeProjection>(json_str).map_err(|e| {
+            unprocessable(
+                "deployment.projection_parse",
+                &format!("projection parse failed: {e}"),
+            )
+        })?,
+        None => RecipeProjection::empty(),
+    };
+
+    let record = state
+        .db
+        .get_workflow_version(base_workflow_ref, base_workflow_version_ref)
+        .await
+        .map_err(|_| {
+            unprocessable(
+                "deployment.broken_pin",
+                "pinned host workflow version not found",
+            )
+        })?;
+    let operators = state.extension_registry.list_operators();
+    let snapshot = record_to_snapshot(&record, &operators).map_err(|e| {
+        unprocessable(
+            "deployment.broken_pin",
+            &format!("snapshot assembly failed: {e}"),
+        )
+    })?;
+
+    let control_values: ControlValues = body
+        .control_values
+        .as_ref()
+        .and_then(|v| v.as_object())
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default();
+
+    compile_recipe_run(
+        &projection,
+        &snapshot,
+        &control_values,
+        body.preset_id.as_deref(),
+    )
+    .map_err(|e| binding_error_to_api(e).into_response())
+}
+
+/// Legacy inputs-blob path. Deprecated — migrate to `control_values`.
+async fn run_legacy_path(
+    state: &AppState,
+    id: &str,
+    did: &DeploymentId,
+    body: RunBody,
+) -> axum::response::Response {
+    let run_id = match body.run_id {
+        Some(r) => r,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err(
+                    StatusCode::BAD_REQUEST,
+                    "deployment.run_id_required",
+                    "deployment",
+                    String::from("run_id is required for the legacy inputs-blob path"),
+                )),
+            )
+                .into_response();
+        }
+    };
+    tracing::warn!(
+        deployment_id = %id,
+        "deprecated: /deployments/{id}/runs inputs-blob path; migrate to control_values"
+    );
+    let repo = repo_for(state);
+    let svc = DeploymentExecuteService::new(repo);
+    let rev = match body.revision_id {
+        Some(s) => match DeploymentRevisionId::from_str(&s) {
+            Ok(r) => Some(r),
+            Err(_) => return bad_id_response(),
+        },
+        None => None,
+    };
+    let inputs = body.inputs.unwrap_or(serde_json::json!({}));
+    match svc.execute(did, rev.as_ref(), &inputs, &run_id).await {
+        Ok((res, _events)) => (
+            StatusCode::ACCEPTED,
+            Json(ApiResponse::ok(RunResponse {
+                run_id: res.run_id,
+                deployment_revision_id: res.revision_id.to_string(),
+                execution_context_hash: res.execution_context_hash,
+            })),
+        )
+            .into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+fn unprocessable(code: &'static str, message: &str) -> axum::response::Response {
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        Json(ApiResponse::<()>::err(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            code,
+            "deployment",
+            message.to_owned(),
+        )),
+    )
+        .into_response()
+}
+
+fn not_found(message: String) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(ApiResponse::<()>::err(
+            StatusCode::NOT_FOUND,
+            "deployment.not_found",
+            "deployment",
+            message,
+        )),
+    )
+        .into_response()
+}
+
+fn internal_error(message: String) -> axum::response::Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ApiResponse::<()>::err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "deployment.error",
+            "deployment",
+            message,
+        )),
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -893,6 +1179,7 @@ fn err_to_response(e: nexus_deployments::DeploymentError) -> axum::response::Res
             "deployment.purge_requires_soft_delete_first",
         ),
         ModuleMismatch { .. } => (StatusCode::CONFLICT, "deployment.module_mismatch"),
+        PinMismatch { .. } => (StatusCode::CONFLICT, "deployment.pin_mismatch"),
         InvalidEnvelope(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "deployment.invalid_envelope",

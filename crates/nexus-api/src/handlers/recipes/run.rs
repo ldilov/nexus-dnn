@@ -33,10 +33,12 @@ pub async fn resolve_and_compile(
     control_values: &ControlValues,
     preset_id: Option<&str>,
 ) -> Result<nexus_recipe::ResolvedRun, ApiError> {
-    let recipe = db
-        .get_recipe(recipe_id)
-        .await
-        .map_err(|_| ApiError::NotFound(format!("recipe {recipe_id} not found")))?;
+    let recipe = db.get_recipe(recipe_id).await.map_err(|e| match e {
+        nexus_storage::StorageError::NotFound { .. } => {
+            ApiError::NotFound(format!("recipe {recipe_id} not found"))
+        }
+        other => ApiError::Internal(other.to_string()),
+    })?;
 
     let workflow_id = recipe.workflow_id.ok_or_else(|| {
         ApiError::structured(
@@ -91,8 +93,8 @@ pub async fn resolve_and_compile(
 }
 
 /// Map a [`BindingError`] to a structured 422 response carrying the variant
-/// name + message (CONTRACTS C4).
-fn binding_error_to_api(err: BindingError) -> ApiError {
+/// name + message (CONTRACTS C4). Shared with the deployment recipe-run route.
+pub(crate) fn binding_error_to_api(err: BindingError) -> ApiError {
     let code = match &err {
         BindingError::UnknownControl { .. } => "BINDING_UNKNOWN_CONTROL",
         BindingError::DuplicateControl { .. } => "BINDING_DUPLICATE_CONTROL",
