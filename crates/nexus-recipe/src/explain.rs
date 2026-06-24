@@ -64,14 +64,17 @@ pub fn explain_preset(resolved: &ResolvedRun) -> PresetExplanation {
 pub fn diff_vs_defaults(resolved: &ResolvedRun, projection: &RecipeProjection) -> Vec<ControlDiff> {
     // projection supplies defaults + the full control set; binding-free controls
     // are absent from applied_controls, so we fall back to their declared default.
+    let applied_by_id: std::collections::HashMap<&str, &crate::resolved::AppliedControl> = resolved
+        .applied_controls
+        .iter()
+        .map(|a| (a.control_id.as_str(), a))
+        .collect();
+
     projection
         .controls
         .iter()
         .map(|control| {
-            let applied = resolved
-                .applied_controls
-                .iter()
-                .find(|a| a.control_id == control.control_id);
+            let applied = applied_by_id.get(control.control_id.as_str());
             let (effective_value, source) = match applied {
                 Some(a) => (a.value.clone(), a.source),
                 None => (control.default_value.clone(), ValueSource::Default),
