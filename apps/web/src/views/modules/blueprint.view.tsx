@@ -18,6 +18,7 @@ import { GraphView } from "../workflows/components/canvas/graph_view";
 import { PageHero } from "../../components/base/page_hero";
 import { Pill } from "../../components/base/pill";
 import { Tabs } from "../../components/base/tabs";
+import { RecipeForm } from "../recipe-form/RecipeForm";
 import * as s from "./blueprint.css";
 
 function Shell({ children }: { children: ReactElement | ReactElement[] | null | false | (ReactElement | null | false)[] }) {
@@ -328,6 +329,17 @@ export function BlueprintView({
             id="panel-recipe"
             className={s.stackLarge}
           >
+            {effectiveRecipeId && (
+              <section className={s.section}>
+                <h2 className={s.sectionNumber}>00 / Configure &amp; run</h2>
+                <RecipeForm
+                  recipeId={effectiveRecipeId}
+                  workflowId={workflowId ?? null}
+                  workflowVersion={null}
+                />
+              </section>
+            )}
+
             {selectedBlueprint && (
               <section className={s.section}>
                 <h2 className={s.sectionNumber}>01 / Overview</h2>

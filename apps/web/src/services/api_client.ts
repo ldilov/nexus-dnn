@@ -1,4 +1,5 @@
 import type { ApiEnvelope } from "../api/generated/ApiEnvelope";
+import type { RecipeFormDto } from "../api/generated/RecipeFormDto";
 import type { ApiErrorPayloadDto } from "../api/generated/ApiErrorPayloadDto";
 import type { ArtifactDto } from "../api/generated/ArtifactDto";
 import type { ArtifactLineageDto } from "../api/generated/ArtifactLineageDto";
@@ -927,4 +928,36 @@ export async function installExtensionFromZip(file: File): Promise<ZipInstallRes
     method: "POST",
     body: form,
   });
+}
+
+// =============================================================================
+// Recipe form (P4)
+
+export function fetchRecipeForm(id: string): Promise<RecipeFormDto> {
+  return apiFetch<RecipeFormDto>(`/recipes/${encodeURIComponent(id)}/form`);
+}
+
+export function submitRecipeRun(
+  id: string,
+  body: { control_values: Record<string, unknown>; preset_id?: string },
+): Promise<{ run_id: string }> {
+  return apiFetch<{ run_id: string }>(`/recipes/${encodeURIComponent(id)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export type { RecipeFormDto };
+
+// =============================================================================
+// Workflow version (pinned snapshot) — P4 RecipePinnedGraph
+
+export function fetchWorkflowVersion(
+  workflowId: string,
+  version: string,
+): Promise<import("../api/generated/WorkflowVersionDto").WorkflowVersionDto> {
+  return apiFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(version)}`,
+  );
 }
