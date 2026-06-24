@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { PresetRail } from "./PresetRail";
 import type { Preset } from "../../api/generated/Preset";
 
@@ -76,5 +76,39 @@ describe("PresetRail", () => {
     // Rail should render its wrapper but no buttons
     expect(screen.queryByRole("button")).toBeNull();
     expect(container.firstChild).toBeInTheDocument();
+  });
+
+  it("groups presets by source into labeled sections", () => {
+    const presets = [
+      makePreset({ preset_id: "e1", label: "Stock", source: "extension" }),
+      makePreset({ preset_id: "r1", label: "Cinematic", source: "recipe" }),
+      makePreset({ preset_id: "u1", label: "My Custom", source: "user" }),
+    ];
+    render(
+      <PresetRail
+        presets={presets}
+        selectedPresetId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const ext = screen.getByRole("group", { name: "Extension" });
+    expect(within(ext).getByRole("button", { name: "Stock" })).toBeInTheDocument();
+    expect(within(ext).queryByRole("button", { name: "Cinematic" })).toBeNull();
+    expect(within(ext).queryByRole("button", { name: "My Custom" })).toBeNull();
+
+    const recipe = screen.getByRole("group", { name: "Recipe" });
+    expect(
+      within(recipe).getByRole("button", { name: "Cinematic" }),
+    ).toBeInTheDocument();
+    expect(within(recipe).queryByRole("button", { name: "Stock" })).toBeNull();
+    expect(within(recipe).queryByRole("button", { name: "My Custom" })).toBeNull();
+
+    const user = screen.getByRole("group", { name: "User" });
+    expect(
+      within(user).getByRole("button", { name: "My Custom" }),
+    ).toBeInTheDocument();
+    expect(within(user).queryByRole("button", { name: "Stock" })).toBeNull();
+    expect(within(user).queryByRole("button", { name: "Cinematic" })).toBeNull();
   });
 });

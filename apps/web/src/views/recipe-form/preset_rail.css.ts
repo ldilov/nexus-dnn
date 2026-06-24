@@ -3,10 +3,31 @@ import { vars } from "../../theme/contract.css";
 
 export const rail = style({
   display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapMd,
+  padding: `${vars.space.insetSm} 0`,
+});
+
+export const group = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+});
+
+export const groupLabel = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.text.secondary,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+});
+
+export const groupChips = style({
+  display: "flex",
   flexDirection: "row",
   flexWrap: "wrap",
   gap: vars.space.gapSm,
-  padding: `${vars.space.insetSm} 0`,
 });
 
 export const chip = style({
