@@ -304,8 +304,17 @@ pub fn parse_operator_definition(path: &Path) -> Result<OperatorDefinition, Exte
         path: path.display().to_string(),
         detail: e.to_string(),
     })?;
-    serde_saphyr::from_str(&content).map_err(|e| ExtensionError::OperatorParse {
-        path: path.display().to_string(),
+    parse_operator_definition_str(&content, &path.display().to_string())
+}
+
+/// Parse an operator definition from an in-memory YAML string (e.g. a bundled
+/// `include_str!`), tagging parse errors with `source` for diagnostics.
+pub fn parse_operator_definition_str(
+    content: &str,
+    source: &str,
+) -> Result<OperatorDefinition, ExtensionError> {
+    serde_saphyr::from_str(content).map_err(|e| ExtensionError::OperatorParse {
+        path: source.to_owned(),
         detail: e.to_string(),
     })
 }

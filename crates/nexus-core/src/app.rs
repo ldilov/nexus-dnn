@@ -854,6 +854,52 @@ async fn persist_operator_records(
     Ok(())
 }
 
+/// Build the persisted recipe record for a just-activated extension recipe.
+/// Carries the extension-declared `projection` (generic JSON) verbatim so the
+/// host compiler can resolve/validate it at run; pin + status are backfilled
+/// separately by `backfill_recipe_pins`.
+fn build_recipe_record(
+    ext_id: &str,
+    ext_version: &str,
+    recipe: &nexus_extension::recipe::RecipeFile,
+) -> nexus_storage::RecipeRecord {
+    let bindings = recipe
+        .bindings
+        .as_ref()
+        .map(|b| serde_json::to_string(b).unwrap_or_default())
+        .unwrap_or_else(|| "{}".to_owned());
+
+    let projection = recipe.projection.as_ref().map(|p| p.to_string());
+    let projection_schema_version = recipe
+        .projection
+        .as_ref()
+        .and_then(|p| p.get("schema_version"))
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(1);
+
+    nexus_storage::RecipeRecord {
+        id: recipe.recipe.id.clone(),
+        version: recipe.recipe.version.clone(),
+        display_name: recipe.recipe.display_name.clone(),
+        summary: recipe.recipe.summary.clone(),
+        category: recipe.recipe.category.clone(),
+        extension_id: Some(ext_id.to_owned()),
+        extension_version: Some(ext_version.to_owned()),
+        workflow_template_ref: recipe.workflow_template.clone().unwrap_or_default(),
+        thumbnail: recipe.recipe.thumbnail.clone(),
+        input_summary: recipe.recipe.input_summary.clone(),
+        bindings,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        workflow_id: None,
+        workflow_version: None,
+        projection,
+        projection_schema_version,
+        status: "healthy".to_owned(),
+        status_reason: None,
+        author_kind: "extension".to_owned(),
+    }
+}
+
 async fn persist_recipe_records(
     db: &Arc<SqliteDatabase>,
     ext: &ActivatedExtension,
@@ -862,34 +908,7 @@ async fn persist_recipe_records(
     let _ = db.delete_recipes_by_extension(ext_id).await;
 
     for recipe in &ext.recipes {
-        let bindings = recipe
-            .bindings
-            .as_ref()
-            .map(|b| serde_json::to_string(b).unwrap_or_default())
-            .unwrap_or_else(|| "{}".to_owned());
-
-        let record = nexus_storage::RecipeRecord {
-            id: recipe.recipe.id.clone(),
-            version: recipe.recipe.version.clone(),
-            display_name: recipe.recipe.display_name.clone(),
-            summary: recipe.recipe.summary.clone(),
-            category: recipe.recipe.category.clone(),
-            extension_id: Some(ext_id.clone()),
-            extension_version: Some(ext.manifest.extension.version.clone()),
-            workflow_template_ref: recipe.workflow_template.clone().unwrap_or_default(),
-            thumbnail: recipe.recipe.thumbnail.clone(),
-            input_summary: recipe.recipe.input_summary.clone(),
-            bindings,
-            created_at: chrono::Utc::now().to_rfc3339(),
-            workflow_id: None,
-            workflow_version: None,
-            projection: None,
-            projection_schema_version: 1,
-            status: "healthy".to_owned(),
-            status_reason: None,
-            author_kind: "extension".to_owned(),
-        };
-
+        let record = build_recipe_record(ext_id, &ext.manifest.extension.version, recipe);
         let _ = db.insert_recipe(&record).await;
     }
 
@@ -1155,4 +1174,51 @@ async fn create_directory_if_missing(path: &Path) -> anyhow::Result<()> {
             .with_context(|| format!("failed to create directory: {}", path.display()))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod recipe_record_tests {
+    use super::*;
+    use nexus_extension::recipe::{RecipeFile, RecipeInfo};
+
+    fn recipe_file(projection: Option<serde_json::Value>) -> RecipeFile {
+        RecipeFile {
+            spec_version: "0.1".into(),
+            recipe: RecipeInfo {
+                id: "demo_recipe".into(),
+                version: "1.0.0".into(),
+                display_name: "Demo".into(),
+                summary: "S".into(),
+                category: "tts.dialogue".into(),
+                thumbnail: None,
+                input_summary: None,
+            },
+            workflow_template: Some("workflows/demo.yaml".into()),
+            bindings: None,
+            projection,
+        }
+    }
+
+    #[test]
+    fn persists_extension_declared_projection() {
+        let projection = serde_json::json!({
+            "schema_version": 2,
+            "controls": [{ "control_id": "script", "bindings": ["input:script"] }]
+        });
+        let record = build_recipe_record("ext.demo", "1.0.0", &recipe_file(Some(projection)));
+
+        let stored = record.projection.expect("projection persisted");
+        let parsed: serde_json::Value = serde_json::from_str(&stored).unwrap();
+        assert_eq!(parsed["controls"][0]["control_id"], "script");
+        assert_eq!(record.projection_schema_version, 2);
+        assert_eq!(record.author_kind, "extension");
+        assert_eq!(record.extension_id.as_deref(), Some("ext.demo"));
+    }
+
+    #[test]
+    fn projection_absent_yields_none_and_default_schema() {
+        let record = build_recipe_record("ext.demo", "1.0.0", &recipe_file(None));
+        assert!(record.projection.is_none());
+        assert_eq!(record.projection_schema_version, 1);
+    }
 }
