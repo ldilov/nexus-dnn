@@ -10,3 +10,4 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 nexus-workflow = { path = "../nexus-workflow" }
 nexus-extension = { path = "../nexus-extension" }
+ts-rs = { version = "11", features = ["serde-compat", "serde-json-impl"] }

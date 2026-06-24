@@ -24,7 +24,7 @@ pub use models::{
     HyperparameterTrtDto, InstallModelRequestDto, InstalledModelDto, LoadStateDto, LoadTaskDto,
     ModelInstallTaskDto, ModelLimitsDto, RepoFileDto,
 };
-pub use recipes::{RecipeDto, RecipeFieldBindingDto};
+pub use recipes::{ControlHintDto, RecipeDto, RecipeFieldBindingDto, RecipeFormDto};
 pub use runs::{CreateRunResponseDto, NodeExecutionDto, RunDetailDto, RunDto};
 pub use system::{HealthDto, RuntimeMetricsDto, SystemInfoDto};
 pub use tools::ToolDto;
@@ -71,6 +71,8 @@ mod export_tests {
 
         RecipeDto::export_all().unwrap();
         RecipeFieldBindingDto::export_all().unwrap();
+        RecipeFormDto::export_all().unwrap();
+        ControlHintDto::export_all().unwrap();
 
         ModelLimitsDto::export_all().unwrap();
         HyperparameterCommonDto::export_all().unwrap();

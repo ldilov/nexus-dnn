@@ -1,3 +1,4 @@
+use nexus_recipe::RecipeProjection;
 use nexus_storage::RecipeRecord;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -28,6 +29,33 @@ pub struct RecipeDto {
     pub workflow_version: Option<String>,
     pub status: String,
     pub status_reason: Option<String>,
+}
+
+/// Per-control schema hints lifted server-side from the bound operator's
+/// `config_schema` (or workflow input-port type). One entry per projection
+/// control; unbound or unresolvable controls carry `control_id` only, with all
+/// constraint fields `None`. Generic by `control_id` — no node/extension ids.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct ControlHintDto {
+    pub control_id: String,
+    pub kind: Option<String>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub step: Option<f64>,
+    #[ts(type = "Array<unknown> | null")]
+    pub enum_values: Option<Vec<serde_json::Value>>,
+    pub required: Option<bool>,
+}
+
+/// `GET /recipes/{id}/form` body: the recipe's stored projection plus the
+/// resolved per-control hints. Legacy recipes (no projection) return an empty
+/// projection + empty hints so the client falls back gracefully.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct RecipeFormDto {
+    pub projection: RecipeProjection,
+    pub control_hints: Vec<ControlHintDto>,
 }
 
 impl From<&RecipeRecord> for RecipeDto {

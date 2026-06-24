@@ -2,9 +2,11 @@
 //! `recipes.projection` JSON column; snake_case throughout.
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// A recipe's full presentation + control model for one pinned workflow version.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 pub struct RecipeProjection {
     pub schema_version: u32,
     #[serde(default)]
@@ -39,7 +41,8 @@ impl RecipeProjection {
 }
 
 /// A titled group of controls, ordered for layout.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 pub struct Section {
     pub id: String,
     pub title: String,
@@ -49,7 +52,8 @@ pub struct Section {
 }
 
 /// One user-facing control. `bindings` fan out to one or more workflow targets.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 pub struct Control {
     pub control_id: String,
     pub kind: ControlKind,
@@ -58,6 +62,7 @@ pub struct Control {
     pub help_text: Option<String>,
     pub mode: ControlMode,
     #[serde(default)]
+    #[ts(type = "unknown")]
     pub default_value: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub widget_hint: Option<String>,
@@ -65,7 +70,8 @@ pub struct Control {
     pub bindings: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 #[serde(rename_all = "snake_case")]
 pub enum ControlKind {
     String,
@@ -77,7 +83,8 @@ pub enum ControlKind {
     PresetSelector,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 #[serde(rename_all = "snake_case")]
 pub enum ControlMode {
     Basic,
@@ -87,7 +94,8 @@ pub enum ControlMode {
 }
 
 /// A named bundle of control values.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 pub struct Preset {
     pub preset_id: String,
     pub label: String,
@@ -95,10 +103,12 @@ pub struct Preset {
     pub description: Option<String>,
     pub source: PresetSource,
     #[serde(default)]
+    #[ts(type = "Record<string, unknown>")]
     pub values: serde_json::Map<String, serde_json::Value>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 #[serde(rename_all = "snake_case")]
 pub enum PresetSource {
     Extension,
@@ -107,7 +117,8 @@ pub enum PresetSource {
 }
 
 /// How the run's result is presented.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 pub struct Output {
     pub primary_artifact: String,
     #[serde(default)]
@@ -118,7 +129,8 @@ pub struct Output {
 }
 
 /// FR-3 reference to a bespoke UI bundle. P1 only STORES it; rendering is FR-10.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
 pub struct CustomUi {
     pub extension_id: String,
     pub component_ref: String,

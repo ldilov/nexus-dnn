@@ -3,6 +3,7 @@ use axum::routing::{get, post};
 
 use crate::AppState;
 
+use super::form::get_recipe_form;
 use super::read::{get_recipe, list_recipes};
 use super::run::run_recipe;
 
@@ -10,5 +11,6 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_recipes))
         .route("/{id}", get(get_recipe))
+        .route("/{id}/form", get(get_recipe_form))
         .route("/{id}/run", post(run_recipe))
 }
