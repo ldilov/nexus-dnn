@@ -107,20 +107,27 @@ async fn recipe_references_workflow_with_attributed_nodes() {
         display_name: "Local Chat".into(),
         summary: "Chat against a local model".into(),
         category: "LLM".into(),
-        extension_id: "nexus.chatllm".into(),
-        extension_version: "1.0.0".into(),
+        extension_id: Some("nexus.chatllm".into()),
+        extension_version: Some("1.0.0".into()),
         workflow_template_ref: "local_chat_basic".into(),
         thumbnail: None,
         input_summary: None,
         bindings: "[]".into(),
         created_at: "2026-04-14T00:00:00Z".into(),
+        workflow_id: None,
+        workflow_version: None,
+        projection: None,
+        projection_schema_version: 1,
+        status: "healthy".into(),
+        status_reason: None,
+        author_kind: "extension".into(),
     };
     db.insert_recipe(&recipe).await.unwrap();
 
     // 1. Recipe and workflow share the same originating extension.
     let loaded_wf = db.get_workflow("local_chat_basic").await.unwrap();
     assert_eq!(loaded_wf.extension_id.as_deref(), Some("nexus.chatllm"));
-    assert_eq!(recipe.extension_id, "nexus.chatllm");
+    assert_eq!(recipe.extension_id.as_deref(), Some("nexus.chatllm"));
 
     // 2. Recipe.workflow_template_ref resolves to a real workflow row.
     let pointed_to = db.get_workflow(&recipe.workflow_template_ref).await;
@@ -191,13 +198,20 @@ async fn user_edit_preserves_recipe_linkage() {
         display_name: "Local Chat".into(),
         summary: "".into(),
         category: "LLM".into(),
-        extension_id: "nexus.chatllm".into(),
-        extension_version: "1.0.0".into(),
+        extension_id: Some("nexus.chatllm".into()),
+        extension_version: Some("1.0.0".into()),
         workflow_template_ref: "local_chat_basic".into(),
         thumbnail: None,
         input_summary: None,
         bindings: "[]".into(),
         created_at: "2026-04-14T00:00:00Z".into(),
+        workflow_id: None,
+        workflow_version: None,
+        projection: None,
+        projection_schema_version: 1,
+        status: "healthy".into(),
+        status_reason: None,
+        author_kind: "extension".into(),
     };
     db.insert_recipe(&recipe).await.unwrap();
     let resolved = db

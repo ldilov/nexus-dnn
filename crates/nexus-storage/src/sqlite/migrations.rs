@@ -173,6 +173,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    // 027 recipes projection — ADD COLUMN (true) + idempotent nullable rebuild
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/027_recipes_projection.sql"),
+        true,
+    )
+    .await?;
     Ok(())
 }
 
@@ -181,12 +188,15 @@ async fn execute_migration_statements(
     sql: &str,
     ignore_duplicate_column: bool,
 ) -> Result<(), StorageError> {
+    // One connection per file so intra-migration DDL (a rebuild's DROP then
+    // RENAME) is mutually visible; a pooled conn can carry a stale schema cache.
+    let mut conn = pool.acquire().await?;
     for statement in sql.split(';') {
         let trimmed = statement.trim();
         if trimmed.is_empty() {
             continue;
         }
-        if let Err(e) = sqlx::query(trimmed).execute(pool).await {
+        if let Err(e) = sqlx::query(trimmed).execute(conn.as_mut()).await {
             if ignore_duplicate_column && e.to_string().contains("duplicate column") {
                 continue;
             }

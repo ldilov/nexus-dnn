@@ -18,6 +18,32 @@ pub async fn insert_recipe(pool: &SqlitePool, r: &RecipeRecord) -> Result<(), St
         .bind(&r.input_summary)
         .bind(&r.bindings)
         .bind(&r.created_at)
+        .bind(&r.workflow_id)
+        .bind(&r.workflow_version)
+        .bind(&r.projection)
+        .bind(r.projection_schema_version)
+        .bind(&r.status)
+        .bind(&r.status_reason)
+        .bind(&r.author_kind)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_recipe_pin(
+    pool: &SqlitePool,
+    id: &str,
+    workflow_id: Option<&str>,
+    workflow_version: Option<&str>,
+    status: &str,
+    status_reason: Option<&str>,
+) -> Result<(), StorageError> {
+    sqlx::query(include_str!("../../queries/recipes/update_pin.sql"))
+        .bind(workflow_id)
+        .bind(workflow_version)
+        .bind(status)
+        .bind(status_reason)
+        .bind(id)
         .execute(pool)
         .await?;
     Ok(())

@@ -174,13 +174,25 @@ pub struct RecipeRecord {
     pub display_name: String,
     pub summary: String,
     pub category: String,
-    pub extension_id: String,
-    pub extension_version: String,
+    /// `None` for host-owned user recipes (soft FK by convention for ext rows).
+    pub extension_id: Option<String>,
+    pub extension_version: Option<String>,
     pub workflow_template_ref: String,
     pub thumbnail: Option<String>,
     pub input_summary: Option<String>,
     pub bindings: String,
     pub created_at: String,
+    /// Pinned immutable workflow + version (P1). `None` until backfill resolves.
+    pub workflow_id: Option<String>,
+    pub workflow_version: Option<String>,
+    /// Normalized projection document JSON; `None` for not-yet-projected recipes.
+    pub projection: Option<String>,
+    pub projection_schema_version: i64,
+    /// Cached compatibility verdict: `healthy`|`outdated`|`broken`.
+    pub status: String,
+    pub status_reason: Option<String>,
+    /// `extension` (shipped) or `user` (host-authored).
+    pub author_kind: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

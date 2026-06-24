@@ -149,6 +149,16 @@ pub trait Database: Send + Sync {
         extension_id: &str,
     ) -> Result<Vec<RecipeRecord>, StorageError>;
     async fn delete_recipes_by_extension(&self, extension_id: &str) -> Result<(), StorageError>;
+    /// Update a recipe's pin + cached status in one statement. `None` pins clear
+    /// the columns (used by the unresolvable-backfill path).
+    async fn update_recipe_pin(
+        &self,
+        id: &str,
+        workflow_id: Option<&str>,
+        workflow_version: Option<&str>,
+        status: &str,
+        status_reason: Option<&str>,
+    ) -> Result<(), StorageError>;
 
     async fn insert_ui_contribution(
         &self,

@@ -1,1 +1,1 @@
-DELETE FROM recipes WHERE extension_id = ?
+DELETE FROM recipes WHERE extension_id = ? AND author_kind = 'extension'

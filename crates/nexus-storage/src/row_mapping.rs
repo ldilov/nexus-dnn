@@ -157,6 +157,13 @@ pub fn map_recipe_row(row: SqliteRow) -> RecipeRecord {
         input_summary: row.get("input_summary"),
         bindings: row.get("bindings"),
         created_at: row.get("created_at"),
+        workflow_id: row.get("workflow_id"),
+        workflow_version: row.get("workflow_version"),
+        projection: row.get("projection"),
+        projection_schema_version: row.get("projection_schema_version"),
+        status: row.get("status"),
+        status_reason: row.get("status_reason"),
+        author_kind: row.get("author_kind"),
     }
 }
 
