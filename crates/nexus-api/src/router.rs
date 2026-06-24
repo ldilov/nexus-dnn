@@ -277,8 +277,8 @@ pub fn build(state: AppState) -> Router {
             axum::routing::put(workflows::update_workflow_graph),
         )
         .route("/workflows/{id}/revert", post(workflows::revert_workflow))
-        // P0 is the sole registrar of the /workflows/{id}/versions[/{version}]
-        // subtree; the adjacent slot is reserved for P6 exposable-targets.
+        // P0 owns the /workflows/{id}/versions[/{version}] subtree; the P6
+        // exposable-targets handler (handlers/recipes/) registers its route here.
         .route(
             "/workflows/{id}/versions",
             get(workflows::list_workflow_versions),
@@ -286,6 +286,10 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/workflows/{id}/versions/{version}",
             get(workflows::get_workflow_version),
+        )
+        .route(
+            "/workflows/{id}/versions/{version}/exposable-targets",
+            get(recipes::exposable_targets::get_exposable_targets),
         )
         .route(
             "/workflows/{id}/canvas",
