@@ -221,6 +221,7 @@ fn slugify(label: &str) -> Option<String> {
     }
 }
 
+// LANDMINE(SAVE-GATE): validate via temp projection + preset_id=Some, not user values (CONTRACTS C4) · see .claude/checkpoints/LATEST.md
 /// `POST /recipes/{id}/presets` — create a USER preset, validated through the
 /// compiler before it is persisted.
 pub(crate) async fn create_user_preset(

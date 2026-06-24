@@ -37,6 +37,7 @@ function PresetChip({
   );
 }
 
+// LANDMINE(PROP-CONTRACT): prop is Preset[] (projection), NOT PresetDto[] — RecipeForm passes projection.presets · see .claude/checkpoints/LATEST.md
 /**
  * Preset chips grouped by source (Extension, Recipe, User) in a stable order.
  * Renders preset names from the projection — no extension-id knowledge. Empty

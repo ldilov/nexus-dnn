@@ -58,6 +58,7 @@ pub async fn resolve_and_compile(
         .map_err(binding_error_to_api)
 }
 
+// LANDMINE(SHARED-SEAM): snapshot loader reused by run / deploy / preset compile · see .claude/checkpoints/LATEST.md
 /// Resolve a recipe's pinned workflow-version into a [`WorkflowVersionSnapshot`]
 /// (recipe pin -> `get_workflow_version` -> `record_to_snapshot`). Shared by
 /// `resolve_and_compile` and the user-preset save-gate so both surfaces map the

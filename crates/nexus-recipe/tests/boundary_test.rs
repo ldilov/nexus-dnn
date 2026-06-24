@@ -68,6 +68,7 @@ fn no_extension_id_literals_in_source() {
     );
 }
 
+// LANDMINE(BOUNDARY-SRC-SCAN): fails on concrete node-id / config-path literals in nexus-recipe src · see .claude/checkpoints/LATEST.md
 #[test]
 fn no_concrete_node_id_bindings_in_source() {
     let mut violations: Vec<String> = Vec::new();

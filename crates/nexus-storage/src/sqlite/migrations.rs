@@ -2,6 +2,7 @@ use sqlx::sqlite::SqlitePool;
 
 use crate::error::StorageError;
 
+// LANDMINE(MIGRATION-REGISTER): each .sql is inert until hand-added here; split-on-; breaks on a ; inside a SQL comment · see .claude/checkpoints/LATEST.md
 /// Apply every workspace SQL migration in order. Each migration is split on
 /// `;` boundaries and executed statement-by-statement so that
 /// `ALTER TABLE ... ADD COLUMN` clauses can be re-run idempotently when the

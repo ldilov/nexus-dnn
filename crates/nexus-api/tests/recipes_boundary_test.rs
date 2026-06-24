@@ -45,6 +45,7 @@ fn recipes_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/handlers/recipes")
 }
 
+// LANDMINE(BOUNDARY-AUTOSCAN): walks every .rs under handlers/recipes — new files auto-scanned for ext-id / node literals · see .claude/checkpoints/LATEST.md
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("read handlers/recipes dir") {
         let entry = entry.expect("dir entry");

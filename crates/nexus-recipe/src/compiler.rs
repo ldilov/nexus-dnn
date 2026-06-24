@@ -87,6 +87,7 @@ pub fn compile_recipe_run(
     })
 }
 
+// LANDMINE(PRESET-LAYERING-DONE): full preset/locked/hidden layering lives here (P2) — P5/P6 must NOT re-implement preset eval · see .claude/checkpoints/LATEST.md
 /// Seed every control with its default, then overlay the preset (any mode) and
 /// finally the user layer (rejected for locked/hidden controls).
 fn layer_effective_values(
