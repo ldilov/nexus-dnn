@@ -231,8 +231,7 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/operators", get(extensions::list_operators))
         .route("/operators/{id}", get(extensions::get_operator))
-        .route("/recipes", get(recipes::list_recipes))
-        .route("/recipes/{id}", get(recipes::get_recipe))
+        // CONTRACTS C7: recipes sub-tree is owned by handlers/recipes/router.rs
         .route(
             "/ui/contributions",
             get(ui_contributions::list_contributions),
@@ -526,6 +525,7 @@ pub fn build(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let api_v1 = api_v1.nest("/recipes", recipes::router::router());
     let api_v1 = api_v1.nest("/deployments", deployments::deployments_router());
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
