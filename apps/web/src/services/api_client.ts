@@ -961,3 +961,54 @@ export function fetchWorkflowVersion(
     `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(version)}`,
   );
 }
+
+// =============================================================================
+// Recipe builder (P6)
+
+export function fetchWorkflowVersions(
+  workflowId: string,
+): Promise<
+  import("../api/generated/WorkflowVersionDto").WorkflowVersionDto[]
+> {
+  return apiFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/versions`,
+  );
+}
+
+export function fetchExposableTargets(
+  workflowId: string,
+  version: string,
+): Promise<
+  import("../api/generated/ExposableTargetsResponseDto").ExposableTargetsResponseDto
+> {
+  return apiFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(version)}/exposable-targets`,
+  );
+}
+
+export function createRecipe(
+  body: import("../api/generated/RecipeWritePayloadDto").RecipeWritePayloadDto,
+): Promise<RecipeDto> {
+  return apiFetch<RecipeDto>("/recipes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateRecipe(
+  id: string,
+  body: import("../api/generated/RecipeWritePayloadDto").RecipeWritePayloadDto,
+): Promise<RecipeDto> {
+  return apiFetch<RecipeDto>(`/recipes/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteRecipe(id: string): Promise<void> {
+  return apiFetch<void>(`/recipes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}

@@ -417,6 +417,19 @@ export function BlueprintView({
                   <div className={`${s.graphBox} ${s.graphBoxTall}`}>
                     <GraphView workflow={workflow} nodeProgress={{}} />
                   </div>
+                  {workflowId && (
+                    <button
+                      type="button"
+                      className={s.backLink}
+                      onClick={() =>
+                        navigate(
+                          `/recipe-builder?workflow_id=${encodeURIComponent(workflowId)}`,
+                        )
+                      }
+                    >
+                      Build a recipe from this workflow →
+                    </button>
+                  )}
                 </section>
 
                 <section className={s.section}>

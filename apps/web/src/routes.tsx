@@ -32,6 +32,10 @@ export const router = createHashRouter([
     children: [
       { index: true, Component: HomeRoute },
       { path: "recipes", Component: RecipesRoute },
+      {
+        path: "recipe-builder",
+        lazy: () => import("./views/recipe-builder/recipe_builder.route"),
+      },
       { path: "workflows", Component: WorkflowsRoute },
       {
         path: "workflows/:id",
