@@ -1,4 +1,4 @@
-import { style } from "@vanilla-extract/css";
+import { globalStyle, style } from "@vanilla-extract/css";
 import { vars } from "../../../../theme/tokens.css";
 
 export const root = style({
@@ -23,6 +23,28 @@ export const dropZone = style({
       background: `color-mix(in oklab, ${vars.color.accent} 12%, ${vars.color.surfaceMuted})`,
     },
   },
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      // Stack icon, copy, and CTA in one centered column on mobile.
+      gridTemplateColumns: "1fr",
+      justifyItems: "center",
+      textAlign: "center",
+      gap: vars.space.md,
+      padding: vars.space.lg,
+    },
+  },
+});
+
+/* Upload CTA goes full-width at the bottom of the stacked card. */
+globalStyle(`${dropZone} > button`, {
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      width: "100%",
+      justifySelf: "stretch",
+    },
+  },
 });
 
 export const dropIcon = style({
@@ -42,6 +64,12 @@ export const dropBody = style({
   flexDirection: "column",
   gap: vars.space.xs,
   minWidth: 0,
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      alignItems: "center",
+    },
+  },
 });
 
 export const dropTitle = style({
@@ -52,6 +80,12 @@ export const dropTitle = style({
   fontSize: vars.text.body,
   color: vars.color.text,
   fontWeight: 600,
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      justifyContent: "center",
+    },
+  },
 });
 
 export const dropTitleHint = style({
@@ -71,6 +105,12 @@ export const dropLinkRow = style({
   flexWrap: "wrap",
   alignItems: "center",
   gap: vars.space.sm,
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 640px)": {
+      justifyContent: "center",
+    },
+  },
 });
 
 export const linkBtn = style({

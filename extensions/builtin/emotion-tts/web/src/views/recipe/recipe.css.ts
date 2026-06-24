@@ -7,7 +7,8 @@ export const shell = style({
   gap: "var(--d-9, 64px)",
   padding: vars.space.xl,
   paddingTop: vars.space.section,
-  paddingBottom: "var(--d-9, 64px)",
+  // audit-allow: px — clearance for the floating action bar (bottom: 24px + ~52px tall)
+  paddingBottom: "calc(var(--d-9, 64px) + 48px)",
   minHeight: "100vh",
   background: vars.color.surface,
   // audit-allow: px — fixed layout breakpoint
@@ -29,6 +30,8 @@ export const shell = style({
       gap: vars.space.section,
       padding: vars.space.lg,
       paddingTop: vars.space.xl,
+      // audit-allow: px — clearance for the floating action bar on mobile
+      paddingBottom: "calc(var(--d-9, 64px) + 56px)",
     },
   },
 });
@@ -134,6 +137,14 @@ export const sectionEyebrow = style({
   textTransform: "uppercase",
   letterSpacing: vars.tracking.label,
   color: vars.color.textMuted,
+  "@media": {
+    // audit-allow: px — fixed layout breakpoint
+    "(max-width: 768px)": {
+      // Claim the full first line so the oversized title drops below it
+      // instead of wedging beside the eyebrow and wrapping mid-phrase.
+      flexBasis: "100%",
+    },
+  },
 });
 
 export const sectionTitle = style({
@@ -162,6 +173,7 @@ export const sectionToggle = style({
   cursor: "pointer",
   textAlign: "left",
   color: "inherit",
+  flexWrap: "wrap",
   selectors: {
     "&:hover": {
       color: vars.color.text,

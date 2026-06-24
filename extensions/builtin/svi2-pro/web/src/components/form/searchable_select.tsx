@@ -25,6 +25,8 @@ interface SearchableSelectProps {
   searchPlaceholder?: string;
   /** Accessible name for the search box and listbox. */
   searchLabel?: string;
+  /** Disable the trigger (e.g. while an apply is persisting). */
+  disabled?: boolean | undefined;
 }
 
 function ChevronIcon(): ReactElement {
@@ -73,6 +75,7 @@ export function SearchableSelect({
   placeholder = "Select…",
   searchPlaceholder = "Search…",
   searchLabel = "Search options",
+  disabled = false,
 }: SearchableSelectProps): ReactElement {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -184,6 +187,8 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
+        disabled={disabled}
+        aria-busy={disabled || undefined}
         onClick={() => (open ? close(false) : setOpen(true))}
         onKeyDown={onTriggerKeyDown}
       >

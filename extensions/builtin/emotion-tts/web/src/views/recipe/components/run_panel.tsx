@@ -408,7 +408,7 @@ export function RunPanel(props: Props): JSX.Element {
   return (
     <div className={panel.root}>
       <div className={panel.card}>
-        <div className={panel.diagnostics}>
+        <div className={panel.diagnostics} aria-live="polite">
           <span className={panel.diagnosticsLabel}>
             <span className={panel.numeral} aria-hidden="true">
               01

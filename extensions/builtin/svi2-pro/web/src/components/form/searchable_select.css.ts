@@ -25,12 +25,16 @@ export const trigger = style({
   cursor: "pointer",
   transition: `box-shadow ${vars.motion.fast}`,
   selectors: {
-    "&:hover": {
+    "&:hover:not(:disabled)": {
       boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
     },
     "&:focus-visible": {
       outline: "none",
       boxShadow: `inset 0 0 0 1px ${vars.color.accent}, 0 0 0 3px ${vars.color.accentGlow}`,
+    },
+    "&:disabled": {
+      cursor: "not-allowed",
+      opacity: 0.55,
     },
   },
 });

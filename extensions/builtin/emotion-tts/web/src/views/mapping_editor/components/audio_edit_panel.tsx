@@ -487,12 +487,14 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
           variant="secondary"
           onClick={() => void handlePreview()}
           disabled={previewInFlight || applyInFlight}
+          loading={previewInFlight}
         >
           {previewInFlight ? "Rendering preview…" : "Preview"}
         </Button>
         <Button
           onClick={() => void handleApply()}
           disabled={applyInFlight || previewInFlight}
+          loading={applyInFlight}
         >
           {applyInFlight ? "Applying…" : "Apply"}
         </Button>

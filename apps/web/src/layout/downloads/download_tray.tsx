@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useDownloadManager } from "../../services/download_manager";
 import {
   DownloadFailed,
@@ -16,7 +16,7 @@ function jobLabel(job: DownloadJob, variantId: string | undefined): string {
   return job.family_id;
 }
 
-function ActiveRow({
+const ActiveRow = memo(function ActiveRow({
   job,
   variantId,
   onPause,
@@ -67,9 +67,9 @@ function ActiveRow({
       </div>
     </div>
   );
-}
+});
 
-function TerminalRow({
+const TerminalRow = memo(function TerminalRow({
   job,
   variantId,
   onResume,
@@ -110,7 +110,7 @@ function TerminalRow({
       )}
     </div>
   );
-}
+});
 
 const TRAY_BODY_ID = "download-tray-body";
 

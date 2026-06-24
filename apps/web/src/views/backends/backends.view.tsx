@@ -37,16 +37,23 @@ export function BackendsView() {
   };
 
   const handleValidate = async (b: BackendSummary) => {
-    try {
-      const result = await validateBackend(b.id);
-      if (!result.ok) throw new Error(`validate failed: ${result.status}`);
-      toast.success(`Validation complete: ${b.display_name}`);
-      void revalidate();
-    } catch (e) {
-      toast.error(
-        `Validate failed: ${e instanceof Error ? e.message : "unknown error"}`,
-      );
-    }
+    // toast.promise renders a live spinner while the validation runs so the
+    // card action reflects in-flight state without per-card pending plumbing.
+    await toast.promise(
+      (async () => {
+        const result = await validateBackend(b.id);
+        if (!result.ok) throw new Error(`validate failed: ${result.status}`);
+        void revalidate();
+        void mutate("host-backends");
+        return b.display_name;
+      })(),
+      {
+        loading: `Validating ${b.display_name}…`,
+        success: (name) => `Validation complete: ${name}`,
+        error: (e) =>
+          `Validate failed: ${e instanceof Error ? e.message : "unknown error"}`,
+      },
+    );
   };
 
   const cardHandlers: BackendCardHandlers = {

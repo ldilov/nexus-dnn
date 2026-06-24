@@ -4,3 +4,5 @@ binaries/** filter=lfs diff=lfs merge=lfs -text
 # sd-cli / other large prebuilt binaries shipped under binaries/
 binaries/linux-aarch64/sd-cli-linux-aarch64 filter=lfs diff=lfs merge=lfs -text
 binaries filter=lfs diff=lfs merge=lfs -text
+# justfile embeds bash heredocs piped to remote ssh — CRLF would inject \r and break them.
+justfile text eol=lf

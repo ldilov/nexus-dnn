@@ -1,4 +1,4 @@
-import { style } from "@vanilla-extract/css";
+import { globalStyle, style } from "@vanilla-extract/css";
 import { vars } from "../../../theme/tokens.css";
 
 export const group = style({
@@ -24,6 +24,10 @@ export const controlRow = style({
 
 export const segmentWrap = style({
   display: "inline-flex",
+  maxWidth: "100%",
+  overflowX: "auto",
+  overscrollBehaviorX: "contain",
+  scrollbarWidth: "none",
   padding: "4px",
   gap: "2px",
   background: vars.color.surface,
@@ -31,8 +35,15 @@ export const segmentWrap = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
 });
 
+/* Scroll the pill group on narrow viewports instead of clipping segments. */
+globalStyle(`${segmentWrap}::-webkit-scrollbar`, {
+  display: "none",
+});
+
 export const segment = style({
   height: "34px",
+  flexShrink: 0,
+  whiteSpace: "nowrap",
   padding: "0 16px",
   borderRadius: "8px",
   border: "none",
@@ -432,6 +443,7 @@ export const select = style({
     "&:focus-visible": {
       boxShadow: `inset 0 0 0 1px ${vars.color.accent}, 0 0 0 3px ${vars.color.accentGlow}`,
     },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
   },
 });
 

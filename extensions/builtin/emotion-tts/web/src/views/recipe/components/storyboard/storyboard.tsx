@@ -1,12 +1,15 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type SetStateAction,
 } from "react";
 import type { VoiceAsset } from "../../../../services/voice_assets_client";
 import type { VectorPreset } from "../../../../services/presets_client";
@@ -683,95 +686,34 @@ export function Storyboard({
             // queued → rendering → ready/failed without a refetch; the cast
             const live = jobProgress?.get(j.id);
             const visualStatus: JobStatus = live ? runProgressToJobStatus(live) : j.status;
-            const meta = STATUS_META[visualStatus];
             const active = focusedJobId === j.id || hoveredJobId === j.id;
             const playing = playingJobId === j.id;
-            const text = rangeText(paragraphs, j.segIds);
             // Preview is available only once the segment is rendered AND we have
             // a real artifact handle to play (segment_completed carries the
             const previewUrl =
               visualStatus === "ready"
                 ? artifactAudioUrl(deploymentId, live?.utteranceId)
                 : null;
-            const canPreview = previewUrl != null;
             return (
-              <div
+              <StoryboardCard
                 key={j.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`${v.name} ${labels[j.id]} — ${emotionLabel(emotions, j.emotion)} — ${voiceMissing ? "voice removed — recast" : meta.label}`}
-                className={css.card}
-                data-broken={voiceMissing ? "true" : "false"}
-                style={voiceMissing ? brokenCardStyle(active) : cardStyle(v, active)}
-                onClick={() => openJobEditor(j)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openJobEditor(j); }
-                }}
-                onMouseEnter={() => setHoveredJobId(j.id)}
-                onMouseLeave={() => setHoveredJobId(null)}
-                onFocus={() => setFocusedJobId(j.id)}
-              >
-                <div className={css.cardTop}>
-                  <div className={css.cardVoice}>
-                    <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 17, color: v.color }}>{v.icon}</span>
-                    <span className={css.cardVoiceName}>{v.name}</span>
-                  </div>
-                  <span className={css.cardSegLabel}>{labels[j.id]}</span>
-                </div>
-                <span className={css.cardText}>{text}</span>
-                <div className={css.cardMeta}>
-                  <span style={emotionChipStyle(v)}>{emotionLabel(emotions, j.emotion)}</span>
-                  <span className={css.statusWrap}>
-                    <span style={statusDotStyle(meta)} />
-                    <span style={statusLabelStyle(meta, visualStatus)}>{meta.label}</span>
-                  </span>
-                </div>
-                {voiceMissing && (
-                  <span style={BROKEN_HINT} role="status">
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }} aria-hidden="true">
-                      error
-                    </span>
-                    voice removed — recast
-                  </span>
-                )}
-                <div className={css.cardFoot}>
-                  <button
-                    type="button"
-                    className={css.playBtn}
-                    aria-label={playing ? "Pause preview" : "Preview audio"}
-                    disabled={!canPreview && !playing}
-                    onClick={(e) => { e.stopPropagation(); if (canPreview || playing) playJob(j.id); }}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">{playing ? "pause_circle" : "play_circle"}</span>
-                    {playing ? "Playing" : "Preview"}
-                  </button>
-                  <button
-                    type="button"
-                    className={css.cardRemove}
-                    aria-label={`Remove ${labels[j.id]}`}
-                    onClick={(e) => { e.stopPropagation(); removeJob(j.id); }}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">close</span>
-                  </button>
-                </div>
-                {playing && previewUrl && (
-                  <>
-                    <audio
-                      src={previewUrl}
-                      controls
-                      autoPlay
-                      preload="auto"
-                      style={AUDIO_STYLE}
-                      onEnded={() => setPlayingJobId((cur) => (cur === j.id ? null : cur))}
-                    >
-                      <track kind="captions" />
-                    </audio>
-                    <div className={css.scanRail}>
-                      <div style={scanStyle(v)} />
-                    </div>
-                  </>
-                )}
-              </div>
+                job={j}
+                voice={v}
+                voiceMissing={voiceMissing}
+                visualStatus={visualStatus}
+                active={active}
+                playing={playing}
+                label={labels[j.id] ?? j.id}
+                emotionText={emotionLabel(emotions, j.emotion)}
+                text={rangeText(paragraphs, j.segIds)}
+                previewUrl={previewUrl}
+                onOpen={openJobEditor}
+                onRemove={removeJob}
+                onTogglePlay={playJob}
+                onHover={setHoveredJobId}
+                onFocusJob={setFocusedJobId}
+                onPlaybackEnded={setPlayingJobId}
+              />
             );
           })}
 
@@ -786,6 +728,131 @@ export function Storyboard({
     </div>
   );
 }
+
+interface StoryboardCardProps {
+  job: Job;
+  voice: Voice;
+  voiceMissing: boolean;
+  visualStatus: JobStatus;
+  active: boolean;
+  playing: boolean;
+  label: string;
+  emotionText: string;
+  text: string;
+  previewUrl: string | null;
+  onOpen: (job: Job) => void;
+  onRemove: (id: string) => void;
+  onTogglePlay: (id: string) => void;
+  onHover: (id: string | null) => void;
+  onFocusJob: (id: string | null) => void;
+  onPlaybackEnded: Dispatch<SetStateAction<string | null>>;
+}
+
+/**
+ * One assigned-segment carousel card. Memoised so a live `jobProgress` tick
+ * only re-renders the card whose own status changed, not the whole carousel.
+ * All callbacks are stable (`useCallback`/setState) in the parent so the memo
+ * comparison holds across unrelated progress events.
+ */
+const StoryboardCard = memo(function StoryboardCard({
+  job,
+  voice: v,
+  voiceMissing,
+  visualStatus,
+  active,
+  playing,
+  label,
+  emotionText,
+  text,
+  previewUrl,
+  onOpen,
+  onRemove,
+  onTogglePlay,
+  onHover,
+  onFocusJob,
+  onPlaybackEnded,
+}: StoryboardCardProps): JSX.Element {
+  const meta = STATUS_META[visualStatus];
+  const canPreview = previewUrl != null;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${v.name} ${label} — ${emotionText} — ${voiceMissing ? "voice removed — recast" : meta.label}`}
+      className={css.card}
+      data-broken={voiceMissing ? "true" : "false"}
+      style={voiceMissing ? brokenCardStyle(active) : cardStyle(v, active)}
+      onClick={() => onOpen(job)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(job); }
+      }}
+      onMouseEnter={() => onHover(job.id)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onFocusJob(job.id)}
+    >
+      <div className={css.cardTop}>
+        <div className={css.cardVoice}>
+          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 17, color: v.color }}>{v.icon}</span>
+          <span className={css.cardVoiceName}>{v.name}</span>
+        </div>
+        <span className={css.cardSegLabel}>{label}</span>
+      </div>
+      <span className={css.cardText}>{text}</span>
+      <div className={css.cardMeta}>
+        <span style={emotionChipStyle(v)}>{emotionText}</span>
+        <span className={css.statusWrap}>
+          <span style={statusDotStyle(meta)} />
+          <span style={statusLabelStyle(meta, visualStatus)}>{meta.label}</span>
+        </span>
+      </div>
+      {voiceMissing && (
+        <span style={BROKEN_HINT} role="status">
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }} aria-hidden="true">
+            error
+          </span>
+          voice removed — recast
+        </span>
+      )}
+      <div className={css.cardFoot}>
+        <button
+          type="button"
+          className={css.playBtn}
+          aria-label={playing ? "Pause preview" : "Preview audio"}
+          disabled={!canPreview && !playing}
+          onClick={(e) => { e.stopPropagation(); if (canPreview || playing) onTogglePlay(job.id); }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">{playing ? "pause_circle" : "play_circle"}</span>
+          {playing ? "Playing" : "Preview"}
+        </button>
+        <button
+          type="button"
+          className={css.cardRemove}
+          aria-label={`Remove ${label}`}
+          onClick={(e) => { e.stopPropagation(); onRemove(job.id); }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">close</span>
+        </button>
+      </div>
+      {playing && previewUrl && (
+        <>
+          <audio
+            src={previewUrl}
+            controls
+            autoPlay
+            preload="auto"
+            style={AUDIO_STYLE}
+            onEnded={() => onPlaybackEnded((cur) => (cur === job.id ? null : cur))}
+          >
+            <track kind="captions" />
+          </audio>
+          <div className={css.scanRail}>
+            <div style={scanStyle(v)} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
 
 const HEADER_ROW: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 };
 const AUDIO_STYLE: CSSProperties = { width: "100%", height: 32, marginTop: 8, display: "block" };

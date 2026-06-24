@@ -1,4 +1,3 @@
-CLAUDE.md
 AGENTS.md
 # Rust / Cargo
 debug/
@@ -26,7 +25,6 @@ desktop.ini
 .octopus/
 .specify/
 AGENTS.md
-CLAUDE.md
 .cursorrules
 .cursor/
 .aider*

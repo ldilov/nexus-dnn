@@ -167,6 +167,7 @@ export const toggle = style({
   selectors: {
     "&[aria-checked='true']": { background: vars.color.accent },
     "&:focus-visible": { outline: `2px solid ${vars.color.accent}`, outlineOffset: "2px" },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
   },
 });
 

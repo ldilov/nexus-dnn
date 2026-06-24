@@ -1,10 +1,20 @@
 import { recipe } from "@vanilla-extract/recipes";
-import { style } from "@vanilla-extract/css";
+import { globalStyle, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
 export const tabList = style({
   display: "flex",
   gap: vars.space.gapXs,
+  maxWidth: "100%",
+  overflowX: "auto",
+  overscrollBehaviorX: "contain",
+  scrollbarWidth: "none",
+});
+
+/* Tab strips scroll horizontally on narrow viewports rather than clipping
+ * the trailing tabs; the scrollbar chrome stays hidden. */
+globalStyle(`${tabList}::-webkit-scrollbar`, {
+  display: "none",
 });
 
 export const tabRecipe = recipe({
@@ -18,6 +28,7 @@ export const tabRecipe = recipe({
     fontWeight: vars.font.weight.medium,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    flexShrink: 0,
     transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   },
   variants: {
@@ -71,8 +82,16 @@ export const segmentedContainer = style({
   display: "inline-flex",
   gap: vars.space.gapXs,
   padding: vars.space.insetXs,
+  maxWidth: "100%",
+  overflowX: "auto",
+  overscrollBehaviorX: "contain",
+  scrollbarWidth: "none",
   backgroundColor: vars.color.bg.panel,
   borderRadius: vars.radius.control,
+});
+
+globalStyle(`${segmentedContainer}::-webkit-scrollbar`, {
+  display: "none",
 });
 
 export const tabBadge = style({

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import useSWR from "swr";
 import {
   listInstalls,
@@ -10,6 +10,7 @@ import {
   type InstallRow,
   type LeaseRow,
 } from "../../../services/backend_runtimes_client";
+import { Spinner } from "../../../components/base/spinner";
 import * as css from "../backend_runtimes.css";
 
 const INSTALLS_POLL_MS = 5_000;
@@ -47,16 +48,20 @@ export function InstallActions({ runtimeId }: Props) {
     { refreshInterval: INSTALLS_POLL_MS, revalidateOnFocus: true },
   );
 
+  const refresh = useCallback(() => {
+    void mutateInstalls();
+  }, [mutateInstalls]);
+
   if (!installs) {
-    return null;
+    return (
+      <div className={css.pillRow} aria-label="installs">
+        <Spinner size="sm" label="Loading installs" />
+      </div>
+    );
   }
   if (installs.length === 0) {
     return null;
   }
-
-  const refresh = () => {
-    void mutateInstalls();
-  };
 
   return (
     <div className={css.pillRow} aria-label="installs">
@@ -71,7 +76,7 @@ export function InstallActions({ runtimeId }: Props) {
   );
 }
 
-function InstallRowView({
+const InstallRowView = memo(function InstallRowView({
   install,
   onChanged,
 }: {
@@ -161,24 +166,27 @@ function InstallRowView({
           className={`${css.actionButton} ${css.actionButtonPrimary}`}
           onClick={onStart}
           disabled={!canStart || pending !== null}
+          aria-busy={pending === "start" || undefined}
         >
-          {pending === "start" ? "Starting…" : "Start"}
+          <ActionLabel busy={pending === "start"} busyLabel="Starting…" label="Start" />
         </button>
         <button
           type="button"
           className={css.actionButton}
           onClick={onStop}
           disabled={!canStop || pending !== null}
+          aria-busy={pending === "stop" || undefined}
         >
-          {pending === "stop" ? "Stopping…" : "Stop"}
+          <ActionLabel busy={pending === "stop"} busyLabel="Stopping…" label="Stop" />
         </button>
         <button
           type="button"
           className={css.actionButton}
           onClick={onRestart}
           disabled={!canRestart || pending !== null}
+          aria-busy={pending === "restart" || undefined}
         >
-          {pending === "restart" ? "Restarting…" : "Restart"}
+          <ActionLabel busy={pending === "restart"} busyLabel="Restarting…" label="Restart" />
         </button>
         <a
           className={css.actionButton}
@@ -193,12 +201,38 @@ function InstallRowView({
           className={`${css.actionButton} ${css.actionButtonDanger}`}
           onClick={onUninstall}
           disabled={!canUninstall || pending !== null}
+          aria-busy={pending === "uninstall" || undefined}
         >
-          {pending === "uninstall" ? "Uninstalling…" : "Uninstall"}
+          <ActionLabel
+            busy={pending === "uninstall"}
+            busyLabel="Uninstalling…"
+            label="Uninstall"
+          />
         </button>
       </div>
 
       {error && <div className={css.failureNote}>{error}</div>}
     </div>
+  );
+});
+
+/** Button label that swaps in an inline spinner while its action is in flight. */
+function ActionLabel({
+  busy,
+  busyLabel,
+  label,
+}: {
+  busy: boolean;
+  busyLabel: string;
+  label: string;
+}) {
+  if (!busy) {
+    return <>{label}</>;
+  }
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4em" }}>
+      <Spinner size="sm" />
+      {busyLabel}
+    </span>
   );
 }

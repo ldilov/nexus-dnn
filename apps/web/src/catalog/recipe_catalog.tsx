@@ -16,6 +16,7 @@ import {
   type WithOrphan,
 } from "./catalog_grouping";
 import { matchesControls, useCatalogState } from "../hooks/use_catalog_state";
+import { SkeletonGrid } from "../components/base/skeleton";
 import * as sharedStyles from "./catalog.css";
 import * as styles from "./recipe_catalog.css";
 import * as shellStyles from "./catalog_shell.css";
@@ -77,14 +78,20 @@ export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
   const [revealNotice, setRevealNotice] = useState<string | null>(null);
   const { state: controls, setState: setControls } = useCatalogState("recipes");
 
-  const { data: recipes = EMPTY_RECIPES, error: recipesError } = useSWR<RecipeItem[]>(
-    "catalog:recipes",
-    () => fetchRecipes().then((r) => r as RecipeItem[]),
+  const {
+    data: recipes = EMPTY_RECIPES,
+    error: recipesError,
+    isLoading: recipesLoading,
+  } = useSWR<RecipeItem[]>("catalog:recipes", () =>
+    fetchRecipes().then((r) => r as RecipeItem[]),
   );
-  const { data: extensions = EMPTY_EXTENSIONS, error: extensionsError } = useSWR<Extension[]>(
-    "catalog:extensions",
-    () => fetchExtensions(),
-  );
+  const {
+    data: extensions = EMPTY_EXTENSIONS,
+    error: extensionsError,
+    isLoading: extensionsLoading,
+  } = useSWR<Extension[]>("catalog:extensions", () => fetchExtensions());
+  const isInitialLoading =
+    (recipesLoading || extensionsLoading) && recipes.length === 0;
   const loadError = recipesError ?? extensionsError;
   const error = loadError
     ? loadError instanceof Error
@@ -160,7 +167,10 @@ export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
           {revealNotice}
         </div>
       ) : null}
-      <CatalogShell<WithOrphan<RecipeItem>>
+      {isInitialLoading ? (
+        <SkeletonGrid count={6} className={styles.grid} />
+      ) : (
+        <CatalogShell<WithOrphan<RecipeItem>>
         groups={groups}
         gridClassName={styles.grid}
         emptyTitle={
@@ -200,7 +210,8 @@ export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
             onSelect={() => onOpenRecipe?.(recipe)}
           />
         )}
-      />
+        />
+      )}
     </div>
   );
 }

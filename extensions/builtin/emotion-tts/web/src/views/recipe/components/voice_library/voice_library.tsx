@@ -236,6 +236,7 @@ export function VoiceLibrary({
           variant="primary"
           size="md"
           disabled={busy}
+          loading={busy}
           onClick={() => fileInputRef.current?.click()}
         >
           + Upload

@@ -4,8 +4,8 @@ import * as fc from "../../../components/form/field_control.css";
 import { SearchableSelect } from "../../../components/form/searchable_select";
 import { SVI_LORA_TIER_OPTIONS } from "../../../domain/settings_defaults";
 import { listExpertFiles } from "../../../domain/wan_models";
+import { usePersistSettings } from "../../../hooks/use_persist_settings";
 import { listInstalledModels } from "../../../services/model_store_client";
-import { saveSettings } from "../../../services/settings_client";
 import type { SviLoraTier } from "../../../services/types";
 import { useRenderRequest } from "../../../store/render_request_store";
 import * as styles from "./quick_controls.css";
@@ -35,6 +35,7 @@ function ModelSelect({
   value,
   options,
   includeBundled,
+  disabled,
   onChange,
 }: {
   id: string;
@@ -42,6 +43,7 @@ function ModelSelect({
   value: string | undefined;
   options: Array<{ value: string; label: string }>;
   includeBundled: boolean;
+  disabled?: boolean | undefined;
   onChange: (path: string | undefined) => void;
 }): ReactElement {
   const comboOptions = useMemo(() => {
@@ -69,6 +71,7 @@ function ModelSelect({
         placeholder="Select a model file"
         searchPlaceholder="Search models…"
         searchLabel={`${label} — search installed models`}
+        disabled={disabled}
       />
     </div>
   );
@@ -76,6 +79,7 @@ function ModelSelect({
 
 export function BaseModelSelect(): ReactElement {
   const { params, settings, updateParam, setSettings } = useRenderRequest();
+  const { saving, persist } = usePersistSettings();
   const installedQuery = useSWR("svi2/installed-models", listInstalledModels);
   const files = useMemo(
     () => listExpertFiles(installedQuery.data?.installed ?? []),
@@ -100,9 +104,9 @@ export function BaseModelSelect(): ReactElement {
       updateParam("dit_low_path", low);
       const next = { ...settings, ditHighPath: high ?? "", ditLowPath: low ?? "" };
       setSettings(next);
-      void saveSettings(next).catch(() => undefined);
+      persist(next);
     },
-    [settings, updateParam, setSettings],
+    [settings, updateParam, setSettings, persist],
   );
 
   const handleLinkToggle = useCallback(
@@ -125,9 +129,9 @@ export function BaseModelSelect(): ReactElement {
       updateParam("svi_lora_tier", tier);
       const next = { ...settings, sviLoraTier: tier };
       setSettings(next);
-      void saveSettings(next).catch(() => undefined);
+      persist(next);
     },
-    [settings, updateParam, setSettings],
+    [settings, updateParam, setSettings, persist],
   );
 
   return (
@@ -139,6 +143,8 @@ export function BaseModelSelect(): ReactElement {
           aria-checked={linked}
           aria-label="Use one model file for both experts"
           className={fc.toggle}
+          disabled={saving}
+          aria-busy={saving || undefined}
           onClick={() => handleLinkToggle(!linked)}
         >
           <span className={fc.toggleThumb} aria-hidden="true" />
@@ -153,6 +159,7 @@ export function BaseModelSelect(): ReactElement {
           value={highPath}
           options={files}
           includeBundled={false}
+          disabled={saving}
           onChange={(p) => applyPaths(p, p)}
         />
       ) : (
@@ -163,6 +170,7 @@ export function BaseModelSelect(): ReactElement {
             value={highPath}
             options={files}
             includeBundled
+            disabled={saving}
             onChange={(p) => applyPaths(p, lowPath)}
           />
           <ModelSelect
@@ -171,6 +179,7 @@ export function BaseModelSelect(): ReactElement {
             value={lowPath}
             options={files}
             includeBundled
+            disabled={saving}
             onChange={(p) => applyPaths(highPath, p)}
           />
         </>
@@ -184,6 +193,8 @@ export function BaseModelSelect(): ReactElement {
             aria-checked={sviTier !== "off"}
             aria-label="Apply SVI LoRA to both experts"
             className={fc.toggle}
+            disabled={saving}
+            aria-busy={saving || undefined}
             onClick={() => handleTierChange(sviTier === "off" ? "high" : "off")}
           >
             <span className={fc.toggleThumb} aria-hidden="true" />
@@ -215,6 +226,8 @@ export function BaseModelSelect(): ReactElement {
               id="svi2-svi-lora-tier"
               className={styles.select}
               value={sviTier}
+              disabled={saving}
+              aria-busy={saving || undefined}
               onChange={(e) => handleTierChange(e.target.value)}
             >
               {SVI_LORA_TIER_OPTIONS.map((o) => (
