@@ -13,6 +13,8 @@ use nexus_recipe::{
 };
 use nexus_workflow::{canonical_hash, parse_workflow, WorkflowVersionSnapshot};
 
+// Paths are relative to this source file: `rust/src/` is two levels below the
+// extension root, so the bundled definitions live at `../../<dir>/`.
 const WORKFLOW_YAML: &str = include_str!("../../workflows/emotional_dialogue_batch.yaml");
 const RECIPE_YAML: &str = include_str!("../../recipes/emotional_dialogue_batch.yaml");
 const OPERATOR_YAMLS: &[&str] = &[
@@ -35,6 +37,16 @@ fn bundle() -> &'static RecipeBundle {
     BUNDLE.get_or_init(|| {
         build_bundle().expect("bundled emotion-tts recipe definitions must assemble")
     })
+}
+
+/// Validate at startup that the bundled definitions assemble, so a malformed
+/// bundled YAML surfaces as a boot error instead of a panic on the first run.
+///
+/// # Errors
+/// Returns the assembly error if the workflow, operators, or projection fail to
+/// parse or validate.
+pub fn ensure_initialized() -> anyhow::Result<()> {
+    build_bundle().map(|_| ())
 }
 
 fn build_bundle() -> anyhow::Result<RecipeBundle> {

@@ -866,16 +866,16 @@ fn build_recipe_record(
     let bindings = recipe
         .bindings
         .as_ref()
-        .map(|b| serde_json::to_string(b).unwrap_or_default())
+        .map(|b| serde_json::to_string(b).unwrap_or_else(|_| "{}".to_owned()))
         .unwrap_or_else(|| "{}".to_owned());
 
-    let projection = recipe.projection.as_ref().map(|p| p.to_string());
+    let projection = recipe.projection.as_ref().map(ToString::to_string);
     let projection_schema_version = recipe
         .projection
         .as_ref()
         .and_then(|p| p.get("schema_version"))
-        .and_then(serde_json::Value::as_i64)
-        .unwrap_or(1);
+        .and_then(serde_json::Value::as_u64)
+        .map_or(1, |v| v as i64);
 
     nexus_storage::RecipeRecord {
         id: recipe.recipe.id.clone(),

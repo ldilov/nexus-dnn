@@ -111,7 +111,7 @@ projection:
     widget_hint: script_editor
     bindings: ["input:script"]
   - control_id: global_emotion
-    kind: string
+    kind: object
     label: Global emotion
     mode: basic
     default_value: {}
@@ -137,7 +137,7 @@ projection:
     default_value: preserve_pitch
     bindings: ["input:speed_mode"]
   - control_id: generation
-    kind: string
+    kind: object
     label: Generation settings
     mode: advanced
     default_value: {}

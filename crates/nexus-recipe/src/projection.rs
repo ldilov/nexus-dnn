@@ -90,6 +90,9 @@ pub enum ControlKind {
     Int,
     Float,
     Asset,
+    /// An opaque JSON object value (e.g. a nested settings blob). The generated
+    /// form renders a fallback; bespoke extension UIs own its presentation.
+    Object,
     PresetSelector,
 }
 

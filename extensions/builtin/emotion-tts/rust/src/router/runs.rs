@@ -405,11 +405,15 @@ fn resolve_run_fields(values: &ControlValues) -> Result<ResolvedRunFields> {
     let resolved = crate::recipe_resolve::resolve(values, None)
         .map_err(|e| binding_error_to_validation(&e))?;
     let ri = &resolved.resolved_inputs;
-    let str_field = |key: &str| {
+    // A bound control always resolves into `resolved_inputs`; a missing or
+    // wrong-typed key means the projection drifted, not a user error.
+    let str_field = |key: &str| -> Result<String> {
         ri.get(key)
             .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned()
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                EmotionTtsError::internal(format!("compiler omitted resolved input `{key}`"))
+            })
     };
 
     let global_emotion_supplied = resolved
@@ -423,17 +427,21 @@ fn resolve_run_fields(values: &ControlValues) -> Result<ResolvedRunFields> {
     };
 
     Ok(ResolvedRunFields {
-        script: str_field("script"),
-        parser_mode: str_field("parser_mode"),
-        output_format: str_field("output_format"),
+        script: str_field("script")?,
+        parser_mode: str_field("parser_mode")?,
+        output_format: str_field("output_format")?,
         speed_factor: ri
             .get("speed_factor")
             .and_then(Value::as_f64)
-            .unwrap_or(1.0),
-        speed_mode: str_field("speed_mode"),
-        seed_strategy: str_field("seed_strategy"),
-        base_seed: ri.get("base_seed").and_then(Value::as_i64).unwrap_or(42),
-        cache_policy: str_field("cache_policy"),
+            .ok_or_else(|| {
+                EmotionTtsError::internal("compiler omitted resolved input `speed_factor`")
+            })?,
+        speed_mode: str_field("speed_mode")?,
+        seed_strategy: str_field("seed_strategy")?,
+        base_seed: ri.get("base_seed").and_then(Value::as_i64).ok_or_else(|| {
+            EmotionTtsError::internal("compiler omitted resolved input `base_seed`")
+        })?,
+        cache_policy: str_field("cache_policy")?,
         generation_json: ri
             .get("generation")
             .map_or_else(|| "{}".to_owned(), ToString::to_string),

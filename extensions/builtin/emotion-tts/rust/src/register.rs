@@ -151,6 +151,12 @@ impl EmotionTtsRouterProvider {
     }
 
     async fn build_router_inner_async(&self) -> Result<Router, BuildRouterError> {
+        // Surface a malformed bundled recipe projection at boot rather than as a
+        // panic on the first run request (recipe_resolve C2).
+        if let Err(e) = crate::recipe_resolve::ensure_initialized() {
+            tracing::error!(error = %e, "emotion-tts recipe projection failed to assemble; run requests will error until fixed");
+        }
+
         // Apply emotion-tts's own migrations idempotently. The host's
         // generic `StorageManager::apply_plan` requires pre-built
         let pool = &self.resources.pool;
