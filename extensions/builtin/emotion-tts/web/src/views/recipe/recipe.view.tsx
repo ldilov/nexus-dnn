@@ -26,7 +26,6 @@ import { listVoiceAssets, uploadVoiceAsset, type VoiceAsset } from "../../servic
 import { castListItem as castListItemClass } from "./recipe.css";
 import { VoiceLibrary } from "./components/voice_library/voice_library";
 import { listPresets, type VectorPreset } from "../../services/presets_client";
-import type { WorkflowResponse } from "../../services/workflows_client";
 import { AuditHistoryPanel, type AuditTargetOption } from "./components/audit_history_panel";
 import { CastRow, CastSection } from "./components/cast_row";
 import { DeploymentHeader } from "./components/deployment_header";
@@ -100,11 +99,10 @@ interface LoaderData {
   deployment: Deployment;
   mappings: CharacterMapping[];
   runs: RunSummary[];
-  workflow: WorkflowResponse;
 }
 
 export function RecipeView(): JSX.Element {
-  const { deployment, mappings: initialMappings, runs, workflow } = useLoaderData() as LoaderData;
+  const { deployment, mappings: initialMappings, runs } = useLoaderData() as LoaderData;
 
   const [mappings, setMappings] = useState<CharacterMapping[]>(initialMappings);
   const [voiceAssets, setVoiceAssets] = useState<VoiceAsset[]>([]);
@@ -644,8 +642,6 @@ export function RecipeView(): JSX.Element {
       <RecipeUi
         deployment={deployment}
         canGenerate={canGenerate}
-        workflowCustomised={workflow.workflow.customised}
-        unmappableFields={workflow.unmappableFields}
         hero={<DeploymentHeader deployment={deployment} />}
         quickActions={
           <RunPanel

@@ -19,7 +19,6 @@ pub mod recipe_resolve;
 pub mod register;
 pub mod router;
 pub mod storage;
-pub mod workflow_binding;
 
 pub use register::{EmotionTtsProviderResources, EmotionTtsRouterProvider, EXTENSION_ID};
 

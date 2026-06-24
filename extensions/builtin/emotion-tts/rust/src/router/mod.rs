@@ -19,7 +19,6 @@ pub mod runs;
 pub mod runtime;
 pub mod utterance_edit;
 pub mod voice_assets;
-pub mod workflows;
 
 use std::sync::Arc;
 
@@ -93,7 +92,6 @@ pub fn build_router_with_families(
             "/exports",
             exports::router(repos.clone(), artifact_store.clone()),
         )
-        .nest("/workflow", workflows::router(repos.clone()))
         .merge(engine_settings::router(repos.clone()))
         .merge(audit::router(repos.clone()))
         .merge(families::router(families::FamiliesState {

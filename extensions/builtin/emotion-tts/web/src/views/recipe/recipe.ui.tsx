@@ -1,9 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as css from "./recipe.css";
-import { Banner } from "../../components/banner";
 import type { Deployment } from "../../services/deployments_client";
-import type { RecipeField } from "../../services/workflows_client";
 import { StickyActionBar } from "./components/sticky_action_bar";
 import {
   STICKY_BAR_THRESHOLD,
@@ -27,15 +25,11 @@ export interface RecipeUiProps {
   performanceSection: ReactNode;
   recentRunsSection: ReactNode;
   auditSection?: ReactNode;
-  workflowCustomised?: boolean;
-  unmappableFields?: RecipeField[];
   /** Drives the floating toolbar's Generate enable-state. */
   canGenerate?: boolean;
 }
 
 export function RecipeUi(props: RecipeUiProps): JSX.Element {
-  const customised = props.workflowCustomised ?? false;
-  const unmappable = props.unmappableFields ?? [];
   const heroTitle = resolveHeroTitle(props.deployment.displayName, props.deployment.deploymentId);
   const showScrollTop = useScrollPastThreshold(STICKY_BAR_THRESHOLD);
   const canGenerate = props.canGenerate ?? false;
@@ -53,17 +47,6 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         </p>
         {props.hero}
       </header>
-      {customised && (
-        <Banner severity="warning">
-          <strong>Workflow customised.</strong>{" "}
-          {unmappable.length === 0
-            ? "Every recipe field still binds, but the graph topology diverges from the curated template."
-            : `These fields are now managed in the graph: ${unmappable.join(", ")}.`}{" "}
-          <a href="/#/workflows" target="_top">
-            Open workflow canvas →
-          </a>
-        </Banner>
-      )}
       {props.quickActions && (
         <div className={css.quickActions} aria-label="Quick actions">
           {props.quickActions}
