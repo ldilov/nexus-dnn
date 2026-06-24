@@ -228,7 +228,9 @@ fn parse_json_array<T: serde::de::DeserializeOwned>(raw: Option<&str>) -> Result
 
 /// Build the immutable version record. `version` is left empty — the server
 /// allocates the monotonic id atomically inside `Database::append_workflow_version`.
-fn build_version_record(
+/// P8 bundle import reuses this then overrides `version` with the bundle's
+/// immutable version id before insert.
+pub(crate) fn build_version_record(
     workflow: &Workflow,
     canonical_hash: &str,
     operator_schema_hash: &str,

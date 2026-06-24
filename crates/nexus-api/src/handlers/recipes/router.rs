@@ -7,11 +7,14 @@ use super::form::get_recipe_form;
 use super::presets;
 use super::read::{get_recipe, list_recipes};
 use super::run::run_recipe;
+use super::share::{export_recipe_bundle_handler, import_recipe_bundle_handler};
+use super::upgrade::{get_recipe_upgrade_preview, upgrade_recipe};
 use super::write::{create_recipe, delete_recipe, update_recipe};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_recipes).post(create_recipe))
+        .route("/import", post(import_recipe_bundle_handler))
         .route(
             "/{id}",
             get(get_recipe).put(update_recipe).delete(delete_recipe),
@@ -28,4 +31,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/{id}/explain", get(presets::explain_preset_handler))
         .route("/{id}/diff", get(presets::diff_preset_handler))
+        .route("/{id}/upgrade-preview", get(get_recipe_upgrade_preview))
+        .route("/{id}/upgrade", post(upgrade_recipe))
+        .route("/{id}/bundle", get(export_recipe_bundle_handler))
 }

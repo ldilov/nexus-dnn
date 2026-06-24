@@ -6,6 +6,7 @@ pub mod extensions;
 pub mod models;
 pub mod presets;
 pub mod recipe_builder;
+pub mod recipe_upgrade;
 pub mod recipes;
 pub mod runs;
 pub mod system;
@@ -30,6 +31,10 @@ pub use presets::{
     ControlDiffDto, CreateUserPresetBody, PresetDto, PresetExplainEntryDto, PresetExplanationDto,
 };
 pub use recipe_builder::{ExposableTargetDto, ExposableTargetsResponseDto, RecipeWritePayloadDto};
+pub use recipe_upgrade::{
+    BrokenBindingDto, NodeChangeDto, RecipeImportResultDto, RecipePinDiffDto,
+    RecipeUpgradeResultDto,
+};
 pub use recipes::{ControlHintDto, RecipeDto, RecipeFieldBindingDto, RecipeFormDto};
 pub use runs::{CreateRunResponseDto, NodeExecutionDto, RunDetailDto, RunDto};
 pub use system::{HealthDto, RuntimeMetricsDto, SystemInfoDto};
@@ -83,6 +88,12 @@ mod export_tests {
         ExposableTargetDto::export_all().unwrap();
         ExposableTargetsResponseDto::export_all().unwrap();
         RecipeWritePayloadDto::export_all().unwrap();
+
+        RecipePinDiffDto::export_all().unwrap();
+        NodeChangeDto::export_all().unwrap();
+        BrokenBindingDto::export_all().unwrap();
+        RecipeUpgradeResultDto::export_all().unwrap();
+        RecipeImportResultDto::export_all().unwrap();
 
         PresetDto::export_all().unwrap();
         PresetExplainEntryDto::export_all().unwrap();

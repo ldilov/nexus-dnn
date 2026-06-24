@@ -122,12 +122,14 @@ async fn assess_recipe_status(
 
 /// Typed in-process create path (CONTRACTS C8). Takes an already-parsed
 /// `RecipeProjection` so P8 migrate/import can call it without a JSON
-/// round-trip. Loads the pin, validates, computes status, and inserts an
-/// `author_kind='user'` row. Returns the persisted record.
+/// round-trip. `recipe_version` is the persisted display version (POST passes
+/// the initial `1.0.0`; the migration copy passes a bumped version). Loads the
+/// pin, validates, computes status, and inserts an `author_kind='user'` row.
 pub async fn create_user_recipe(
     db: &impl Database,
     operators: &[OperatorDefinition],
     payload: RecipeWritePayloadDto,
+    recipe_version: &str,
 ) -> Result<RecipeRecord, ApiError> {
     let snapshot = load_pinned_snapshot(
         db,
@@ -153,7 +155,7 @@ pub async fn create_user_recipe(
 
     let record = RecipeRecord {
         id: uuid::Uuid::new_v4().to_string(),
-        version: "1.0.0".to_string(),
+        version: recipe_version.to_string(),
         display_name: payload.display_name,
         summary: payload.summary,
         category: payload.category,
@@ -254,7 +256,7 @@ pub async fn create_recipe(
     Json(payload): Json<RecipeWritePayloadDto>,
 ) -> Result<ApiResponse<RecipeDto>, ApiError> {
     let operators = state.extension_registry.list_operators();
-    let record = create_user_recipe(state.db.as_ref(), &operators, payload).await?;
+    let record = create_user_recipe(state.db.as_ref(), &operators, payload, "1.0.0").await?;
     Ok(ApiResponse::created(RecipeDto::from(&record)))
 }
 
