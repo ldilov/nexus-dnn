@@ -4,9 +4,12 @@
 //! operator layer + queue. The router's job is request shaping, preflight,
 //! and mapping domain errors into the JSON envelope.
 
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+
+use nexus_recipe::{BindingError, ControlValues, ValueSource};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -334,6 +337,110 @@ fn default_cache_policy() -> String {
     "force_regenerate".into()
 }
 
+/// Run-row field values resolved through the host recipe compiler. The runner
+/// builds the synthesis job from THESE (the compiler's `resolved_inputs`), never
+/// from the flat request DTO — so the run path physically cannot bypass the
+/// recipe's binding validation.
+struct ResolvedRunFields {
+    script: String,
+    parser_mode: String,
+    output_format: String,
+    speed_factor: f64,
+    speed_mode: String,
+    seed_strategy: String,
+    base_seed: i64,
+    cache_policy: String,
+    generation_json: String,
+    global_emotion_json: Option<String>,
+}
+
+fn binding_error_to_validation(err: &BindingError) -> EmotionTtsError {
+    EmotionTtsError::validation(format!("recipe binding error: {err}"))
+}
+
+fn control_values_for_batch(body: &CreateRunBody) -> ControlValues {
+    let mut values = BTreeMap::new();
+    values.insert("script".to_owned(), json!(body.script));
+    values.insert("parser_mode".to_owned(), json!(body.parser_mode));
+    values.insert("output_format".to_owned(), json!(body.output_format));
+    values.insert("speed_factor".to_owned(), json!(body.speed_factor));
+    values.insert("speed_mode".to_owned(), json!(body.speed_mode));
+    values.insert("seed_strategy".to_owned(), json!(body.seed_strategy));
+    values.insert("base_seed".to_owned(), json!(body.base_seed));
+    values.insert("cache_policy".to_owned(), json!(body.cache_policy));
+    if let Some(generation) = &body.generation {
+        values.insert("generation".to_owned(), generation.clone());
+    }
+    if let Some(global_emotion) = &body.global_emotion {
+        values.insert("global_emotion".to_owned(), global_emotion.clone());
+    }
+    values
+}
+
+fn control_values_for_test_line(body: &TestLineBody) -> ControlValues {
+    // Test-line semantics differ from a batch run (single line, cached, fixed
+    // seed); pass them as explicit control values so resolution preserves them.
+    let mut values = BTreeMap::new();
+    values.insert("script".to_owned(), json!(body.line));
+    values.insert("parser_mode".to_owned(), json!("dialogue"));
+    values.insert("output_format".to_owned(), json!(body.output_format));
+    values.insert("speed_factor".to_owned(), json!(1.0));
+    values.insert("speed_mode".to_owned(), json!("preserve_pitch"));
+    values.insert("seed_strategy".to_owned(), json!("fixed"));
+    values.insert("base_seed".to_owned(), json!(42));
+    values.insert("cache_policy".to_owned(), json!("use_cache"));
+    if let Some(generation) = &body.generation {
+        values.insert("generation".to_owned(), generation.clone());
+    }
+    if let Some(global_emotion) = &body.global_emotion {
+        values.insert("global_emotion".to_owned(), global_emotion.clone());
+    }
+    values
+}
+
+/// Resolve control values through the host compiler and read the run-row fields
+/// out of `resolved_inputs`. `global_emotion` is `None` when the control fell
+/// back to its default (absent in the request), preserving the prior contract.
+fn resolve_run_fields(values: &ControlValues) -> Result<ResolvedRunFields> {
+    let resolved = crate::recipe_resolve::resolve(values, None)
+        .map_err(|e| binding_error_to_validation(&e))?;
+    let ri = &resolved.resolved_inputs;
+    let str_field = |key: &str| {
+        ri.get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    let global_emotion_supplied = resolved
+        .applied_controls
+        .iter()
+        .any(|c| c.control_id == "global_emotion" && c.source != ValueSource::Default);
+    let global_emotion_json = if global_emotion_supplied {
+        ri.get("global_emotion").map(ToString::to_string)
+    } else {
+        None
+    };
+
+    Ok(ResolvedRunFields {
+        script: str_field("script"),
+        parser_mode: str_field("parser_mode"),
+        output_format: str_field("output_format"),
+        speed_factor: ri
+            .get("speed_factor")
+            .and_then(Value::as_f64)
+            .unwrap_or(1.0),
+        speed_mode: str_field("speed_mode"),
+        seed_strategy: str_field("seed_strategy"),
+        base_seed: ri.get("base_seed").and_then(Value::as_i64).unwrap_or(42),
+        cache_policy: str_field("cache_policy"),
+        generation_json: ri
+            .get("generation")
+            .map_or_else(|| "{}".to_owned(), ToString::to_string),
+        global_emotion_json,
+    })
+}
+
 pub async fn create_run(
     State(state): State<RunsState>,
     Path(deployment_id): Path<String>,
@@ -440,6 +547,8 @@ async fn create_run_impl(
         (map_out.unresolved_characters, predicted, warnings)
     };
 
+    let fields = resolve_run_fields(&control_values_for_batch(&body))?;
+
     let run_id = RunId::new();
     let now = Utc::now().timestamp();
     let row = RunRow {
@@ -447,16 +556,16 @@ async fn create_run_impl(
         deployment_id: dep.clone(),
         kind: "batch".into(),
         status: "queued".into(),
-        script_snapshot: body.script,
-        parser_mode: body.parser_mode,
-        generation_settings_json: body.generation.unwrap_or_else(|| json!({})).to_string(),
-        global_emotion_snapshot_json: body.global_emotion.map(|v| v.to_string()),
-        output_format: body.output_format,
-        speed_factor: body.speed_factor,
-        speed_mode: body.speed_mode,
-        cache_policy: body.cache_policy,
-        seed_strategy: body.seed_strategy,
-        base_seed: body.base_seed,
+        script_snapshot: fields.script,
+        parser_mode: fields.parser_mode,
+        generation_settings_json: fields.generation_json,
+        global_emotion_snapshot_json: fields.global_emotion_json,
+        output_format: fields.output_format,
+        speed_factor: fields.speed_factor,
+        speed_mode: fields.speed_mode,
+        cache_policy: fields.cache_policy,
+        seed_strategy: fields.seed_strategy,
+        base_seed: fields.base_seed,
         original_run_id: None,
         runtime_install_id: None,
         runtime_version: None,
@@ -714,6 +823,8 @@ async fn test_line_impl(
     if body.line.trim().is_empty() {
         return Err(EmotionTtsError::validation("line cannot be empty"));
     }
+    let fields = resolve_run_fields(&control_values_for_test_line(&body))?;
+
     let run_id = RunId::new();
     let now = Utc::now().timestamp();
     let row = RunRow {
@@ -721,16 +832,16 @@ async fn test_line_impl(
         deployment_id: dep.clone(),
         kind: "test_line".into(),
         status: "queued".into(),
-        script_snapshot: body.line,
-        parser_mode: "dialogue".into(),
-        generation_settings_json: body.generation.unwrap_or_else(|| json!({})).to_string(),
-        global_emotion_snapshot_json: body.global_emotion.map(|v| v.to_string()),
-        output_format: body.output_format,
-        speed_factor: 1.0,
-        speed_mode: "preserve_pitch".into(),
-        cache_policy: "use_cache".into(),
-        seed_strategy: "fixed".into(),
-        base_seed: 42,
+        script_snapshot: fields.script,
+        parser_mode: fields.parser_mode,
+        generation_settings_json: fields.generation_json,
+        global_emotion_snapshot_json: fields.global_emotion_json,
+        output_format: fields.output_format,
+        speed_factor: fields.speed_factor,
+        speed_mode: fields.speed_mode,
+        cache_policy: fields.cache_policy,
+        seed_strategy: fields.seed_strategy,
+        base_seed: fields.base_seed,
         original_run_id: None,
         runtime_install_id: None,
         runtime_version: None,
@@ -820,4 +931,108 @@ fn run_detail_json(
     obj.insert("baseSeed".into(), json!(row.base_seed));
     obj.insert("utterances".into(), Value::Array(utt));
     base
+}
+
+#[cfg(test)]
+mod run_resolution_tests {
+    use super::*;
+
+    fn batch_body() -> CreateRunBody {
+        CreateRunBody {
+            script: "[Bob] Hi".into(),
+            parser_mode: "advanced_tagged".into(),
+            output_format: "flac".into(),
+            speed_factor: 1.25,
+            speed_mode: "resample".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 7,
+            cache_policy: "use_cache".into(),
+            global_emotion: Some(json!({ "mode": "qwen" })),
+            generation: Some(json!({ "temperature": 0.7 })),
+            prebuilt_segments: None,
+        }
+    }
+
+    #[test]
+    fn batch_run_fields_round_trip_through_compiler() {
+        let body = batch_body();
+        let fields = resolve_run_fields(&control_values_for_batch(&body)).expect("resolve");
+
+        assert_eq!(fields.script, "[Bob] Hi");
+        assert_eq!(fields.parser_mode, "advanced_tagged");
+        assert_eq!(fields.output_format, "flac");
+        assert!((fields.speed_factor - 1.25).abs() < f64::EPSILON);
+        assert_eq!(fields.speed_mode, "resample");
+        assert_eq!(fields.seed_strategy, "fixed");
+        assert_eq!(fields.base_seed, 7);
+        assert_eq!(fields.cache_policy, "use_cache");
+        assert_eq!(
+            fields.generation_json,
+            json!({ "temperature": 0.7 }).to_string()
+        );
+        assert_eq!(
+            fields.global_emotion_json,
+            Some(json!({ "mode": "qwen" }).to_string())
+        );
+    }
+
+    #[test]
+    fn test_line_preserves_fixed_semantics() {
+        let body = TestLineBody {
+            line: "Hello".into(),
+            output_format: "wav".into(),
+            global_emotion: None,
+            generation: None,
+        };
+        let fields = resolve_run_fields(&control_values_for_test_line(&body)).expect("resolve");
+
+        assert_eq!(fields.script, "Hello");
+        assert_eq!(fields.parser_mode, "dialogue");
+        assert_eq!(fields.output_format, "wav");
+        assert!((fields.speed_factor - 1.0).abs() < f64::EPSILON);
+        assert_eq!(fields.speed_mode, "preserve_pitch");
+        assert_eq!(fields.seed_strategy, "fixed");
+        assert_eq!(fields.base_seed, 42);
+        assert_eq!(fields.cache_policy, "use_cache");
+        assert_eq!(fields.generation_json, "{}");
+        assert_eq!(fields.global_emotion_json, None);
+    }
+
+    #[test]
+    fn absent_global_emotion_is_none_supplied_is_some() {
+        let mut body = batch_body();
+        body.global_emotion = None;
+        let fields = resolve_run_fields(&control_values_for_batch(&body)).expect("resolve");
+        assert_eq!(fields.global_emotion_json, None);
+
+        body.global_emotion = Some(json!({ "alpha": 1.0 }));
+        let fields = resolve_run_fields(&control_values_for_batch(&body)).expect("resolve");
+        assert_eq!(
+            fields.global_emotion_json,
+            Some(json!({ "alpha": 1.0 }).to_string())
+        );
+    }
+
+    /// Guard: the job is sourced from the compiler's `resolved_inputs`, not the
+    /// request DTO — a control absent from the values map resolves to the
+    /// projection default, which the runner then carries into the run row.
+    #[test]
+    fn omitted_control_falls_back_to_projection_default() {
+        let mut values: ControlValues = BTreeMap::new();
+        values.insert("output_format".to_owned(), json!("mp3"));
+        let fields = resolve_run_fields(&values).expect("resolve");
+
+        assert_eq!(fields.speed_mode, "preserve_pitch");
+        assert_eq!(fields.seed_strategy, "increment_per_line");
+        assert_eq!(fields.cache_policy, "force_regenerate");
+        assert_eq!(fields.base_seed, 42);
+    }
+
+    #[test]
+    fn binding_error_maps_to_validation() {
+        let err = binding_error_to_validation(&BindingError::UnknownControl {
+            control_id: "nope".into(),
+        });
+        assert!(matches!(err, EmotionTtsError::Validation(_)));
+    }
 }
