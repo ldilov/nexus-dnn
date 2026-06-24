@@ -7,7 +7,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use nexus_extension::{ExtensionRegistry, OperatorDefinition};
 use nexus_recipe::{BindingError, ControlValues, RecipeProjection, compile_recipe_run};
-use nexus_storage::Database;
+use nexus_storage::{Database, RecipeRecord};
+use nexus_workflow::WorkflowVersionSnapshot;
 use serde::Deserialize;
 
 use crate::AppState;
@@ -40,21 +41,6 @@ pub async fn resolve_and_compile(
         other => ApiError::Internal(other.to_string()),
     })?;
 
-    let workflow_id = recipe.workflow_id.ok_or_else(|| {
-        ApiError::structured(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "RECIPE_UNPIN",
-            "recipe has no pinned workflow_id",
-        )
-    })?;
-    let workflow_version = recipe.workflow_version.ok_or_else(|| {
-        ApiError::structured(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "RECIPE_UNPIN",
-            "recipe has no pinned workflow_version",
-        )
-    })?;
-
     let projection = match recipe.projection.as_deref() {
         Some(json_str) => serde_json::from_str::<RecipeProjection>(json_str).map_err(|e| {
             ApiError::structured(
@@ -66,30 +52,52 @@ pub async fn resolve_and_compile(
         None => RecipeProjection::empty(),
     };
 
-    let snapshot = {
-        let record = db
-            .get_workflow_version(&workflow_id, &workflow_version)
-            .await
-            .map_err(|_| {
-                ApiError::structured(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    "RECIPE_BROKEN_PIN",
-                    format!(
-                        "pinned version {workflow_version} of workflow {workflow_id} not found"
-                    ),
-                )
-            })?;
-        record_to_snapshot(&record, operators).map_err(|e| {
-            ApiError::structured(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "RECIPE_BROKEN_PIN",
-                format!("snapshot assembly failed: {e}"),
-            )
-        })?
-    };
+    let snapshot = load_workflow_snapshot(db, &recipe, operators).await?;
 
     compile_recipe_run(&projection, &snapshot, control_values, preset_id)
         .map_err(binding_error_to_api)
+}
+
+/// Resolve a recipe's pinned workflow-version into a [`WorkflowVersionSnapshot`]
+/// (recipe pin -> `get_workflow_version` -> `record_to_snapshot`). Shared by
+/// `resolve_and_compile` and the user-preset save-gate so both surfaces map the
+/// same RECIPE_UNPIN / RECIPE_BROKEN_PIN codes. Never head-falls-back.
+pub(crate) async fn load_workflow_snapshot(
+    db: &impl Database,
+    record: &RecipeRecord,
+    operators: &[OperatorDefinition],
+) -> Result<WorkflowVersionSnapshot, ApiError> {
+    let workflow_id = record.workflow_id.as_deref().ok_or_else(|| {
+        ApiError::structured(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "RECIPE_UNPIN",
+            "recipe has no pinned workflow_id",
+        )
+    })?;
+    let workflow_version = record.workflow_version.as_deref().ok_or_else(|| {
+        ApiError::structured(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "RECIPE_UNPIN",
+            "recipe has no pinned workflow_version",
+        )
+    })?;
+    let version = db
+        .get_workflow_version(workflow_id, workflow_version)
+        .await
+        .map_err(|_| {
+            ApiError::structured(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "RECIPE_BROKEN_PIN",
+                format!("pinned version {workflow_version} of workflow {workflow_id} not found"),
+            )
+        })?;
+    record_to_snapshot(&version, operators).map_err(|e| {
+        ApiError::structured(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "RECIPE_BROKEN_PIN",
+            format!("snapshot assembly failed: {e}"),
+        )
+    })
 }
 
 /// Map a [`BindingError`] to a structured 422 response carrying the variant
