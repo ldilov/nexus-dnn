@@ -82,7 +82,9 @@ export interface FilterableCatalogItem {
   readonly description?: string | null;
   readonly summary?: string | null;
   readonly extension_id?: string | null;
-  readonly status?: StatusKey | null;
+  // StatusKey is the catalog edit-state facet; recipes carry an orthogonal
+  // compat status string (healthy|outdated|broken) they never filter by.
+  readonly status?: StatusKey | (string & {}) | null;
 }
 
 export function matchesControls<T extends FilterableCatalogItem>(

@@ -252,6 +252,7 @@ export default function RootLayout() {
 
   const handleOpenRecipe = useCallback(
     (recipe: Recipe) => {
+      if (!recipe.extension_id) return;
       navigate(`/extensions/${encodeURIComponent(recipe.extension_id)}/settings`);
     },
     [navigate],
