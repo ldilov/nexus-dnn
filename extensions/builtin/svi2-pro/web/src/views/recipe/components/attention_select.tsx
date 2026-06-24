@@ -1,8 +1,8 @@
 import { type ReactElement, useCallback } from "react";
 import useSWR from "swr";
 import { ATTENTION_OPTIONS } from "../../../domain/settings_defaults";
+import { usePersistSettings } from "../../../hooks/use_persist_settings";
 import { getAttentionCapabilities } from "../../../services/capabilities_client";
-import { saveSettings } from "../../../services/settings_client";
 import { useRenderRequest } from "../../../store/render_request_store";
 import * as styles from "./quick_controls.css";
 
@@ -12,6 +12,7 @@ const LABEL_MAP: Record<string, string> = Object.fromEntries(
 
 export function AttentionSelect(): ReactElement {
   const { params, settings, updateParam, setSettings } = useRenderRequest();
+  const { saving, persist } = usePersistSettings();
   const capsQuery = useSWR("svi2/attention-capabilities", getAttentionCapabilities, {
     shouldRetryOnError: false,
   });
@@ -23,9 +24,9 @@ export function AttentionSelect(): ReactElement {
       updateParam("attention", value);
       const next = { ...settings, attentionBackend: value };
       setSettings(next);
-      void saveSettings(next).catch(() => undefined);
+      persist(next);
     },
-    [settings, updateParam, setSettings],
+    [settings, updateParam, setSettings, persist],
   );
 
   const caps = capsQuery.data;
@@ -45,9 +46,11 @@ export function AttentionSelect(): ReactElement {
           id="svi2-attention"
           className={styles.select}
           value={selected}
+          disabled={saving}
+          aria-busy={saving || undefined}
           onChange={(e) => handleChange(e.target.value)}
         >
-          <option value="auto">{LABEL_MAP["auto"]}</option>
+          <option value="auto">{LABEL_MAP.auto}</option>
           {caps
             ? caps.backends.map((b) => (
                 <option
@@ -79,9 +82,7 @@ export function AttentionSelect(): ReactElement {
         </span>
       </div>
       {capsFailed && (
-        <span className={styles.hint}>
-          GPU capabilities unavailable — all options shown.
-        </span>
+        <span className={styles.hint}>GPU capabilities unavailable — all options shown.</span>
       )}
       {selectedUnsupported && (
         <span className={styles.hint}>

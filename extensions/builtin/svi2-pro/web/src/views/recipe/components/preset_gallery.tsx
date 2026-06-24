@@ -1,7 +1,19 @@
-import { type KeyboardEvent, type ReactElement, useCallback, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Badge } from "../../../components/ui/badge";
 import { EmptyState } from "../../../components/ui/empty_state";
-import { CANONICAL_PRESET_ID, presetBadges, splitPresetVisibility } from "../../../domain/preset_meta";
+import {
+  CANONICAL_PRESET_ID,
+  presetBadges,
+  splitPresetVisibility,
+} from "../../../domain/preset_meta";
 import type { PresetSummary } from "../../../services/types";
 import * as styles from "./preset_gallery.css";
 
@@ -17,11 +29,7 @@ function tagline(description: string): string {
   return firstSentence.replace(/[.!?]+$/, "");
 }
 
-export function PresetGallery({
-  presets,
-  selectedId,
-  onSelect,
-}: PresetGalleryProps): ReactElement {
+function PresetGalleryImpl({ presets, selectedId, onSelect }: PresetGalleryProps): ReactElement {
   const [showLegacy, setShowLegacy] = useState(false);
   const visibility = useMemo(() => splitPresetVisibility(presets), [presets]);
 
@@ -166,3 +174,8 @@ export function PresetGallery({
     </div>
   );
 }
+
+/** Memoized so sibling-form keystrokes (which re-render RecipeView) don't
+ * re-render the gallery: `onSelect` (applyPresetById) and the loaded `presets`
+ * reference are stable, and only `selectedId` changes on an apply. */
+export const PresetGallery = memo(PresetGalleryImpl);

@@ -443,6 +443,7 @@ export const select = style({
     "&:focus-visible": {
       boxShadow: `inset 0 0 0 1px ${vars.color.accent}, 0 0 0 3px ${vars.color.accentGlow}`,
     },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
   },
 });
 
