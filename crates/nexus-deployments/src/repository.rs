@@ -218,6 +218,11 @@ pub struct DeploymentRow {
     /// when the primary source's `source_kind='user'` (user workflow).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_workflow_id: Option<String>,
+    /// Projected from `deployment_source_links.source_id` when the primary
+    /// source's `source_kind='recipe'`. Used by the recipe binding compiler
+    /// to resolve which recipe this deployment was created from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_recipe_id: Option<String>,
     /// RFC3339 timestamp set when the deployment was soft-deleted; `None`
     /// for live rows. Soft-deleted rows are excluded from list responses
     /// unless the caller opts in via `ListFilter::include_deleted`.
@@ -234,6 +239,13 @@ pub struct RevisionRow {
     pub effective_workflow_hash: String,
     pub workflow_snapshot_id: Option<String>,
     pub compatibility_summary_json: Option<String>,
+    /// The pinned base workflow id for this revision, if the revision was
+    /// bound to a specific workflow version at save time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_workflow_ref: Option<String>,
+    /// The pinned base workflow version string for this revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_workflow_version_ref: Option<String>,
 }
 
 /// A persisted per-deployment, per-extension settings row. `settings_json`

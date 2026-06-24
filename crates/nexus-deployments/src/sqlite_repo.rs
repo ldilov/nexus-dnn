@@ -284,6 +284,7 @@ impl DeploymentRepository for SqliteDeploymentRepository {
             notes_markdown: raw.notes_markdown,
             source_extension_id: raw.source_extension_id,
             source_workflow_id: raw.source_workflow_id,
+            source_recipe_id: raw.source_recipe_id,
             deleted_at: raw.deleted_at,
         })
     }
@@ -305,6 +306,8 @@ impl DeploymentRepository for SqliteDeploymentRepository {
             effective_workflow_hash: raw.effective_workflow_hash,
             workflow_snapshot_id: raw.workflow_snapshot_id,
             compatibility_summary_json: raw.compatibility_summary_json,
+            base_workflow_ref: raw.base_workflow_ref,
+            base_workflow_version_ref: raw.base_workflow_version_ref,
         })
     }
 
@@ -342,6 +345,7 @@ impl DeploymentRepository for SqliteDeploymentRepository {
                 run_count: raw.run_count,
                 source_extension_id: raw.source_extension_id,
                 source_workflow_id: raw.source_workflow_id,
+                source_recipe_id: raw.source_recipe_id,
                 notes_markdown: raw.notes_markdown,
                 deleted_at: raw.deleted_at,
             })

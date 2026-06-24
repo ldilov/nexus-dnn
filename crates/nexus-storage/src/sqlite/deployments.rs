@@ -423,7 +423,8 @@ impl DeploymentMappers {
              d.current_revision_id, d.last_run_id, d.last_successful_run_id, \
              d.last_failed_run_id, d.run_count, d.notes_markdown, d.deleted_at, \
              sl.source_extension_id AS source_extension_id, \
-             CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id \
+             CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id, \
+             CASE WHEN sl.source_kind = 'recipe' THEN sl.source_id ELSE NULL END AS source_recipe_id \
              FROM deployments d \
              LEFT JOIN deployment_source_links sl \
                ON sl.deployment_revision_id = d.current_revision_id \
@@ -441,7 +442,10 @@ impl DeploymentMappers {
         id: &str,
     ) -> Result<Option<RevisionRowRaw>, StorageError> {
         let row = sqlx::query(
-            "SELECT id, deployment_id, revision_number, mapping_state, effective_workflow_hash, workflow_snapshot_id, compatibility_summary_json FROM deployment_revisions WHERE id = ?",
+            "SELECT id, deployment_id, revision_number, mapping_state, \
+             effective_workflow_hash, workflow_snapshot_id, compatibility_summary_json, \
+             base_workflow_ref, base_workflow_version_ref \
+             FROM deployment_revisions WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -454,6 +458,14 @@ impl DeploymentMappers {
             effective_workflow_hash: r.try_get("effective_workflow_hash").unwrap_or_default(),
             workflow_snapshot_id: r.try_get("workflow_snapshot_id").ok(),
             compatibility_summary_json: r.try_get("compatibility_summary_json").ok(),
+            base_workflow_ref: r
+                .try_get::<Option<String>, _>("base_workflow_ref")
+                .ok()
+                .flatten(),
+            base_workflow_version_ref: r
+                .try_get::<Option<String>, _>("base_workflow_version_ref")
+                .ok()
+                .flatten(),
         }))
     }
 
@@ -465,7 +477,7 @@ impl DeploymentMappers {
         include_deleted: bool,
     ) -> Result<Vec<DeploymentRowRaw>, StorageError> {
         // Spec 019 FR-050 follow-up (T400) — project the primary source link's
-        // `source_extension_id` + `source_id` (for user-workflow sources)
+        // `source_extension_id` + `source_id` (for user-workflow and recipe sources)
         let rows = sqlx::query(
             "SELECT d.id, d.workspace_id, d.slug, d.display_name, d.description, \
              d.state, d.restore_state, d.is_archived, d.is_favorite, \
@@ -473,7 +485,8 @@ impl DeploymentMappers {
              d.current_revision_id, d.last_run_id, d.last_successful_run_id, \
              d.last_failed_run_id, d.run_count, d.notes_markdown, d.deleted_at, \
              sl.source_extension_id AS source_extension_id, \
-             CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id \
+             CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id, \
+             CASE WHEN sl.source_kind = 'recipe' THEN sl.source_id ELSE NULL END AS source_recipe_id \
              FROM deployments d \
              LEFT JOIN deployment_source_links sl \
                ON sl.deployment_revision_id = d.current_revision_id \
@@ -978,6 +991,9 @@ pub struct DeploymentRowRaw {
     /// `source_kind='user'`. Lets the frontend resolve a user-workflow
     /// module badge without a second round-trip.
     pub source_workflow_id: Option<String>,
+    /// Primary source link's `source_id` when `source_kind='recipe'`.
+    /// Used by the recipe binding compiler to resolve the originating recipe.
+    pub source_recipe_id: Option<String>,
     /// Soft-delete tombstone (`NULL` for live rows).
     pub deleted_at: Option<String>,
 }
@@ -990,6 +1006,10 @@ pub struct RevisionRowRaw {
     pub effective_workflow_hash: String,
     pub workflow_snapshot_id: Option<String>,
     pub compatibility_summary_json: Option<String>,
+    /// Pinned base workflow id stored on insert; `None` when not bound.
+    pub base_workflow_ref: Option<String>,
+    /// Pinned base workflow version stored on insert; `None` when not bound.
+    pub base_workflow_version_ref: Option<String>,
 }
 
 pub struct RawExtensionSettings {
@@ -1074,8 +1094,18 @@ fn row_to_deployment(r: sqlx::sqlite::SqliteRow) -> DeploymentRowRaw {
         last_failed_run_id: r.try_get("last_failed_run_id").ok(),
         run_count: r.try_get("run_count").unwrap_or_default(),
         notes_markdown: r.try_get("notes_markdown").ok(),
-        source_extension_id: r.try_get("source_extension_id").ok(),
-        source_workflow_id: r.try_get("source_workflow_id").ok(),
+        source_extension_id: r
+            .try_get::<Option<String>, _>("source_extension_id")
+            .ok()
+            .flatten(),
+        source_workflow_id: r
+            .try_get::<Option<String>, _>("source_workflow_id")
+            .ok()
+            .flatten(),
+        source_recipe_id: r
+            .try_get::<Option<String>, _>("source_recipe_id")
+            .ok()
+            .flatten(),
         deleted_at: r.try_get("deleted_at").ok(),
     }
 }

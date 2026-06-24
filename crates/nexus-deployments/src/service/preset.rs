@@ -220,6 +220,7 @@ mod recipe_key_tests {
             notes_markdown: None,
             source_extension_id: ext.map(str::to_owned),
             source_workflow_id: wf.map(str::to_owned),
+            source_recipe_id: None,
             deleted_at: None,
         }
     }
