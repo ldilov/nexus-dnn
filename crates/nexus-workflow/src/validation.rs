@@ -246,6 +246,19 @@ fn check_node_config(
     node: &crate::model::NodeInstance,
     op_def: &OperatorDefinition,
 ) -> Result<(), WorkflowError> {
+    validate_node_config(node, op_def)
+}
+
+/// Validates a single node's `config` value against the operator's `config_schema`.
+///
+/// Returns `Ok(())` silently when `op_def.config_schema` is `None` or `node.config`
+/// is `None` — both are treated as "no constraint to check". Returns
+/// `Err(WorkflowError::InvalidConfig)` on schema compile failure or validation
+/// mismatch, carrying the `node_id` and a human-readable detail string.
+pub fn validate_node_config(
+    node: &crate::model::NodeInstance,
+    op_def: &OperatorDefinition,
+) -> Result<(), WorkflowError> {
     let Some(schema_value) = &op_def.config_schema else {
         return Ok(());
     };
@@ -269,4 +282,85 @@ fn check_node_config(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use nexus_extension::OperatorDefinition;
+    use serde_json::json;
+
+    use super::*;
+    use crate::model::NodeInstance;
+
+    fn op_with_schema() -> OperatorDefinition {
+        serde_json::from_value(json!({
+            "spec_version": "1.0",
+            "operator": { "id": "synth", "version": "1.0.0" },
+            "config_schema": {
+                "type": "object",
+                "properties": { "steps": { "type": "integer" } },
+                "required": ["steps"]
+            }
+        }))
+        .unwrap()
+    }
+
+    fn op_no_schema() -> OperatorDefinition {
+        serde_json::from_value(json!({
+            "spec_version": "1.0",
+            "operator": { "id": "synth", "version": "1.0.0" }
+        }))
+        .unwrap()
+    }
+
+    fn node_with_config(id: &str, config: serde_json::Value) -> NodeInstance {
+        NodeInstance {
+            id: id.into(),
+            operator: "synth@1.0.0".into(),
+            stage: None,
+            inputs: HashMap::new(),
+            config: Some(config),
+        }
+    }
+
+    fn node_no_config(id: &str) -> NodeInstance {
+        NodeInstance {
+            id: id.into(),
+            operator: "synth@1.0.0".into(),
+            stage: None,
+            inputs: HashMap::new(),
+            config: None,
+        }
+    }
+
+    #[test]
+    fn validate_node_config_is_public_and_passes_valid_config() {
+        let op_def = op_with_schema();
+        let node = node_with_config("n", json!({ "steps": 16 }));
+        assert!(validate_node_config(&node, &op_def).is_ok());
+    }
+
+    #[test]
+    fn validate_node_config_rejects_schema_violation() {
+        let op_def = op_with_schema();
+        let node = node_with_config("n1", json!({ "steps": "not-an-integer" }));
+        let err = validate_node_config(&node, &op_def).unwrap_err();
+        match err {
+            WorkflowError::InvalidConfig { node_id, .. } => {
+                assert_eq!(node_id, "n1");
+            }
+            other => panic!("expected InvalidConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_node_config_skips_when_no_schema_or_no_config() {
+        let node_any = node_with_config("n2", json!({ "anything": true }));
+        assert!(validate_node_config(&node_any, &op_no_schema()).is_ok());
+
+        let node_none = node_no_config("n3");
+        assert!(validate_node_config(&node_none, &op_with_schema()).is_ok());
+    }
 }

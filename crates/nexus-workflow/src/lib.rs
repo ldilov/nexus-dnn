@@ -13,5 +13,6 @@ pub use mutation::{add_node, connect_ports, disconnect_ports, remove_node, updat
 pub use parser::parse_workflow;
 pub use snapshot::WorkflowVersionSnapshot;
 pub use validation::{
-    resolve_operator_bindings, validate_dag, validate_port_types, validate_workflow,
+    resolve_operator_bindings, validate_dag, validate_node_config, validate_port_types,
+    validate_workflow,
 };
