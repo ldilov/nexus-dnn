@@ -107,6 +107,7 @@ list, not a value store). P3's `create_run_from_resolved` persists it as the `ru
 ```rust
 pub enum BindingError {
     UnknownControl { control_id: String },
+    DuplicateControl { control_id: String },             // P2 add: dup control_id in projection -> reject (lock-bypass guard)
     UnknownPreset { preset_id: String },                 // missing preset_id -> reject (not silent)
     LockedOverride { control_id: String },               // USER overrides a `locked` control
     HiddenControlNotSettable { control_id: String },     // USER value on a `hidden` control -> reject
