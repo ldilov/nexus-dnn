@@ -33,6 +33,10 @@ tokio-util = { version = "0.7", features = ["io"] }
 async-stream = "0.3"
 urlencoding = "2"
 nexus-extension = { path = "../../../../crates/nexus-extension" }
+# Host recipe compiler + workflow model (P7): the runner resolves + validates
+# recipe control values through the generic host compiler (extension consumes a host contract).
+nexus-recipe = { path = "../../../../crates/nexus-recipe" }
+nexus-workflow = { path = "../../../../crates/nexus-workflow" }
 # Host-side StdioLease adapter lives inside this extension's crate (in
 # `host_adapter.rs`) so the host shell stays free of emotion-tts-specific
 # wiring code. Pulls in the host's lease primitives — same shape as the

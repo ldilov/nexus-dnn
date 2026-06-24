@@ -15,6 +15,7 @@ pub mod host_adapter;
 pub mod host_contract;
 pub mod operators;
 pub mod queue;
+pub mod recipe_resolve;
 pub mod register;
 pub mod router;
 pub mod storage;

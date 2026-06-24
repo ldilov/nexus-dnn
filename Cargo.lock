@@ -1493,6 +1493,8 @@ dependencies = [
  "nexus-artifact",
  "nexus-backend-runtimes",
  "nexus-extension",
+ "nexus-recipe",
+ "nexus-workflow",
  "once_cell",
  "regex",
  "reqwest 0.12.28",

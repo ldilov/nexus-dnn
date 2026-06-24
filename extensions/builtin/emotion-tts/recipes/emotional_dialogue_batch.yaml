@@ -77,3 +77,112 @@ actions:
   label: Test selected line
   workflow_invoke:
     kind: test_line
+# Host RecipeProjection (P7): controls bind to the pinned workflow's input ports;
+# the runner sources the synthesis job from the compiler's resolved_inputs.
+projection:
+  schema_version: 1
+  sections:
+  - id: script
+    title: Script
+    order: 0
+    control_ids: [script]
+  - id: voice_emotion
+    title: Voice and Emotion
+    order: 1
+    control_ids: [global_emotion]
+  - id: output
+    title: Output
+    order: 2
+    control_ids: [output_format, speed_factor, speed_mode]
+  - id: generation
+    title: Generation
+    order: 3
+    control_ids: [generation]
+  - id: advanced
+    title: Advanced
+    order: 4
+    control_ids: [parser_mode, seed_strategy, base_seed, cache_policy]
+  controls:
+  - control_id: script
+    kind: string
+    label: Dialogue script
+    mode: basic
+    default_value: ""
+    widget_hint: script_editor
+    bindings: ["input:script"]
+  - control_id: global_emotion
+    kind: string
+    label: Global emotion
+    mode: basic
+    default_value: {}
+    widget_hint: emotion_panel
+    bindings: ["input:global_emotion"]
+  - control_id: output_format
+    kind: enum
+    label: Output format
+    mode: basic
+    default_value: mp3
+    bindings: ["input:output_format"]
+  - control_id: speed_factor
+    kind: float
+    label: Speed
+    mode: basic
+    default_value: 1.0
+    widget_hint: slider
+    bindings: ["input:speed_factor"]
+  - control_id: speed_mode
+    kind: enum
+    label: Speed mode
+    mode: advanced
+    default_value: preserve_pitch
+    bindings: ["input:speed_mode"]
+  - control_id: generation
+    kind: string
+    label: Generation settings
+    mode: advanced
+    default_value: {}
+    widget_hint: form_group
+    bindings: ["input:generation"]
+  - control_id: parser_mode
+    kind: enum
+    label: Parser mode
+    mode: advanced
+    default_value: dialogue
+    bindings: ["input:parser_mode"]
+  - control_id: seed_strategy
+    kind: enum
+    label: Seed strategy
+    mode: advanced
+    default_value: increment_per_line
+    bindings: ["input:seed_strategy"]
+  - control_id: base_seed
+    kind: int
+    label: Base seed
+    mode: advanced
+    default_value: 42
+    bindings: ["input:base_seed"]
+  - control_id: cache_policy
+    kind: enum
+    label: Cache policy
+    mode: advanced
+    default_value: force_regenerate
+    bindings: ["input:cache_policy"]
+  presets:
+  - preset_id: draft
+    label: Draft (fast, cached)
+    source: recipe
+    values:
+      output_format: mp3
+      speed_factor: 1.0
+      cache_policy: use_cache
+  - preset_id: final
+    label: Final (lossless)
+    source: recipe
+    values:
+      output_format: flac
+      cache_policy: force_regenerate
+  output:
+    primary_artifact: audio
+    secondary: []
+    preview_style: player
+    show_intermediate: false
