@@ -49,6 +49,7 @@ pub async fn update_recipe_pin(
     Ok(())
 }
 
+// LANDMINE(SHARED-WRITER): user-scoped projection writer; P6 recipe-write adopts as-is · see .claude/checkpoints/LATEST.md
 pub async fn update_recipe_projection(
     pool: &SqlitePool,
     id: &str,
@@ -56,6 +57,44 @@ pub async fn update_recipe_projection(
 ) -> Result<(), StorageError> {
     let result = sqlx::query(include_str!("../../queries/recipes/update_projection.sql"))
         .bind(projection_json)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(StorageError::NotFound {
+            entity: "recipe".into(),
+            id: id.into(),
+        });
+    }
+    Ok(())
+}
+
+// LANDMINE(SHARED-WRITER): user-scoped full-record writer; P6 recipe-builder PUT path · see .claude/checkpoints/LATEST.md
+pub async fn update_user_recipe(pool: &SqlitePool, r: &RecipeRecord) -> Result<(), StorageError> {
+    let result = sqlx::query(include_str!("../../queries/recipes/update_user_recipe.sql"))
+        .bind(&r.display_name)
+        .bind(&r.summary)
+        .bind(&r.category)
+        .bind(&r.workflow_id)
+        .bind(&r.workflow_version)
+        .bind(&r.projection)
+        .bind(r.projection_schema_version)
+        .bind(&r.status)
+        .bind(&r.status_reason)
+        .bind(&r.id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(StorageError::NotFound {
+            entity: "recipe".into(),
+            id: r.id.clone(),
+        });
+    }
+    Ok(())
+}
+
+pub async fn delete_user_recipe(pool: &SqlitePool, id: &str) -> Result<(), StorageError> {
+    let result = sqlx::query(include_str!("../../queries/recipes/delete_user_recipe.sql"))
         .bind(id)
         .execute(pool)
         .await?;

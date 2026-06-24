@@ -141,6 +141,83 @@ async fn update_recipe_projection_missing_recipe_is_not_found() {
 }
 
 #[tokio::test]
+async fn update_user_recipe_overwrites_builder_surface() {
+    let db = fresh_db().await;
+    db.insert_recipe(&user_recipe("u1")).await.unwrap();
+
+    let mut edited = user_recipe("u1");
+    edited.display_name = "Renamed".into();
+    edited.summary = "new summary".into();
+    edited.category = "video".into();
+    edited.workflow_id = Some("wf-9".into());
+    edited.workflow_version = Some("v4".into());
+    edited.projection = Some(r#"{"schema_version":1}"#.into());
+    edited.status = "outdated".into();
+    edited.status_reason = Some("needs_re_pin".into());
+
+    db.update_user_recipe(&edited).await.unwrap();
+
+    let got = db.get_recipe("u1").await.unwrap();
+    assert_eq!(got.display_name, "Renamed");
+    assert_eq!(got.summary, "new summary");
+    assert_eq!(got.category, "video");
+    assert_eq!(got.workflow_id.as_deref(), Some("wf-9"));
+    assert_eq!(got.workflow_version.as_deref(), Some("v4"));
+    assert_eq!(got.projection.as_deref(), Some(r#"{"schema_version":1}"#));
+    assert_eq!(got.status, "outdated");
+    assert_eq!(got.status_reason.as_deref(), Some("needs_re_pin"));
+    assert_eq!(got.author_kind, "user");
+}
+
+#[tokio::test]
+async fn update_user_recipe_rejects_extension_row() {
+    let db = fresh_db().await;
+    db.insert_recipe(&ext_recipe("e1")).await.unwrap();
+
+    let mut tamper = ext_recipe("e1");
+    tamper.display_name = "Hijacked".into();
+    let err = db.update_user_recipe(&tamper).await.unwrap_err();
+    assert!(matches!(err, StorageError::NotFound { .. }));
+
+    let got = db.get_recipe("e1").await.unwrap();
+    assert_eq!(got.display_name, "Demo", "extension row untouched");
+}
+
+#[tokio::test]
+async fn update_user_recipe_missing_recipe_is_not_found() {
+    let db = fresh_db().await;
+    let err = db
+        .update_user_recipe(&user_recipe("nope"))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StorageError::NotFound { .. }));
+}
+
+#[tokio::test]
+async fn delete_user_recipe_removes_user_row() {
+    let db = fresh_db().await;
+    db.insert_recipe(&user_recipe("u1")).await.unwrap();
+
+    db.delete_user_recipe("u1").await.unwrap();
+
+    assert!(db.get_recipe("u1").await.is_err(), "user recipe deleted");
+}
+
+#[tokio::test]
+async fn delete_user_recipe_noop_on_extension_row() {
+    let db = fresh_db().await;
+    db.insert_recipe(&ext_recipe("e1")).await.unwrap();
+
+    let err = db.delete_user_recipe("e1").await.unwrap_err();
+    assert!(matches!(err, StorageError::NotFound { .. }));
+
+    assert!(
+        db.get_recipe("e1").await.is_ok(),
+        "extension recipe preserved"
+    );
+}
+
+#[tokio::test]
 async fn migration_027_reruns_idempotently() {
     let dir = tempfile::tempdir().unwrap();
     let url = format!(

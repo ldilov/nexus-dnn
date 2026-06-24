@@ -348,6 +348,14 @@ impl Database for SqliteDatabase {
         content::update_recipe_projection(&self.pool, id, projection_json).await
     }
 
+    async fn update_user_recipe(&self, record: &RecipeRecord) -> Result<(), StorageError> {
+        content::update_user_recipe(&self.pool, record).await
+    }
+
+    async fn delete_user_recipe(&self, id: &str) -> Result<(), StorageError> {
+        content::delete_user_recipe(&self.pool, id).await
+    }
+
     async fn insert_ui_contribution(&self, r: &UIContributionRecord) -> Result<(), StorageError> {
         content::insert_ui_contribution(&self.pool, r).await
     }

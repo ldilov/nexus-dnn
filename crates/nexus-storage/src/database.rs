@@ -182,6 +182,14 @@ pub trait Database: Send + Sync {
         id: &str,
         projection_json: &str,
     ) -> Result<(), StorageError>;
+    /// Overwrite a USER-authored recipe's full builder-editable surface (display
+    /// fields, pin, projection, status). Scoped to author_kind='user'; no-op
+    /// rows -> NotFound. Never mutates extension recipes (the recipe-builder PUT
+    /// path).
+    async fn update_user_recipe(&self, record: &RecipeRecord) -> Result<(), StorageError>;
+    /// Delete a USER-authored recipe. Scoped to author_kind='user'; no-op rows
+    /// -> NotFound. An extension recipe id is never deleted here.
+    async fn delete_user_recipe(&self, id: &str) -> Result<(), StorageError>;
 
     async fn insert_ui_contribution(
         &self,
