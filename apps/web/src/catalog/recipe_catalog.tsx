@@ -39,6 +39,33 @@ function iconFor(recipe: Recipe): string {
 
 const RECIPE_STATUS_FILTERS: StatusKey[] = [];
 
+/// Compat-status chip driven only by `recipe.status` (healthy|outdated|broken).
+/// Healthy renders nothing; the grandfathered id-substring heuristic in
+/// `iconFor` is never consulted here.
+function StatusBadge({ status }: { status: string }) {
+  if (status === "outdated") {
+    return (
+      <span className={`${styles.statusBadge} ${styles.statusBadgeOutdated}`}>
+        <span className={`material-symbols-outlined ${styles.iconSm}`} aria-hidden="true">
+          update
+        </span>
+        Outdated
+      </span>
+    );
+  }
+  if (status === "broken") {
+    return (
+      <span className={`${styles.statusBadge} ${styles.statusBadgeBroken}`}>
+        <span className={`material-symbols-outlined ${styles.iconSm}`} aria-hidden="true">
+          error
+        </span>
+        Broken
+      </span>
+    );
+  }
+  return null;
+}
+
 export interface RecipeCatalogProps {
   onOpenRecipe?: (recipe: Recipe) => void;
 }
@@ -193,7 +220,10 @@ function RecipeCard({
             {iconFor(recipe)}
           </span>
         </div>
-        <span className={styles.categoryBadge}>{recipe.category}</span>
+        <div className={styles.badgeRow}>
+          <StatusBadge status={recipe.status} />
+          <span className={styles.categoryBadge}>{recipe.category}</span>
+        </div>
       </div>
 
       <div className={styles.title}>{recipe.display_name}</div>

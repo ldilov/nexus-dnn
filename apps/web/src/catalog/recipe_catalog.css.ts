@@ -114,6 +114,47 @@ export const categoryBadge = style({
   border: `1px solid ${vars.color.outline.variant}`,
 });
 
+export const badgeRow = style({
+  display: "inline-flex",
+  alignItems: "center",
+  // audit-allow: px — below minimum token granularity (sub-10px)
+  gap: "6px",
+});
+
+export const statusBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  // audit-allow: px — below minimum token granularity (sub-10px)
+  gap: "4px",
+  // audit-allow: px — below minimum token granularity (sub-10px)
+  padding: "3px 8px",
+  borderRadius: vars.radius.full,
+  fontFamily: vars.font.code,
+  // audit-allow: px — sub-token spacing value, no density token at this step
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+});
+
+export const statusBadgeOutdated = style({
+  // audit-allow: hex — amber status semantic, no token in palette yet
+  color: "#FBBF24",
+  // audit-allow: hex — amber status semantic, no token in palette yet
+  backgroundColor: "rgba(251, 191, 36, 0.12)",
+  // audit-allow: hex — amber status semantic, no token in palette yet
+  border: "1px solid rgba(251, 191, 36, 0.32)",
+});
+
+export const statusBadgeBroken = style({
+  // audit-allow: hex — red status semantic, no token in palette yet
+  color: "#F87171",
+  // audit-allow: hex — red status semantic, no token in palette yet
+  backgroundColor: "rgba(248, 113, 113, 0.12)",
+  // audit-allow: hex — red status semantic, no token in palette yet
+  border: "1px solid rgba(248, 113, 113, 0.34)",
+});
+
 export const featuredTag = style({
   display: "inline-flex",
   alignItems: "center",

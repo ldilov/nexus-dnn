@@ -52,6 +52,7 @@ src/views/graph_toolbar.css.ts
 src/views/graph_view.css.ts
 src/views/graph_view.tsx
 src/views/operator_palette.css.ts
+src/views/recipe-form/recipe_upgrade_banner.css.ts
 src/views/run_trace_view.css.ts
 src/views/stage_view.css.ts
 src/views/stage_view.tsx

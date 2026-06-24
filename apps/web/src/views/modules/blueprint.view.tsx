@@ -19,6 +19,7 @@ import { PageHero } from "../../components/base/page_hero";
 import { Pill } from "../../components/base/pill";
 import { Tabs } from "../../components/base/tabs";
 import { RecipeForm } from "../recipe-form/RecipeForm";
+import { RecipeUpgradeBanner } from "../recipe-form/RecipeUpgradeBanner";
 import * as s from "./blueprint.css";
 
 function Shell({ children }: { children: ReactElement | ReactElement[] | null | false | (ReactElement | null | false)[] }) {
@@ -329,6 +330,10 @@ export function BlueprintView({
             id="panel-recipe"
             className={s.stackLarge}
           >
+            {effectiveRecipeId && (
+              <RecipeUpgradeBanner recipeId={effectiveRecipeId} />
+            )}
+
             {effectiveRecipeId && (
               <section className={s.section}>
                 <h2 className={s.sectionNumber}>00 / Configure &amp; run</h2>

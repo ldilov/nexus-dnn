@@ -951,6 +951,36 @@ export function submitRecipeRun(
 export type { RecipeFormDto };
 
 // =============================================================================
+// Recipe upgrade assistant + shareability bundle (P8)
+
+export function fetchRecipeUpgradePreview(
+  id: string,
+): Promise<import("../api/generated/RecipePinDiffDto").RecipePinDiffDto> {
+  return apiFetch(`/recipes/${encodeURIComponent(id)}/upgrade-preview`);
+}
+
+export function upgradeRecipe(
+  id: string,
+): Promise<import("../api/generated/RecipeUpgradeResultDto").RecipeUpgradeResultDto> {
+  return apiFetch(`/recipes/${encodeURIComponent(id)}/upgrade`, { method: "POST" });
+}
+
+/** Exports the recipe's shareability bundle (the raw envelope `data` object). */
+export function exportRecipeBundle(id: string): Promise<unknown> {
+  return apiFetch(`/recipes/${encodeURIComponent(id)}/bundle`);
+}
+
+export function importRecipeBundle(
+  bundle: unknown,
+): Promise<import("../api/generated/RecipeImportResultDto").RecipeImportResultDto> {
+  return apiFetch(`/recipes/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(bundle),
+  });
+}
+
+// =============================================================================
 // Workflow version (pinned snapshot) — P4 RecipePinnedGraph
 
 export function fetchWorkflowVersion(
