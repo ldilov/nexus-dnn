@@ -11,3 +11,5 @@ chrono = { workspace = true }
 nexus-workflow = { path = "../nexus-workflow" }
 nexus-extension = { path = "../nexus-extension" }
 ts-rs = { version = "11", features = ["serde-compat", "serde-json-impl"] }
+sha2 = "0.10"
+json-canon = "0.1"

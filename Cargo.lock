@@ -3769,10 +3769,12 @@ name = "nexus-recipe"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "json-canon",
  "nexus-extension",
  "nexus-workflow",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "ts-rs",
 ]
