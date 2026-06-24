@@ -3345,6 +3345,7 @@ dependencies = [
  "nexus-local-llm-chat-history",
  "nexus-models-store",
  "nexus-protocol",
+ "nexus-recipe",
  "nexus-run",
  "nexus-run-events",
  "nexus-scheduler",
@@ -3759,6 +3760,18 @@ name = "nexus-provenance"
 version = "0.1.0"
 dependencies = [
  "nexus-models-store",
+]
+
+[[package]]
+name = "nexus-recipe"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "nexus-extension",
+ "nexus-workflow",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
