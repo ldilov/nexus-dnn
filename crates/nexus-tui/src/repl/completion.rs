@@ -47,7 +47,7 @@ const SOURCE_CATEGORY_PREFIXES: &[(&str, &str)] = &[
 const FOLLOW_TARGET_SHAPES: &[(&str, &str)] = &[
     ("run:", "type a run id after the colon (run:01HK…)"),
     ("deploy:", "type a deployment slug (deploy:chat-prod)"),
-    ("ext:", "type an extension id (ext:nexus.audio.emotiontts)"),
+    ("ext:", "type an extension id (ext:acme.demo)"),
 ];
 
 const LEVEL_ARG_DESCRIPTIONS: &[(&str, &str)] = &[

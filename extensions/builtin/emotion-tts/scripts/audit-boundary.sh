@@ -34,6 +34,17 @@ GRANDFATHERED_FIXTURES=(
   "$REPO_ROOT/crates/nexus-core/Cargo.toml"
   "$REPO_ROOT/crates/nexus-core/src/app.rs"
   "$REPO_ROOT/crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs"
+  # Recipes program (P0-P6) sibling boundary-ENFORCER tests (deny-lists, not leaks).
+  "$REPO_ROOT/crates/nexus-api/tests/recipes_boundary_test.rs"
+  "$REPO_ROOT/crates/nexus-api/tests/recipe_status_boundary.rs"
+  "$REPO_ROOT/crates/nexus-deployments/tests/preset_boundary.rs"
+  "$REPO_ROOT/crates/nexus-recipe/tests/boundary_test.rs"
+  "$REPO_ROOT/crates/nexus-storage/tests/workflow_versions_boundary.rs"
+  "$REPO_ROOT/crates/nexus-extension/tests/discover_and_activate_scans_dir.rs"
+  "$REPO_ROOT/crates/nexus-run-events/scripts/boundary_audit.ps1"
+  # nexus-builtins = sanctioned composition bridge (names builtin ext ids for wiring).
+  "$REPO_ROOT/crates/nexus-builtins/Cargo.toml"
+  "$REPO_ROOT/crates/nexus-builtins/src/lib.rs"
 )
 
 violations=0

@@ -79,6 +79,24 @@ grandfathered_paths:
   # `indextts` in registered_extensions below; this path grandfathers the
   # single pre-existing reference inside the spec-032 test.
   - "crates/nexus-backend-runtimes/src/generic/ids/runtime_id.rs"
+  # Workflow-Driven Recipes program (P0-P6): sibling boundary-ENFORCER tests that
+  # list extension-id literals in their own deny-lists (the test, not a leak).
+  - "crates/nexus-api/tests/recipes_boundary_test.rs"
+  - "crates/nexus-api/tests/recipe_status_boundary.rs"
+  - "crates/nexus-deployments/tests/preset_boundary.rs"
+  - "crates/nexus-recipe/tests/boundary_test.rs"
+  - "crates/nexus-storage/tests/workflow_versions_boundary.rs"
+  - "crates/nexus-extension/tests/discover_and_activate_scans_dir.rs"
+  - "crates/nexus-run-events/scripts/boundary_audit.ps1"
+  # nexus-builtins = sanctioned composition bridge (constitution XIII.3): the only
+  # host crate that names builtin extensions by id for router wiring.
+  - "crates/nexus-builtins/Cargo.toml"
+  - "crates/nexus-builtins/src/lib.rs"
+  # Spec 035/037 boundary-ENFORCER self-tests + the indextts runtime wire form —
+  # already grandfathered in the per-extension audit-boundary script; synced here.
+  - "crates/nexus-extension-deps/tests/boundary_test.rs"
+  - "crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs"
+  - "crates/nexus-backend-runtimes/src/generic/leases/stdio_lease.rs"
 
 # Extension id fragments registered by future extension-bearing specs.
 # Each entry MUST reference the spec number that introduced it.

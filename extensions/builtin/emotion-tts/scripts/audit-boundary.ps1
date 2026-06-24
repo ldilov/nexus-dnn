@@ -53,7 +53,21 @@ $grandfatheredFixtures = @(
     # Spec 037's host-side boundary self-test enumerates every extension id
     # literal as part of its banned-fragments deny-list. Same pattern as
     # the spec 035 boundary_test in nexus-extension-deps above.
-    (Join-Path $RepoRoot 'crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs')
+    (Join-Path $RepoRoot 'crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs'),
+    # Workflow-Driven Recipes program (P0-P6): sibling boundary-ENFORCER tests
+    # that list this extension's id in their own deny-lists (not a leak).
+    (Join-Path $RepoRoot 'crates/nexus-api/tests/recipes_boundary_test.rs'),
+    (Join-Path $RepoRoot 'crates/nexus-api/tests/recipe_status_boundary.rs'),
+    (Join-Path $RepoRoot 'crates/nexus-deployments/tests/preset_boundary.rs'),
+    (Join-Path $RepoRoot 'crates/nexus-recipe/tests/boundary_test.rs'),
+    (Join-Path $RepoRoot 'crates/nexus-storage/tests/workflow_versions_boundary.rs'),
+    (Join-Path $RepoRoot 'crates/nexus-extension/tests/discover_and_activate_scans_dir.rs'),
+    # Another audit deny-list that names the fragments it forbids.
+    (Join-Path $RepoRoot 'crates/nexus-run-events/scripts/boundary_audit.ps1'),
+    # nexus-builtins = sanctioned composition bridge (constitution XIII.3): the
+    # only host crate that names builtin extensions by id for router wiring.
+    (Join-Path $RepoRoot 'crates/nexus-builtins/Cargo.toml'),
+    (Join-Path $RepoRoot 'crates/nexus-builtins/src/lib.rs')
 )
 
 $violations = @()

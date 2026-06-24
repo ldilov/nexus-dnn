@@ -275,9 +275,9 @@ mod tests {
     #[test]
     fn renders_extension_follow_target() {
         let mut s = default_snap();
-        s.follow = Some(FollowTarget::Extension("nexus.audio.emotiontts".into()));
+        s.follow = Some(FollowTarget::Extension("acme.demo".into()));
         let out = render_ribbon(&s);
-        assert!(out.contains("ext:nexus.audio.emotiontts"));
+        assert!(out.contains("ext:acme.demo"));
     }
 
     #[test]

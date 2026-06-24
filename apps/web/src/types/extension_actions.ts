@@ -25,7 +25,7 @@ export type ExtensionActionTone = "primary" | "secondary" | "danger";
 export type ExtensionActionRuntimeState = "idle" | "loading" | "disabled";
 
 export interface ExtensionActionDeclaration {
-  /** Stable identifier owned by the extension (e.g. "emotion-tts.run"). */
+  /** Stable identifier owned by the extension (e.g. "acme.demo.run"). */
   id: string;
   /** Visible button label. May change at runtime. */
   label: string;

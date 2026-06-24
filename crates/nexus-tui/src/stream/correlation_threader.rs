@@ -216,13 +216,13 @@ mod tests {
     fn extension_correlation_threads_when_run_id_absent() {
         let mut threader = CorrelationThreader::default();
         let now = Instant::now();
-        threader.note_rendered(&ext_event("nexus.audio.emotiontts"), now);
+        threader.note_rendered(&ext_event("acme.demo"), now);
         let later = now + Duration::from_secs(2);
         assert_eq!(
-            threader.relationship(&ext_event("nexus.audio.emotiontts"), later),
+            threader.relationship(&ext_event("acme.demo"), later),
             ThreadRelation::Leaf {
                 kind: CorrelationKind::Extension,
-                key: "nexus.audio.emotiontts".into(),
+                key: "acme.demo".into(),
             }
         );
     }
