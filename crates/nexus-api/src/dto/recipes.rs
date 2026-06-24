@@ -17,13 +17,17 @@ pub struct RecipeDto {
     pub display_name: String,
     pub summary: String,
     pub category: String,
-    pub extension_id: String,
-    pub extension_version: String,
+    pub extension_id: Option<String>,
+    pub extension_version: Option<String>,
     pub workflow_template_ref: String,
     pub thumbnail: Option<String>,
     pub input_summary: Option<String>,
     pub bindings: Vec<RecipeFieldBindingDto>,
     pub created_at: String,
+    pub workflow_id: Option<String>,
+    pub workflow_version: Option<String>,
+    pub status: String,
+    pub status_reason: Option<String>,
 }
 
 impl From<&RecipeRecord> for RecipeDto {
@@ -51,6 +55,10 @@ impl From<&RecipeRecord> for RecipeDto {
             input_summary: r.input_summary.clone(),
             bindings,
             created_at: r.created_at.clone(),
+            workflow_id: r.workflow_id.clone(),
+            workflow_version: r.workflow_version.clone(),
+            status: r.status.clone(),
+            status_reason: r.status_reason.clone(),
         }
     }
 }

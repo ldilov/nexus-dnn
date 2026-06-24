@@ -124,6 +124,15 @@ pub async fn update_workflow(
         &now,
     )
     .await?;
+    if let Err(e) = crate::handlers::recipe_status::refresh_status_for_workflow(
+        state.db.as_ref(),
+        &workflow.id,
+        &operators,
+    )
+    .await
+    {
+        tracing::debug!(workflow_id = %workflow.id, error = %e, "refresh_status_for_workflow failed");
+    }
 
     Ok(ApiResponse::ok(WorkflowMutationResponseDto {
         id: workflow.id,
@@ -261,7 +270,15 @@ pub async fn update_workflow_graph(
         &now,
     )
     .await?;
-    // P1: refresh_status_for_workflow hook site (version-advance site #1)
+    if let Err(e) = crate::handlers::recipe_status::refresh_status_for_workflow(
+        state.db.as_ref(),
+        &id,
+        &operators,
+    )
+    .await
+    {
+        tracing::debug!(workflow_id = %id, error = %e, "refresh_status_for_workflow failed");
+    }
 
     let fresh = state
         .db
@@ -296,6 +313,17 @@ pub async fn revert_workflow(
             .clear_workflow_user_edit(&id)
             .await
             .map_err(|e| ApiError::Internal(e.to_string()))?;
+    }
+
+    let operators = state.extension_registry.list_operators();
+    if let Err(e) = crate::handlers::recipe_status::refresh_status_for_workflow(
+        state.db.as_ref(),
+        &id,
+        &operators,
+    )
+    .await
+    {
+        tracing::debug!(workflow_id = %id, error = %e, "refresh_status_for_workflow failed");
     }
 
     let fresh = state

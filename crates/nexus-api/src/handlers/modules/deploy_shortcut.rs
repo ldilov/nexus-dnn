@@ -111,7 +111,7 @@ async fn resolve_extension_blueprint(
     let all_recipes = state.db.list_recipes().await.map_err(ApiError::from)?;
     let mut for_ext: Vec<RecipeRecord> = all_recipes
         .into_iter()
-        .filter(|r| r.extension_id == ext.id)
+        .filter(|r| r.extension_id.as_deref() == Some(ext.id.as_str()))
         .collect();
     if for_ext.is_empty() {
         return Err(ApiError::structured(

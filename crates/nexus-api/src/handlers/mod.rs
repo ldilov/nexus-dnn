@@ -17,6 +17,7 @@ pub mod huggingface;
 pub mod metrics;
 pub mod model_store;
 pub mod modules;
+pub mod recipe_status;
 pub mod recipes;
 pub mod runs;
 pub mod storage_contributions;

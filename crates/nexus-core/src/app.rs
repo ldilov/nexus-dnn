@@ -559,8 +559,10 @@ async fn persist_discovery_to_db(
     for ext in &extensions {
         persist_extension_record(db, ext).await?;
         persist_operator_records(db, ext).await?;
-        persist_recipe_records(db, ext).await?;
+        // Workflows persist first so `current_version` is set before recipe
+        // pin-backfill resolves stems against the head pointer.
         persist_workflow_records(db, ext, &operators).await?;
+        persist_recipe_records(db, ext).await?;
         persist_ui_contribution_records(db, ext).await?;
     }
 
@@ -685,7 +687,15 @@ async fn persist_workflow_records(
                 if let Err(e) = db.set_current_version(&workflow.id, &version, &now).await {
                     tracing::debug!(workflow_id = %workflow.id, error = %e, "set_current_version failed");
                 }
-                // P1: refresh_status_for_workflow hook site (version-advance site #2)
+                if let Err(e) = nexus_api::handlers::recipe_status::refresh_status_for_workflow(
+                    db.as_ref(),
+                    &workflow.id,
+                    operators,
+                )
+                .await
+                {
+                    tracing::debug!(workflow_id = %workflow.id, error = %e, "refresh_status_for_workflow failed");
+                }
             }
             Err(e) => {
                 tracing::warn!(workflow_id = %workflow.id, error = %e, "append extension workflow version failed");
@@ -864,16 +874,28 @@ async fn persist_recipe_records(
             display_name: recipe.recipe.display_name.clone(),
             summary: recipe.recipe.summary.clone(),
             category: recipe.recipe.category.clone(),
-            extension_id: ext_id.clone(),
-            extension_version: ext.manifest.extension.version.clone(),
+            extension_id: Some(ext_id.clone()),
+            extension_version: Some(ext.manifest.extension.version.clone()),
             workflow_template_ref: recipe.workflow_template.clone().unwrap_or_default(),
             thumbnail: recipe.recipe.thumbnail.clone(),
             input_summary: recipe.recipe.input_summary.clone(),
             bindings,
             created_at: chrono::Utc::now().to_rfc3339(),
+            workflow_id: None,
+            workflow_version: None,
+            projection: None,
+            projection_schema_version: 1,
+            status: "healthy".to_owned(),
+            status_reason: None,
+            author_kind: "extension".to_owned(),
         };
 
         let _ = db.insert_recipe(&record).await;
+    }
+
+    if let Err(e) = nexus_api::handlers::recipe_status::backfill_recipe_pins(db.as_ref(), ext).await
+    {
+        tracing::warn!(error = %e, "recipe pin backfill failed");
     }
 
     Ok(())

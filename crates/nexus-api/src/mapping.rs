@@ -73,6 +73,12 @@ pub async fn persist_recipes_for_extension(
             .await
             .map_err(|e| ApiError::Internal(e.to_string()))?;
     }
+
+    if let Err(e) =
+        crate::handlers::recipe_status::backfill_recipe_pins(state.db.as_ref(), ext).await
+    {
+        tracing::warn!(error = %e, "recipe pin backfill failed");
+    }
     Ok(())
 }
 
@@ -112,13 +118,20 @@ fn recipe_to_record(
         display_name: recipe.recipe.display_name.clone(),
         summary: recipe.recipe.summary.clone(),
         category: recipe.recipe.category.clone(),
-        extension_id: ext.manifest.extension.id.clone(),
-        extension_version: ext.manifest.extension.version.clone(),
+        extension_id: Some(ext.manifest.extension.id.clone()),
+        extension_version: Some(ext.manifest.extension.version.clone()),
         workflow_template_ref: recipe.workflow_template.clone().unwrap_or_default(),
         thumbnail: recipe.recipe.thumbnail.clone(),
         input_summary: recipe.recipe.input_summary.clone(),
         bindings,
         created_at: chrono::Utc::now().to_rfc3339(),
+        workflow_id: None,
+        workflow_version: None,
+        projection: None,
+        projection_schema_version: 1,
+        status: "healthy".to_owned(),
+        status_reason: None,
+        author_kind: "extension".to_owned(),
     }
 }
 

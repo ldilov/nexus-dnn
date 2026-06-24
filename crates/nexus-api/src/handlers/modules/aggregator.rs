@@ -445,10 +445,8 @@ fn resolve_primary_workflow_id_impl(
 fn group_recipes_by_extension(recipes: &[RecipeRecord]) -> HashMap<String, Vec<RecipeRecord>> {
     let mut map: HashMap<String, Vec<RecipeRecord>> = HashMap::new();
     for r in recipes {
-        if !r.extension_id.is_empty() {
-            map.entry(r.extension_id.clone())
-                .or_default()
-                .push(r.clone());
+        if let Some(ext_id) = r.extension_id.as_deref().filter(|s| !s.is_empty()) {
+            map.entry(ext_id.to_owned()).or_default().push(r.clone());
         }
     }
     map
