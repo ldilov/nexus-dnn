@@ -1,4 +1,4 @@
-use nexus_storage::{Database, RecipeRecord, SqliteDatabase};
+use nexus_storage::{Database, RecipeRecord, SqliteDatabase, StorageError};
 
 async fn fresh_db() -> SqliteDatabase {
     SqliteDatabase::new("sqlite::memory:").await.unwrap()
@@ -107,6 +107,37 @@ async fn update_recipe_pin_sets_pin_and_status() {
     assert_eq!(broken.workflow_id, None);
     assert_eq!(broken.status, "broken");
     assert_eq!(broken.status_reason.as_deref(), Some("needs_re_pin"));
+}
+
+#[tokio::test]
+async fn update_recipe_projection_round_trips_on_user_recipe() {
+    let db = fresh_db().await;
+    db.insert_recipe(&user_recipe("u1")).await.unwrap();
+
+    let projection = r#"{"schema_version":1,"presets":[{"preset_id":"p","label":"P","source":"user","values":{}}]}"#;
+    db.update_recipe_projection("u1", projection).await.unwrap();
+
+    let got = db.get_recipe("u1").await.unwrap();
+    assert_eq!(got.projection.as_deref(), Some(projection));
+}
+
+#[tokio::test]
+async fn update_recipe_projection_rejects_extension_recipe() {
+    let db = fresh_db().await;
+    db.insert_recipe(&ext_recipe("e1")).await.unwrap();
+
+    let err = db.update_recipe_projection("e1", "{}").await.unwrap_err();
+    assert!(matches!(err, StorageError::NotFound { .. }));
+
+    let got = db.get_recipe("e1").await.unwrap();
+    assert_eq!(got.projection, None, "extension projection unchanged");
+}
+
+#[tokio::test]
+async fn update_recipe_projection_missing_recipe_is_not_found() {
+    let db = fresh_db().await;
+    let err = db.update_recipe_projection("nope", "{}").await.unwrap_err();
+    assert!(matches!(err, StorageError::NotFound { .. }));
 }
 
 #[tokio::test]

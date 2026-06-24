@@ -49,6 +49,25 @@ pub async fn update_recipe_pin(
     Ok(())
 }
 
+pub async fn update_recipe_projection(
+    pool: &SqlitePool,
+    id: &str,
+    projection_json: &str,
+) -> Result<(), StorageError> {
+    let result = sqlx::query(include_str!("../../queries/recipes/update_projection.sql"))
+        .bind(projection_json)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(StorageError::NotFound {
+            entity: "recipe".into(),
+            id: id.into(),
+        });
+    }
+    Ok(())
+}
+
 pub async fn get_recipe(pool: &SqlitePool, id: &str) -> Result<RecipeRecord, StorageError> {
     sqlx::query(include_str!("../../queries/recipes/get_by_id.sql"))
         .bind(id)

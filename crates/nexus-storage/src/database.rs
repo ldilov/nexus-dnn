@@ -174,6 +174,14 @@ pub trait Database: Send + Sync {
         status: &str,
         status_reason: Option<&str>,
     ) -> Result<(), StorageError>;
+    /// Overwrite a USER-authored recipe's projection JSON (host-owned write path
+    /// for user presets / the recipe builder). No-op rows -> NotFound. Never
+    /// touches extension-authored recipes (scoped to author_kind='user').
+    async fn update_recipe_projection(
+        &self,
+        id: &str,
+        projection_json: &str,
+    ) -> Result<(), StorageError>;
 
     async fn insert_ui_contribution(
         &self,
