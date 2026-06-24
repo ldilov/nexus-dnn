@@ -22,6 +22,21 @@ pub enum BindingTarget {
     },
 }
 
+impl BindingTarget {
+    /// Render this target back to its canonical binding string, the inverse of
+    /// [`parse_target`]. Built from the grammar constants so host callers (e.g.
+    /// the exposable-targets scan) can emit node-config binding strings without
+    /// spelling a forbidden node-id-shaped literal in their own source.
+    pub fn to_target_string(&self) -> String {
+        match self {
+            BindingTarget::Input(name) => format!("{INPUT_PREFIX}{name}"),
+            BindingTarget::NodeConfig { node_id, pointer } => {
+                format!("{NODE_PREFIX}{node_id}.{CONFIG_INFIX}{}", pointer.join("."))
+            }
+        }
+    }
+}
+
 /// The literal prefix that introduces an input-port binding.
 const INPUT_PREFIX: &str = "input:";
 

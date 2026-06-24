@@ -70,6 +70,36 @@ fn parse_target_rejects_empty_segment() {
 }
 
 #[test]
+fn to_target_string_round_trips_input() {
+    let raw = "input:script_text";
+    let parsed = parse_target(raw).unwrap();
+    assert_eq!(parsed.to_target_string(), raw);
+}
+
+#[test]
+fn to_target_string_round_trips_flat_node_config() {
+    let raw = "node:synth.config.speed";
+    let parsed = parse_target(raw).unwrap();
+    assert_eq!(parsed.to_target_string(), raw);
+}
+
+#[test]
+fn to_target_string_round_trips_nested_node_config() {
+    let raw = "node:synth.config.emotion.alpha";
+    let parsed = parse_target(raw).unwrap();
+    assert_eq!(parsed.to_target_string(), raw);
+}
+
+#[test]
+fn constructed_node_config_target_is_parseable() {
+    let target = BindingTarget::NodeConfig {
+        node_id: "encoder_1".into(),
+        pointer: vec!["dtype".into()],
+    };
+    assert_eq!(parse_target(&target.to_target_string()).unwrap(), target);
+}
+
+#[test]
 fn write_node_config_creates_map_when_none() {
     let mut node = make_node(None);
     write_node_config(&mut node, &["speed".into()], serde_json::json!(1.0)).unwrap();
