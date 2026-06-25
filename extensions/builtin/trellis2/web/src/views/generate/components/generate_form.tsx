@@ -52,6 +52,27 @@ export function GenerateForm(): ReactElement {
 
       <div className={styles.textureRow}>
         <div className={styles.textureCopy}>
+          <span className={styles.textureTitle}>Remove background</span>
+          <span className={styles.textureHint}>
+            On auto-cuts the subject so no ground/shadow becomes a platform. Turn off
+            only when the input is already a cut-out (transparent PNG).
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={params.remove_background !== false}
+          aria-label="Remove background"
+          disabled={disabled}
+          className={styles.toggle}
+          onClick={() => updateParam("remove_background", params.remove_background === false)}
+        >
+          <span className={styles.toggleThumb} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className={styles.textureRow}>
+        <div className={styles.textureCopy}>
           <span className={styles.textureTitle}>Bake texture</span>
           <span className={styles.textureHint}>
             Off exports a MeshOnly GLB. On runs the texture pass (slower, larger file).

@@ -32,6 +32,10 @@ export interface GenerateParams {
   simplify_target?: number;
   /** Bake a texture onto the mesh. MVP-0 default OFF (MeshOnly). */
   texture?: boolean;
+  /** Auto-remove the input background before generation (default ON). Stops
+   * TRELLIS reconstructing the photo's ground/shadow as a flat platform under
+   * the model. Turn OFF only when uploading a pre-cut RGBA subject. */
+  remove_background?: boolean;
   residency?: ResidencyProfile;
 
   /** Per-stage classifier-free guidance levers. All OPTIONAL and opt-in: when a

@@ -30,6 +30,7 @@ DEFAULT_TEXTURE_SIZE = 2048
 MAX_TEXTURE_SIZE = 8192
 DEFAULT_MAX_NUM_TOKENS = 49152
 DEFAULT_PIPELINE_TYPE = "1024_cascade"
+DEFAULT_REMOVE_BACKGROUND = True
 VALID_PIPELINE_TYPES = ("512", "1024", "1024_cascade", "1536_cascade")
 VALID_RESIDENCY = ("low_vram", "balanced")
 
@@ -62,6 +63,7 @@ class GenerateParams:
         "shape_steps",
         "simplify_target",
         "texture",
+        "remove_background",
         "residency",
         "texture_size",
         "metallic",
@@ -170,6 +172,9 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
     simplify_target = min(simplify_target, NVDIFFRAST_FACE_LIMIT)
 
     texture = bool(params.get("texture", False))
+    remove_background = bool(
+        params.get("remove_background", DEFAULT_REMOVE_BACKGROUND)
+    )
 
     residency = params.get("residency", "balanced")
     if residency not in VALID_RESIDENCY:
@@ -209,6 +214,7 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
         shape_steps=shape_steps,
         simplify_target=simplify_target,
         texture=texture,
+        remove_background=remove_background,
         residency=residency,
         texture_size=texture_size,
         metallic=metallic,

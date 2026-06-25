@@ -3,8 +3,12 @@ import type { GenerateParams } from "../services/types";
 export type FieldControlKind = "number" | "slider" | "select" | "toggle";
 
 /** Operator inputs surfaced as generic FieldControls. The image (dropzone) is
- * top-level, not a param; `texture` gets a dedicated toggle — both excluded. */
-export type TunableFieldKey = Exclude<keyof GenerateParams, "texture">;
+ * top-level, not a param; `texture` and `remove_background` get dedicated
+ * toggles — all excluded. */
+export type TunableFieldKey = Exclude<
+  keyof GenerateParams,
+  "texture" | "remove_background"
+>;
 
 export interface FieldOption {
   value: string;

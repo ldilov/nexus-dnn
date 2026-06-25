@@ -14,5 +14,6 @@ export const DEFAULT_PARAMS: GenerateParams = {
   metallic: 0,
   simplify_target: 1_000_000,
   texture: false,
+  remove_background: true,
   residency: "balanced",
 };

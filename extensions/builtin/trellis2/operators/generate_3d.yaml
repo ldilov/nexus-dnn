@@ -40,6 +40,9 @@ inputs:
   - name: texture
     type: boolean
     required: false
+  - name: remove_background
+    type: boolean
+    required: false
   - name: metallic
     type: number
     required: false

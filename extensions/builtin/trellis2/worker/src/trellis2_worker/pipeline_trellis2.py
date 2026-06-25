@@ -49,19 +49,30 @@ def _apply_perf_backends() -> bool:
     return on
 
 
-def _load_pipeline(low_vram: bool) -> Any:
-    """Lazy-import + load the TRELLIS.2 pipeline onto CUDA. Skips the gated
-    RMBG-2.0 model (rembg_model=None) — the operator pre-cleans the input.
+def _load_pipeline(low_vram: bool, remove_background: bool) -> Any:
+    """Lazy-import + load the TRELLIS.2 pipeline onto CUDA.
 
-    low_vram=False keeps all weights GPU-resident (no per-stage CPU offload) —
-    the right mode on GB10's 128GB unified memory. low_vram=True restores the
-    block-swap path for tight-VRAM hosts. Set BEFORE .cuda() so the pipeline's
-    low-VRAM-aware .to() either moves every model now or defers to per-stage."""
+    remove_background=True wires the non-gated BiRefNet rembg model so a raw photo
+    is auto-cut (subject composited on transparent, then cropped). This is what
+    stops TRELLIS reconstructing the input's ground/shadow as a flat platform mesh
+    under the model. remove_background=False keeps rembg_model=None — the operator
+    pre-cleans the input (e.g. an RGBA cutout), the original MVP-0 behaviour.
+
+    low_vram=False keeps all weights GPU-resident (no per-stage CPU offload) — the
+    right mode on GB10's 128GB unified memory. low_vram=True restores the
+    block-swap path for tight-VRAM hosts. rembg_model is set BEFORE .cuda() so the
+    pipeline's .to() moves it to the device (balanced) or leaves it for the
+    per-stage offload preprocess_image() applies (low_vram)."""
     from trellis2.pipelines import Trellis2ImageTo3DPipeline
 
     pipeline = Trellis2ImageTo3DPipeline.from_pretrained(TRELLIS_REPO)
-    pipeline.rembg_model = None
     pipeline.low_vram = low_vram
+    if remove_background:
+        from trellis2.pipelines.rembg.BiRefNet import BiRefNet
+
+        pipeline.rembg_model = BiRefNet()
+    else:
+        pipeline.rembg_model = None
     pipeline.cuda()
     return pipeline
 
@@ -169,7 +180,7 @@ def generate_real(
     emit_sync(Notifications.PROGRESS, {"stage": "load", "step": 0, "total": 0})
     load_t0 = time.time()
     try:
-        pipeline = _load_pipeline(low_vram)
+        pipeline = _load_pipeline(low_vram, validated.remove_background)
     except (FileNotFoundError, OSError) as exc:
         raise WorkerError(ErrorCodes.MODEL_MISSING, f"model missing: {exc}")
     except Exception as exc:
@@ -191,7 +202,7 @@ def generate_real(
         seed_kwarg = {"seed": validated.seed} if validated.seed is not None else {}
         outputs = pipeline.run(
             image,
-            preprocess_image=False,
+            preprocess_image=validated.remove_background,
             pipeline_type=validated.pipeline_type,
             max_num_tokens=validated.max_num_tokens,
             sparse_structure_sampler_params=validated.stage_sampler_params("sparse"),

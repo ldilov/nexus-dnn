@@ -6,8 +6,9 @@ docs/research/comfyui-trellis2/2026-06-24-trellis2-P0-COMPLETE.md):
   - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True + OpenEXR + CUDA paths
   - dinov3 gated → optional redirect to the non-gated kiennt120 mirror by
     rewriting the cached pipeline.json's image_cond_model.args.model_name
-  - RMBG-2.0 gated + trust_remote_code → skipped (rembg_model=None,
-    run(preprocess_image=False) with a pre-cleaned RGBA input)
+  - gated RMBG-2.0 avoided; background removal uses the non-gated BiRefNet when
+    the operator's remove_background toggle is on (else rembg_model=None and the
+    operator pre-cleans the input as an RGBA cutout)
 
 Import-safe without torch: only os/env + optional filesystem edits.
 """
