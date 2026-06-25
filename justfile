@@ -30,6 +30,7 @@ dgx-ssh *cmd="":
 dgx-push src dest="~/":
     #!/usr/bin/env bash
     set -euo pipefail
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
     key="${DGX_KEY:-$HOME/.ssh/.dgx_session_key}"
     user="${DGX_USER:-{{dgx_user}}}"; host="${DGX_HOST:-{{dgx_host}}}"
     [ -e "{{src}}" ] || { echo "fatal: local source '{{src}}' not found." >&2; exit 1; }
@@ -44,6 +45,7 @@ dgx-push src dest="~/":
 dgx-pull src dest=".":
     #!/usr/bin/env bash
     set -euo pipefail
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
     key="${DGX_KEY:-$HOME/.ssh/.dgx_session_key}"
     user="${DGX_USER:-{{dgx_user}}}"; host="${DGX_HOST:-{{dgx_host}}}"
     if command -v rsync >/dev/null 2>&1; then
@@ -256,3 +258,89 @@ dist-check:
 [no-cd]
 dgx-tag:
     @just --justfile "{{justfile()}}" _dgx-exec 'echo "live:"; docker ps --filter name=nexusdnn --format "{{{{.Image}}"; echo "images:"; docker images ldilov/nexusdnn --format "{{{{.Tag}}" | sort'
+
+# Copy a LOCAL file INTO a running container (local -> Spark /tmp -> docker cp).
+# Hot-patch a source file or stage a request body. dest = absolute path in container.
+[no-cd]
+dgx-cp-into src dest container="nexusdnn":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+    key="${DGX_KEY:-$HOME/.ssh/.dgx_session_key}"
+    user="${DGX_USER:-{{dgx_user}}}"; host="${DGX_HOST:-{{dgx_host}}}"
+    [ -e "{{src}}" ] || { echo "fatal: local source '{{src}}' not found." >&2; exit 1; }
+    base="$(basename "{{src}}")"
+    scp -i "$key" -o StrictHostKeyChecking=no "{{src}}" "$user@$host:/tmp/$base"
+    just --justfile "{{justfile()}}" _dgx-exec "docker cp /tmp/$base {{container}}:{{dest}} && echo 'copied -> {{container}}:{{dest}}'"
+
+# Copy a file OUT of a running container to a LOCAL path (docker cp -> Spark /tmp -> local).
+[no-cd]
+dgx-cp-out src local="." container="nexusdnn":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+    key="${DGX_KEY:-$HOME/.ssh/.dgx_session_key}"
+    user="${DGX_USER:-{{dgx_user}}}"; host="${DGX_HOST:-{{dgx_host}}}"
+    base="$(basename "{{src}}")"
+    just --justfile "{{justfile()}}" _dgx-exec "docker cp {{container}}:{{src}} /tmp/$base"
+    scp -i "$key" -o StrictHostKeyChecking=no "$user@$host:/tmp/$base" "{{local}}"
+    echo ">>> pulled -> {{local}}"
+
+# Curl a host API path from INSIDE the container (localhost:3000). method=GET by
+# default; body= a LOCAL json file sent as -d @ (avoids quoting JSON over ssh).
+# e.g. just dgx-api /api/v1/extensions/nexus.3d.trellis2/deployments/x/runs
+[no-cd]
+dgx-api path method="GET" body="" container="nexusdnn":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{body}}" ]; then
+        just --justfile "{{justfile()}}" dgx-cp-into "{{body}}" /tmp/_apibody.json "{{container}}" >/dev/null
+        just --justfile "{{justfile()}}" _dgx-exec "docker exec {{container}} curl -s -X {{method}} -H 'content-type: application/json' -d @/tmp/_apibody.json 'localhost:3000{{path}}'"
+    else
+        just --justfile "{{justfile()}}" _dgx-exec "docker exec {{container}} curl -s -X {{method}} 'localhost:3000{{path}}'"
+    fi
+
+# Trigger an extension install on the live host + print the install run id.
+[no-cd]
+dgx-ext-install ext container="nexusdnn":
+    @just --justfile "{{justfile()}}" _dgx-exec "docker exec {{container}} curl -s -X POST -H 'content-type: application/json' -d '{}' 'localhost:3000/api/v1/extensions/{{ext}}/install'; echo"
+
+# Inspect a GLB (local): metallicFactor + base-color mean + material/texture/image counts.
+[no-cd]
+glb-inspect glb:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python - "{{glb}}" <<'PY'
+    import json, struct, io, sys
+    d = open(sys.argv[1], "rb").read()
+    off = 12; jl, _ = struct.unpack("<II", d[off:off + 8]); off += 8
+    j = json.loads(d[off:off + jl]); off += jl
+    print("materials/textures/images:", len(j.get("materials", [])), len(j.get("textures", [])), len(j.get("images", [])))
+    for i, m in enumerate(j.get("materials", [])):
+        pbr = m.get("pbrMetallicRoughness", {})
+        print(f"  mat{i} metallicFactor={pbr.get('metallicFactor')} roughnessFactor={pbr.get('roughnessFactor')}")
+    try:
+        from PIL import Image
+        bl, _ = struct.unpack("<II", d[off:off + 8]); off += 8; bina = d[off:off + bl]
+        if j.get("images"):
+            bv = j["bufferViews"][j["images"][0]["bufferView"]]; s = bv.get("byteOffset", 0)
+            im = Image.open(io.BytesIO(bina[s:s + bv["byteLength"]])).convert("RGB")
+            px = list(im.getdata()); n = len(px)
+            print("  baseColor mean RGB:", tuple(round(sum(p[k] for p in px) / n, 1) for k in range(3)))
+    except Exception as e:
+        print("  (base-color skipped:", e, ")")
+    PY
+
+# Verify a builtin extension: worker pytest + web tsc/biome/vitest.
+[no-cd]
+ext-verify ext:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    w="$root/extensions/builtin/{{ext}}/worker"
+    if [ -d "$w" ]; then
+        echo "=== worker pytest ($w) ==="
+        ( cd "$w" && PYTHONPATH=src python -m pytest tests/ -q )
+    fi
+    web="$root/extensions/builtin/{{ext}}/web"
+    if [ -d "$web" ]; then just --justfile "{{justfile()}}" web-verify "$web"; fi
