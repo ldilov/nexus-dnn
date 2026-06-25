@@ -16,6 +16,8 @@ type ModelViewerAttributes = DetailedHTMLProps<
   "camera-controls"?: boolean;
   "auto-rotate"?: boolean;
   "shadow-intensity"?: string;
+  "environment-image"?: string;
+  "tone-mapping"?: string;
   exposure?: string;
 };
 

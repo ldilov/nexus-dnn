@@ -130,6 +130,12 @@ export const advanced = style({
   background: vars.color.surfaceMuted,
 });
 
+export const advancedBody = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.lg,
+});
+
 export const advancedHeader = style({
   display: "flex",
   alignItems: "center",

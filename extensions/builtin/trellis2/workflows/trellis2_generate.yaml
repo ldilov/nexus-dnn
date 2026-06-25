@@ -1,0 +1,32 @@
+specVersion: "0.1"
+workflow:
+  id: "trellis2_generate"
+  version: "1.0.0"
+  title: "TRELLIS 2 — Image to 3D"
+
+  inputs:
+    - name: "image"
+      type: "string"
+    - name: "params"
+      type: "object"
+
+  stages:
+    - id: "generate"
+      label: "Generate 3D"
+
+  nodes:
+    - id: "generate_3d"
+      operator: "trellis2.generate_3d@1.0.0"
+      stage: "generate"
+      inputs:
+        image:
+          from: "input:image"
+        params:
+          from: "input:params"
+      config: {}
+
+  outputs:
+    - name: "mesh_glb"
+      from: "generate_3d:mesh_glb"
+    - name: "metadata_json"
+      from: "generate_3d:metadata_json"

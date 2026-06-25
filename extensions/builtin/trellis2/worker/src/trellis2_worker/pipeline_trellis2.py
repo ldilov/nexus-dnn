@@ -166,9 +166,9 @@ def generate_real(
             preprocess_image=False,
             pipeline_type=validated.pipeline_type,
             max_num_tokens=validated.max_num_tokens,
-            sparse_structure_sampler_params={"steps": validated.sparse_steps},
-            shape_slat_sampler_params={"steps": validated.shape_steps},
-            tex_slat_sampler_params={"steps": validated.texture_steps},
+            sparse_structure_sampler_params=validated.stage_sampler_params("sparse"),
+            shape_slat_sampler_params=validated.stage_sampler_params("shape"),
+            tex_slat_sampler_params=validated.stage_sampler_params("texture"),
             **seed_kwarg,
         )
         mesh = outputs[0]

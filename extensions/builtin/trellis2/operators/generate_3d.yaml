@@ -46,6 +46,51 @@ inputs:
   - name: residency
     type: string
     required: false
+  - name: sparse_guidance_strength
+    type: number
+    required: false
+  - name: sparse_guidance_rescale
+    type: number
+    required: false
+  - name: sparse_rescale_t
+    type: number
+    required: false
+  - name: sparse_guidance_interval_start
+    type: number
+    required: false
+  - name: sparse_guidance_interval_end
+    type: number
+    required: false
+  - name: shape_guidance_strength
+    type: number
+    required: false
+  - name: shape_guidance_rescale
+    type: number
+    required: false
+  - name: shape_rescale_t
+    type: number
+    required: false
+  - name: shape_guidance_interval_start
+    type: number
+    required: false
+  - name: shape_guidance_interval_end
+    type: number
+    required: false
+  - name: texture_guidance_strength
+    type: number
+    required: false
+  - name: texture_guidance_rescale
+    type: number
+    required: false
+  - name: texture_rescale_t
+    type: number
+    required: false
+  - name: texture_guidance_interval_start
+    type: number
+    required: false
+  - name: texture_guidance_interval_end
+    type: number
+    required: false
 outputs:
   - name: mesh_glb
     type: string

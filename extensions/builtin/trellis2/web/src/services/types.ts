@@ -33,6 +33,26 @@ export interface GenerateParams {
   /** Bake a texture onto the mesh. MVP-0 default OFF (MeshOnly). */
   texture?: boolean;
   residency?: ResidencyProfile;
+
+  /** Per-stage classifier-free guidance levers. All OPTIONAL and opt-in: when a
+   * field is omitted the worker inherits the model's baked default for that
+   * stage. Sending a value overrides that tuned default, so the form must only
+   * include a key when the user actually fills it. */
+  sparse_guidance_strength?: number;
+  sparse_guidance_rescale?: number;
+  sparse_rescale_t?: number;
+  sparse_guidance_interval_start?: number;
+  sparse_guidance_interval_end?: number;
+  shape_guidance_strength?: number;
+  shape_guidance_rescale?: number;
+  shape_rescale_t?: number;
+  shape_guidance_interval_start?: number;
+  shape_guidance_interval_end?: number;
+  texture_guidance_strength?: number;
+  texture_guidance_rescale?: number;
+  texture_rescale_t?: number;
+  texture_guidance_interval_start?: number;
+  texture_guidance_interval_end?: number;
 }
 
 export type GenerationJobStatus =

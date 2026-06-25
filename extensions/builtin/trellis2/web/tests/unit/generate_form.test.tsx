@@ -143,6 +143,60 @@ describe("GenerateForm", () => {
     expect(params.simplify_target).toBe(100_000);
   });
 
+  test("omits guidance levers from the payload when their fields are left empty", async () => {
+    renderForm(true);
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
+
+    const [{ params }] = firstCall();
+    const guidanceKeys = Object.keys(params).filter(
+      (key) => key.includes("guidance") || key.endsWith("rescale_t"),
+    );
+    expect(guidanceKeys).toEqual([]);
+    expect(params).toEqual(DEFAULT_PARAMS);
+  });
+
+  test("includes only the guidance levers the user filled", async () => {
+    renderForm(true);
+    fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Guidance \(per-stage CFG\)/ }));
+
+    const strengthInputs = screen.getAllByLabelText("Strength", {
+      selector: "input",
+    }) as HTMLInputElement[];
+    const sparseStrength = strengthInputs[0];
+    if (!sparseStrength) throw new Error("no Strength input rendered");
+    fireEvent.change(sparseStrength, { target: { value: "9.5" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
+
+    const [{ params }] = firstCall();
+    expect(params.sparse_guidance_strength).toBe(9.5);
+    expect(params).not.toHaveProperty("shape_guidance_strength");
+    expect(params).not.toHaveProperty("sparse_guidance_interval_start");
+  });
+
+  test("drops a lone interval bound entered through the form", async () => {
+    renderForm(true);
+    fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Guidance \(per-stage CFG\)/ }));
+
+    const startInputs = screen.getAllByLabelText("Interval start", {
+      selector: "input",
+    }) as HTMLInputElement[];
+    const firstStart = startInputs[0];
+    if (!firstStart) throw new Error("no Interval start input rendered");
+    fireEvent.change(firstStart, { target: { value: "0.3" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
+
+    const [{ params }] = firstCall();
+    expect(params).not.toHaveProperty("sparse_guidance_interval_start");
+    expect(params).not.toHaveProperty("sparse_guidance_interval_end");
+  });
+
   test("gates Max tokens behind the 1536 cascade", () => {
     renderForm();
     fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));

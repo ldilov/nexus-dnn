@@ -1,6 +1,8 @@
+pub mod artifacts;
 pub mod capabilities;
 pub mod media;
 pub mod render;
+pub mod runs;
 pub mod uploads;
 
 use std::path::PathBuf;
@@ -57,6 +59,8 @@ pub fn build_router(state: AppState) -> Router {
         .merge(render::router())
         .merge(media::router())
         .merge(uploads::router())
+        .merge(runs::router())
+        .merge(artifacts::router())
         .with_state(state)
 }
 
@@ -72,5 +76,10 @@ pub fn http_routes() -> Vec<String> {
         "/generate/jobs/{job_id}/output".into(),
         "/media/{ref}".into(),
         "/uploads".into(),
+        "/deployments/{deployment_id}/runs".into(),
+        "/deployments/{deployment_id}/artifacts".into(),
+        "/deployments/{deployment_id}/artifacts.zip".into(),
+        "/deployments/{deployment_id}/artifacts/{job_id}".into(),
+        "/deployments/{deployment_id}/artifacts/{job_id}/download".into(),
     ]
 }

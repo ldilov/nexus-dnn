@@ -9,6 +9,7 @@ import {
 import { matchPreset, PRESETS } from "../../../domain/presets";
 import { useGenerateRequest } from "../../../store/generate_request_store";
 import type { GenerateParams } from "../../../services/types";
+import { GuidanceSection } from "./guidance_section";
 import { ImageUploader } from "./image_uploader";
 import * as styles from "./generate_form.css";
 
@@ -92,16 +93,19 @@ export function GenerateForm(): ReactElement {
           </span>
         </button>
         {advancedOpen && (
-          <div id={advancedId} className={styles.grid}>
-            {ADVANCED_FIELDS.map((spec) => (
-              <FieldControl
-                key={spec.key}
-                spec={spec}
-                value={params[spec.key] as FieldValue | undefined}
-                disabled={disabled || !isFieldActive(spec, params)}
-                onChange={(value) => applyChange(spec.key, value)}
-              />
-            ))}
+          <div id={advancedId} className={styles.advancedBody}>
+            <div className={styles.grid}>
+              {ADVANCED_FIELDS.map((spec) => (
+                <FieldControl
+                  key={spec.key}
+                  spec={spec}
+                  value={params[spec.key] as FieldValue | undefined}
+                  disabled={disabled || !isFieldActive(spec, params)}
+                  onChange={(value) => applyChange(spec.key, value)}
+                />
+              ))}
+            </div>
+            <GuidanceSection disabled={disabled} />
           </div>
         )}
       </section>

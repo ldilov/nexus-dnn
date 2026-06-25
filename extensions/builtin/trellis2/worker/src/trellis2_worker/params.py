@@ -5,6 +5,15 @@ The frozen operator (`trellis2.generate_3d@1.0.0`) inputs:
   shape_steps · simplify_target (default 1_000_000) · texture (bool, default
   false for MVP-0) · residency (low_vram|balanced).
 
+Guidance levers (per-stage CFG controls — sparse / shape / texture):
+  *_guidance_strength · *_guidance_rescale · *_rescale_t ·
+  *_guidance_interval_start / *_guidance_interval_end. Each maps 1:1 to the
+  `FlowEulerGuidanceIntervalSampler.sample()` kwargs that every stage's sampler
+  accepts (see reconviagen_pipeline.json: all three samplers are
+  FlowEulerGuidanceIntervalSampler). Unset (None) = inherit the model's baked
+  pipeline.json default, so the current render is byte-preserved unless the
+  operator opts in.
+
 Both the fake and the real (gb10-flash) backends validate through this same
 function so the fake E2E exercises the identical input contract.
 """
@@ -24,10 +33,26 @@ DEFAULT_PIPELINE_TYPE = "1024_cascade"
 VALID_PIPELINE_TYPES = ("512", "1024", "1024_cascade", "1536_cascade")
 VALID_RESIDENCY = ("low_vram", "balanced")
 
+MAX_GUIDANCE_STRENGTH = 100.0
+MAX_RESCALE_T = 10.0
+GUIDANCE_STAGES = ("sparse", "shape", "texture")
+
 
 class GenerateParams:
     """Validated, defaulted view of the operator inputs. Immutable-by-convention:
     callers read fields, never mutate the source params dict."""
+
+    _STAGE_GUIDANCE_SLOTS = tuple(
+        f"{stage}_{field}"
+        for stage in GUIDANCE_STAGES
+        for field in (
+            "guidance_strength",
+            "guidance_rescale",
+            "rescale_t",
+            "guidance_interval_start",
+            "guidance_interval_end",
+        )
+    )
 
     __slots__ = (
         "image_path",
@@ -43,6 +68,7 @@ class GenerateParams:
         "pipeline_type",
         "texture_steps",
         "max_num_tokens",
+        *_STAGE_GUIDANCE_SLOTS,
     )
 
     def __init__(self, **kw: Any) -> None:
@@ -51,6 +77,35 @@ class GenerateParams:
 
     def as_dict(self) -> dict[str, Any]:
         return {name: getattr(self, name) for name in self.__slots__}
+
+    def stage_sampler_params(self, stage: str) -> dict[str, Any]:
+        """Build the sampler_params dict for one stage (sparse|shape|texture).
+
+        Always carries `steps`. Each guidance lever is included ONLY when the
+        operator set it (non-None), so unset levers inherit the model's baked
+        pipeline defaults instead of overriding them. The interval is emitted as
+        [start, end] only when BOTH endpoints are provided.
+        """
+        steps = {
+            "sparse": self.sparse_steps,
+            "shape": self.shape_steps,
+            "texture": self.texture_steps,
+        }[stage]
+        out: dict[str, Any] = {"steps": steps}
+        strength = getattr(self, f"{stage}_guidance_strength")
+        if strength is not None:
+            out["guidance_strength"] = strength
+        rescale = getattr(self, f"{stage}_guidance_rescale")
+        if rescale is not None:
+            out["guidance_rescale"] = rescale
+        rescale_t = getattr(self, f"{stage}_rescale_t")
+        if rescale_t is not None:
+            out["rescale_t"] = rescale_t
+        lo = getattr(self, f"{stage}_guidance_interval_start")
+        hi = getattr(self, f"{stage}_guidance_interval_end")
+        if lo is not None and hi is not None:
+            out["guidance_interval"] = [lo, hi]
+        return out
 
 
 def _require_str(params: dict[str, Any], *keys: str) -> str:
@@ -71,6 +126,20 @@ def _coerce_int(value: Any, *, name: str, default: int, minimum: int = 1) -> int
     if out < minimum:
         raise ValueError(f"{name} must be >= {minimum}")
     return out
+
+
+def _coerce_opt_float(
+    value: Any, *, name: str, minimum: float, maximum: float
+) -> float | None:
+    """Coerce an optional float lever. None (unset) stays None so the stage
+    inherits the model's baked default; otherwise clamp into [minimum, maximum]."""
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+    return max(minimum, min(maximum, out))
 
 
 def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
@@ -130,6 +199,8 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
     except (TypeError, ValueError):
         raise ValueError("metallic must be a number in [0, 1]")
 
+    guidance = _validate_guidance(params)
+
     return GenerateParams(
         image_path=image_path,
         output_path=output_path,
@@ -144,4 +215,44 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
         pipeline_type=pipeline_type,
         texture_steps=texture_steps,
         max_num_tokens=max_num_tokens,
+        **guidance,
     )
+
+
+def _validate_guidance(params: dict[str, Any]) -> dict[str, float | None]:
+    """Validate the optional per-stage guidance levers. Returns a dict keyed by
+    the GenerateParams guidance slots — values are None when unset (inherit the
+    model's baked pipeline default) or clamped floats when provided."""
+    out: dict[str, float | None] = {}
+    for stage in GUIDANCE_STAGES:
+        out[f"{stage}_guidance_strength"] = _coerce_opt_float(
+            params.get(f"{stage}_guidance_strength"),
+            name=f"{stage}_guidance_strength",
+            minimum=0.0,
+            maximum=MAX_GUIDANCE_STRENGTH,
+        )
+        out[f"{stage}_guidance_rescale"] = _coerce_opt_float(
+            params.get(f"{stage}_guidance_rescale"),
+            name=f"{stage}_guidance_rescale",
+            minimum=0.0,
+            maximum=1.0,
+        )
+        out[f"{stage}_rescale_t"] = _coerce_opt_float(
+            params.get(f"{stage}_rescale_t"),
+            name=f"{stage}_rescale_t",
+            minimum=0.0,
+            maximum=MAX_RESCALE_T,
+        )
+        out[f"{stage}_guidance_interval_start"] = _coerce_opt_float(
+            params.get(f"{stage}_guidance_interval_start"),
+            name=f"{stage}_guidance_interval_start",
+            minimum=0.0,
+            maximum=1.0,
+        )
+        out[f"{stage}_guidance_interval_end"] = _coerce_opt_float(
+            params.get(f"{stage}_guidance_interval_end"),
+            name=f"{stage}_guidance_interval_end",
+            minimum=0.0,
+            maximum=1.0,
+        )
+    return out

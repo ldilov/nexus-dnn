@@ -18,6 +18,11 @@ import {
   startedState,
 } from "../domain/generate_state";
 import {
+  buildGuidancePatch,
+  type GuidanceDraft,
+  type GuidanceKey,
+} from "../domain/guidance";
+import {
   cancelGenerate,
   startGenerate,
   subscribeGenerateStream,
@@ -83,6 +88,8 @@ type GenerateParamsState = GenerateParams;
 
 interface GenerateRequestState {
   params: GenerateParamsState;
+  /** Raw per-stage guidance entries; empty string = unset (omitted from payload). */
+  guidanceDraft: GuidanceDraft;
   imageRef: string | null;
   imageName: string | null;
   generate: GenerateState;
@@ -94,6 +101,7 @@ interface GenerateRequestActions {
     value: GenerateParamsState[K],
   ) => void;
   applyParams: (patch: Partial<GenerateParamsState>) => void;
+  setGuidance: (key: GuidanceKey, raw: string) => void;
   setImage: (ref: string, name: string) => void;
   clearImage: () => void;
   startJob: () => Promise<void>;
@@ -112,6 +120,7 @@ interface ProviderProps {
 
 export function GenerateRequestProvider({ children }: ProviderProps): ReactElement {
   const [params, setParams] = useState<GenerateParamsState>(() => ({ ...DEFAULT_PARAMS }));
+  const [guidanceDraft, setGuidanceDraft] = useState<GuidanceDraft>({});
   const [imageRef, setImageRef] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
   const [generate, setGenerate] = useState<GenerateState>(INITIAL_STATE);
@@ -138,6 +147,10 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
     setParams((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const setGuidance = useCallback((key: GuidanceKey, raw: string) => {
+    setGuidanceDraft((prev) => ({ ...prev, [key]: raw }));
+  }, []);
+
   const setImage = useCallback((ref: string, name: string) => {
     setImageRef(ref);
     setImageName(name);
@@ -158,12 +171,13 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
   const startJob = useCallback(async () => {
     if (!imageRef) return;
     streamCleanup.current?.();
-    const body = { image: imageRef, params: { ...params } };
+    const guidance = buildGuidancePatch(guidanceDraft);
+    const body = { image: imageRef, params: { ...params, ...guidance } };
     const { jobId } = await startGenerate(body);
     setGenerate(startedState());
     persistActiveJob(jobId);
     subscribeToJob(jobId);
-  }, [imageRef, params, subscribeToJob]);
+  }, [imageRef, params, guidanceDraft, subscribeToJob]);
 
   const cancelJob = useCallback(async () => {
     const jobId = readActiveJobId();
@@ -248,11 +262,13 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
   const value = useMemo<GenerateRequestContextValue>(
     () => ({
       params,
+      guidanceDraft,
       imageRef,
       imageName,
       generate,
       updateParam,
       applyParams,
+      setGuidance,
       setImage,
       clearImage,
       startJob,
@@ -262,11 +278,13 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
     }),
     [
       params,
+      guidanceDraft,
       imageRef,
       imageName,
       generate,
       updateParam,
       applyParams,
+      setGuidance,
       setImage,
       clearImage,
       startJob,

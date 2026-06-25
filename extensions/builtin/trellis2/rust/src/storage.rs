@@ -236,6 +236,20 @@ impl Store {
         Ok(rows.iter().map(map_job_row).collect())
     }
 
+    /// Detach a job's produced GLB from the artifacts listing by nulling its
+    /// `output_glb_ref`. Returns `true` when a ref was cleared. The history row
+    /// (and its status/timestamps) is kept so the run still shows in Runs.
+    pub async fn clear_output(&self, job_id: &str) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE ext_trellis2__generation_jobs SET output_glb_ref = NULL \
+             WHERE job_id = ? AND output_glb_ref IS NOT NULL",
+        )
+        .bind(job_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Remove a generation job row from history. Returns `true` when a row was
     /// deleted. The produced GLB (if any) is left on disk — this only drops the
     /// history entry.
