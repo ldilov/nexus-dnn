@@ -78,3 +78,44 @@ export const toggleThumb = style({
     "[aria-checked='true'] &": { transform: "translateX(20px)" },
   },
 });
+
+export const advanced = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.lg,
+  padding: vars.space.md,
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceMuted,
+});
+
+export const advancedHeader = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.md,
+  width: "100%",
+  padding: 0,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  color: vars.color.text,
+});
+
+export const advancedTitle = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  color: vars.color.textMuted,
+});
+
+export const advancedChevron = style({
+  fontFamily: "'Material Symbols Outlined'",
+  fontSize: "20px",
+  lineHeight: 1,
+  color: vars.color.textMuted,
+  transition: `transform ${vars.motion.fast}`,
+  selectors: {
+    "&[data-open='true']": { transform: "rotate(180deg)" },
+  },
+});

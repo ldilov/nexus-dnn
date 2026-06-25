@@ -14,9 +14,14 @@ from typing import Any
 
 DEFAULT_SPARSE_STEPS = 12
 DEFAULT_SHAPE_STEPS = 12
+DEFAULT_TEXTURE_STEPS = 12
 DEFAULT_SIMPLIFY_TARGET = 1_000_000
 NVDIFFRAST_FACE_LIMIT = 16_777_216
 DEFAULT_TEXTURE_SIZE = 2048
+MAX_TEXTURE_SIZE = 8192
+DEFAULT_MAX_NUM_TOKENS = 49152
+DEFAULT_PIPELINE_TYPE = "1024_cascade"
+VALID_PIPELINE_TYPES = ("512", "1024", "1024_cascade", "1536_cascade")
 VALID_RESIDENCY = ("low_vram", "balanced")
 
 
@@ -35,6 +40,9 @@ class GenerateParams:
         "residency",
         "texture_size",
         "metallic",
+        "pipeline_type",
+        "texture_steps",
+        "max_num_tokens",
     )
 
     def __init__(self, **kw: Any) -> None:
@@ -98,9 +106,23 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
     if residency not in VALID_RESIDENCY:
         raise ValueError(f"residency must be one of {VALID_RESIDENCY}")
 
+    texture_steps = _coerce_int(
+        params.get("texture_steps"), name="texture_steps", default=DEFAULT_TEXTURE_STEPS
+    )
     texture_size = _coerce_int(
         params.get("texture_size"), name="texture_size", default=DEFAULT_TEXTURE_SIZE
     )
+    texture_size = min(texture_size, MAX_TEXTURE_SIZE)
+    max_num_tokens = _coerce_int(
+        params.get("max_num_tokens"),
+        name="max_num_tokens",
+        default=DEFAULT_MAX_NUM_TOKENS,
+        minimum=0,
+    )
+
+    pipeline_type = params.get("pipeline_type") or DEFAULT_PIPELINE_TYPE
+    if pipeline_type not in VALID_PIPELINE_TYPES:
+        raise ValueError(f"pipeline_type must be one of {VALID_PIPELINE_TYPES}")
 
     metallic_raw = params.get("metallic", 0.0)
     try:
@@ -119,4 +141,7 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
         residency=residency,
         texture_size=texture_size,
         metallic=metallic,
+        pipeline_type=pipeline_type,
+        texture_steps=texture_steps,
+        max_num_tokens=max_num_tokens,
     )

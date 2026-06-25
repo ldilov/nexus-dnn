@@ -16,13 +16,25 @@ inputs:
   - name: seed
     type: integer
     required: false
+  - name: pipeline_type
+    type: string
+    required: false
   - name: sparse_steps
     type: integer
     required: false
   - name: shape_steps
     type: integer
     required: false
+  - name: texture_steps
+    type: integer
+    required: false
+  - name: max_num_tokens
+    type: integer
+    required: false
   - name: simplify_target
+    type: integer
+    required: false
+  - name: texture_size
     type: integer
     required: false
   - name: texture

@@ -155,11 +155,14 @@ def generate_real(
         # upstream run() has no pbar; steps go via sampler params. Cancel is
         # coarse (checked between worker stages, not inside the sampler loop).
         seed_kwarg = {"seed": validated.seed} if validated.seed is not None else {}
-        ss_params = {"steps": validated.sparse_steps} if validated.sparse_steps else {}
         outputs = pipeline.run(
             image,
             preprocess_image=False,
-            sparse_structure_sampler_params=ss_params,
+            pipeline_type=validated.pipeline_type,
+            max_num_tokens=validated.max_num_tokens,
+            sparse_structure_sampler_params={"steps": validated.sparse_steps},
+            shape_slat_sampler_params={"steps": validated.shape_steps},
+            tex_slat_sampler_params={"steps": validated.texture_steps},
             **seed_kwarg,
         )
         mesh = outputs[0]
