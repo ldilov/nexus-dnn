@@ -1,0 +1,120 @@
+spec_version: "0.1"
+extension:
+  id: "nexus.3d.trellis2"
+  version: "0.1.0"
+  name: "TRELLIS 2 — Image to 3D"
+  description: "Image-to-3D mesh generation via Microsoft TRELLIS.2 (4B flow-matching, O-Voxel sparse structure). Native sm_121 kernels for GB10/Blackwell; outputs GLB."
+  publisher: "nexus"
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+runtime:
+  family: "native"
+  entrypoint: "bin/nexus-3d-trellis2-worker${exe_suffix}"
+  environment:
+    cuda_version: null
+    env_vars: {}
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        # 3.12 so the vendored cp312 aarch64 kernel + flash-attn wheels resolve
+        # without a source build (binaries/linux-aarch64/).
+        version: ">=3.12,<3.13"
+        accelerator_profiles: [cpu, cuda13]
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "worker/pyproject.toml"
+        lock_path: "worker/uv.lock"
+        target: extension_local
+        # P0 stack: torch 2.12/cu132 + transformers==4.56.0 + vendored kernels +
+        # flash_attn. Base deps alone cover the `fake` backend.
+        extras: [trellis, flash]
+    - id: model_trellis
+      type: model_artifact
+      requires: [python]
+      spec:
+        # from_pretrained pulls the repo (flow models + decoders + pipeline.json).
+        family_id: "huggingface:microsoft/TRELLIS.2-4B"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_sparse_decoder
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:microsoft/TRELLIS-image-large"
+        acceleration_match: "matches_runtime_step:python"
+        files:
+          - "ckpts/ss_dec_conv3d_16l8_fp16.safetensors"
+          - "ckpts/ss_dec_conv3d_16l8_fp16.json"
+    - id: model_dinov3
+      type: model_artifact
+      requires: [python]
+      spec:
+        # GATED (Meta) — operator HF token must hold the grant. Non-gated mirror
+        # kiennt120/dinov3-vitl16-pretrain-lvd1689m is the dev fallback (P0-COMPLETE).
+        family_id: "huggingface:facebook/dinov3-vitl16-pretrain-lvd1689m"
+        acceleration_match: "matches_runtime_step:python"
+    - id: validate
+      type: validation
+      requires: [python, pkgs, model_trellis, model_sparse_decoder, model_dinov3]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 120
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+  - "process.spawn"
+  - "gpu.compute"
+  - "huggingface.search"
+  - "huggingface.install"
+  - "model.registry.read"
+  - "storage.schema_contribute"
+backend_runtimes:
+  - runtime_id: "nexus.3d.trellis2.gb10-flash"
+    display_name: "TRELLIS 2 i2v (GB10 / Blackwell sm_121, flash-attn)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/trellis2_worker/__main__.py"
+    version_manifest: "backends/gb10-flash/versions.yaml"
+    capability_tags: ["3d-generation", "image-to-3d", "mesh", "trellis", "blackwell"]
+    supported_roles: ["mesh.generate"]
+  - runtime_id: "nexus.3d.trellis2.fake"
+    display_name: "TRELLIS 2 Fake (CI / development)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/trellis2_worker/__main__.py"
+    version_manifest: "backends/fake/versions.yaml"
+    capability_tags: ["3d-generation", "image-to-3d", "fake"]
+    supported_roles: ["mesh.generate"]
+operators:
+  - file: "operators/generate_3d.yaml"
+recipes:
+  - file: "recipes/trellis2_generate.yaml"
+ui:
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
+  assets:
+    root: "web/dist"
+  custom_elements:
+    - tag: "trellis2-app"
+      module: "trellis2.js"
+      entry: "register"
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "trellis2"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_generation_jobs"
+        path: "storage/migrations/001_generation_jobs.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"
