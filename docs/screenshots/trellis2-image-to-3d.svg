@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 880" font-family="Inter, system-ui, -apple-system, sans-serif" role="img" aria-label="TRELLIS 2 — image to 3D generative surface">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8455ef" stop-opacity="0.30"/>
+      <stop offset="68%" stop-color="#8455ef" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vp" cx="32%" cy="20%" r="120%">
+      <stop offset="0%" stop-color="#15181b"/>
+      <stop offset="70%" stop-color="#0a0c0e"/>
+    </radialGradient>
+    <linearGradient id="accentBtn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4abff"/>
+      <stop offset="100%" stop-color="#a886f7"/>
+    </linearGradient>
+    <clipPath id="vpClip"><rect x="40" y="170" width="700" height="300" rx="16"/></clipPath>
+    <style>
+      .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+      .faint{fill:#747578}
+      .muted{fill:#aaabae}
+      .ink{fill:#f0f0f3}
+      .accent{fill:#ba9eff}
+      .eyebrow{letter-spacing:2.4px}
+      .lbl{letter-spacing:1.2px}
+    </style>
+  </defs>
+
+  <!-- stage -->
+  <rect width="1280" height="880" fill="#0c0e10"/>
+  <ellipse cx="120" cy="60" rx="430" ry="430" fill="url(#glow)"/>
+
+  <!-- hero -->
+  <text x="40" y="52" class="mono faint eyebrow" font-size="11">GENERATIVE SURFACE · IMAGE TO 3D</text>
+  <text x="38" y="104" class="ink" font-size="46" font-weight="600" letter-spacing="-1">TRELLIS 2</text>
+  <text x="40" y="136" class="muted" font-size="15">Turn a single image into a watertight 3D mesh with Microsoft TRELLIS.2. Upload a subject, tune the flow, export a GLB.</text>
+
+  <!-- generate / workflow pill -->
+  <rect x="1042" y="58" width="198" height="40" rx="12" fill="#111416"/>
+  <rect x="1046" y="62" width="104" height="32" rx="9" fill="#1d2023"/>
+  <text x="1098" y="83" class="ink" font-size="13" font-weight="600" text-anchor="middle">Generate</text>
+  <text x="1198" y="83" class="muted" font-size="13" font-weight="500" text-anchor="middle">Workflow</text>
+
+  <!-- ===== preview stage ===== -->
+  <rect x="40" y="170" width="1200" height="300" rx="16" fill="#111416"/>
+  <!-- viewport -->
+  <g clip-path="url(#vpClip)">
+    <rect x="40" y="170" width="700" height="300" fill="url(#vp)"/>
+    <g stroke="#ba9eff" stroke-opacity="0.06" stroke-width="1">
+      <line x1="40" y1="230" x2="740" y2="230"/><line x1="40" y1="270" x2="740" y2="270"/>
+      <line x1="40" y1="310" x2="740" y2="310"/><line x1="40" y1="350" x2="740" y2="350"/>
+      <line x1="40" y1="390" x2="740" y2="390"/><line x1="40" y1="430" x2="740" y2="430"/>
+      <line x1="180" y1="170" x2="180" y2="470"/><line x1="260" y1="170" x2="260" y2="470"/>
+      <line x1="340" y1="170" x2="340" y2="470"/><line x1="420" y1="170" x2="420" y2="470"/>
+      <line x1="500" y1="170" x2="500" y2="470"/>
+    </g>
+    <ellipse cx="340" cy="438" rx="118" ry="16" fill="#000000" opacity="0.45"/>
+    <ellipse cx="320" cy="300" rx="150" ry="150" fill="#8455ef" opacity="0.07"/>
+    <!-- faceted low-poly mesh -->
+    <g stroke="#0b0d0f" stroke-width="0.8" stroke-linejoin="round">
+      <polygon points="340,316 302,296 342,270" fill="#4f4373"/>
+      <polygon points="340,316 342,270 382,294" fill="#38324e"/>
+      <polygon points="340,316 382,294 378,346" fill="#24272c"/>
+      <polygon points="340,316 378,346 338,368" fill="#15181a"/>
+      <polygon points="340,316 338,368 298,342" fill="#1b1e21"/>
+      <polygon points="340,316 298,342 302,296" fill="#2c2e3c"/>
+      <polygon points="342,270 382,294 398,224" fill="#322d49"/>
+      <polygon points="382,294 450,314 398,224" fill="#262931"/>
+      <polygon points="382,294 378,346 450,314" fill="#232629"/>
+      <polygon points="378,346 388,416 450,314" fill="#17191c"/>
+      <polygon points="378,346 338,368 388,416" fill="#131517"/>
+      <polygon points="338,368 282,406 388,416" fill="#111315"/>
+      <polygon points="338,368 298,342 282,406" fill="#181b1e"/>
+      <polygon points="298,342 228,328 282,406" fill="#1d2024"/>
+      <polygon points="298,342 302,296 228,328" fill="#2a2c3a"/>
+      <polygon points="302,296 294,222 228,328" fill="#383350"/>
+      <polygon points="302,296 342,270 294,222" fill="#463f68"/>
+      <polygon points="342,270 398,224 294,222" fill="#3a3457"/>
+    </g>
+    <!-- violet rim highlight -->
+    <g stroke="#ba9eff" stroke-opacity="0.55" stroke-width="1.4" fill="none" stroke-linejoin="round">
+      <polyline points="228,328 294,222 398,224"/>
+    </g>
+    <text x="64" y="196" class="mono faint eyebrow" font-size="9.5">OUTPUT · GLB MESH</text>
+  </g>
+
+  <!-- meta panel -->
+  <line x1="740" y1="186" x2="740" y2="454" stroke="#46484a" stroke-opacity="0.25"/>
+  <circle cx="774" cy="212" r="4.5" class="" fill="#22c55e"/>
+  <text x="788" y="217" class="ink" font-size="17" font-weight="600">Mesh ready</text>
+  <text x="774" y="240" class="mono faint" font-size="11">01KVZFBTNT6PBSBDA99EG2T3X7</text>
+  <g class="mono">
+    <line x1="774" y1="270" x2="1208" y2="270" stroke="#46484a" stroke-opacity="0.22"/>
+    <text x="774" y="292" class="faint lbl" font-size="9.5">FORMAT</text>
+    <text x="1208" y="292" class="ink" font-size="12" text-anchor="end">GLB · textured</text>
+    <line x1="774" y1="308" x2="1208" y2="308" stroke="#46484a" stroke-opacity="0.22"/>
+    <text x="774" y="330" class="faint lbl" font-size="9.5">TRIANGLES</text>
+    <text x="1208" y="330" class="ink" font-size="12" text-anchor="end">982,104</text>
+    <line x1="774" y1="346" x2="1208" y2="346" stroke="#46484a" stroke-opacity="0.22"/>
+    <text x="774" y="368" class="faint lbl" font-size="9.5">VERTICES</text>
+    <text x="1208" y="368" class="ink" font-size="12" text-anchor="end">491,220</text>
+  </g>
+  <rect x="774" y="410" width="434" height="42" rx="10" fill="url(#accentBtn)"/>
+  <text x="991" y="436" font-size="13.5" font-weight="600" fill="#39008c" text-anchor="middle">↓  Download GLB</text>
+
+  <!-- ===== new mesh card ===== -->
+  <rect x="40" y="490" width="724" height="350" rx="16" fill="#111416"/>
+  <text x="66" y="524" class="mono faint eyebrow" font-size="10">OPERATOR · TRELLIS2.GENERATE_3D</text>
+  <text x="64" y="552" class="ink" font-size="21" font-weight="600">New mesh</text>
+  <text x="66" y="576" class="muted" font-size="13">One image in, one watertight GLB out.</text>
+
+  <text x="66" y="606" class="mono faint lbl" font-size="9.5">INPUT IMAGE</text>
+  <rect x="64" y="616" width="676" height="64" rx="12" fill="#000000"/>
+  <rect x="64.5" y="616.5" width="675" height="63" rx="11.5" fill="none" stroke="#46484a" stroke-opacity="0.22"/>
+  <rect x="78" y="626" width="44" height="44" rx="9" fill="#6b5840"/>
+  <rect x="78" y="626" width="44" height="44" rx="9" fill="#c98b5a" opacity="0.5"/>
+  <text x="138" y="644" class="mono ink" font-size="12.5">subject_649219638.png</text>
+  <text x="138" y="662" class="mono faint" font-size="10.5">uploads/d6f365d8e8f7651a6023026e5b…</text>
+  <rect x="654" y="631" width="74" height="34" rx="8" fill="#1d2023"/>
+  <text x="691" y="652" class="muted" font-size="12.5" font-weight="600" text-anchor="middle">Replace</text>
+
+  <text x="66" y="712" class="mono faint lbl" font-size="9.5">GENERATION</text>
+  <!-- seed -->
+  <text x="66" y="738" class="mono faint lbl" font-size="9.5">SEED</text>
+  <rect x="64" y="748" width="210" height="44" rx="9" fill="#000000"/>
+  <rect x="64.5" y="748.5" width="209" height="43" rx="8.5" fill="none" stroke="#46484a" stroke-opacity="0.22"/>
+  <text x="80" y="775" class="mono ink" font-size="16" font-weight="600">0</text>
+  <!-- sparse steps slider -->
+  <text x="306" y="738" class="mono faint lbl" font-size="9.5">SPARSE STEPS</text>
+  <text x="740" y="738" class="mono accent" font-size="13" text-anchor="end" font-weight="700">16</text>
+  <rect x="306" y="766" width="434" height="5" rx="2.5" fill="#000000"/>
+  <rect x="306" y="766" width="150" height="5" rx="2.5" fill="#ba9eff"/>
+  <circle cx="456" cy="768.5" r="8" fill="#ba9eff"/>
+  <circle cx="456" cy="768.5" r="12" fill="#ba9eff" opacity="0.16"/>
+  <!-- bake texture -->
+  <text x="306" y="792" class="muted" font-size="11">Bake texture · runs the texture pass for a fully shaded GLB</text>
+
+  <!-- generate button -->
+  <rect x="624" y="790" width="116" height="40" rx="10" fill="url(#accentBtn)"/>
+  <text x="682" y="815" font-size="13.5" font-weight="600" fill="#39008c" text-anchor="middle">Generate</text>
+
+  <!-- ===== history card ===== -->
+  <rect x="780" y="490" width="460" height="350" rx="16" fill="#111416"/>
+  <text x="806" y="524" class="ink" font-size="21" font-weight="600">History</text>
+  <text x="806" y="548" class="muted" font-size="13">Past generations and their GLB downloads.</text>
+
+  <!-- row factory -->
+  <g>
+    <rect x="800" y="566" width="420" height="52" rx="10" fill="#000000" fill-opacity="0.35"/>
+    <rect x="812" y="578" width="28" height="28" rx="7" fill="#171a1c"/>
+    <text x="826" y="596" class="mono faint" font-size="8" text-anchor="middle">3D</text>
+    <text x="852" y="588" class="mono ink" font-size="11.5">01KVZJ1RVA7ZB1G8VQVX1CMZPV</text>
+    <text x="852" y="604" class="mono faint" font-size="10">seed 0 · 16 sparse · textured</text>
+    <rect x="1088" y="582" width="64" height="20" rx="10" fill="#ba9eff" fill-opacity="0.16"/>
+    <text x="1120" y="596" class="accent" font-size="10.5" font-weight="600" text-anchor="middle">running</text>
+    <text x="1196" y="596" class="faint" font-size="14" text-anchor="middle">↓</text>
+  </g>
+  <g>
+    <rect x="800" y="624" width="420" height="52" rx="10" fill="#000000" fill-opacity="0.35"/>
+    <rect x="812" y="636" width="28" height="28" rx="7" fill="#171a1c"/>
+    <text x="826" y="654" class="mono faint" font-size="8" text-anchor="middle">3D</text>
+    <text x="852" y="646" class="mono ink" font-size="11.5">01KVZFBTNT6PBSBDA99EG2T3X7</text>
+    <text x="852" y="662" class="mono faint" font-size="10">seed 42 · 12 sparse · 982k faces</text>
+    <rect x="1080" y="640" width="72" height="20" rx="10" fill="#22c55e" fill-opacity="0.16"/>
+    <text x="1116" y="654" font-size="10.5" font-weight="600" fill="#22c55e" text-anchor="middle">succeeded</text>
+    <text x="1196" y="654" class="accent" font-size="14" text-anchor="middle">↓</text>
+  </g>
+  <g>
+    <rect x="800" y="682" width="420" height="52" rx="10" fill="#000000" fill-opacity="0.35"/>
+    <rect x="812" y="694" width="28" height="28" rx="7" fill="#171a1c"/>
+    <text x="826" y="712" class="mono faint" font-size="8" text-anchor="middle">3D</text>
+    <text x="852" y="704" class="mono ink" font-size="11.5">01KVZDX87K95TRCCJMDYJ4VQKN</text>
+    <text x="852" y="720" class="mono faint" font-size="10">seed 42 · 12 sparse · mesh only</text>
+    <rect x="1090" y="698" width="62" height="20" rx="10" fill="#22c55e" fill-opacity="0.16"/>
+    <text x="1121" y="712" font-size="10.5" font-weight="600" fill="#22c55e" text-anchor="middle">succeeded</text>
+    <text x="1196" y="712" class="accent" font-size="14" text-anchor="middle">↓</text>
+  </g>
+  <g>
+    <rect x="800" y="740" width="420" height="52" rx="10" fill="#000000" fill-opacity="0.35"/>
+    <rect x="812" y="752" width="28" height="28" rx="7" fill="#171a1c"/>
+    <text x="826" y="770" class="mono faint" font-size="8" text-anchor="middle">3D</text>
+    <text x="852" y="762" class="mono ink" font-size="11.5">01KVZC7TEG1SBCSD2V4PQK2TSD</text>
+    <text x="852" y="778" class="mono faint" font-size="10">seed 7 · 20 sparse · mesh only</text>
+    <rect x="1094" y="756" width="58" height="20" rx="10" fill="#ff8439" fill-opacity="0.16"/>
+    <text x="1123" y="770" font-size="10.5" font-weight="600" fill="#ff8439" text-anchor="middle">failed</text>
+    <text x="1196" y="770" class="faint" font-size="14" text-anchor="middle">↓</text>
+  </g>
+</svg>

@@ -11,6 +11,7 @@
   <img alt="Video" src="https://img.shields.io/badge/🎬%20Video-SVI2--Pro%20·%20LongCat%20·%20LTX--2.3-ff5c5c.svg">
   <img alt="LLM" src="https://img.shields.io/badge/🧠%20LLM-llama.cpp%20%2B%20MTP-8b5cf6.svg">
   <img alt="Voice" src="https://img.shields.io/badge/🎤%20Voice-IndexTTS--2-22c55e.svg">
+  <img alt="3D" src="https://img.shields.io/badge/🧊%203D-TRELLIS%202%20(image%E2%86%923D)-ba9eff.svg">
   <img alt="Image" src="https://img.shields.io/badge/🎨%20Image-SD%20%2B%20FLUX%20(soon)-f59e0b.svg">
 </p>
 
@@ -21,6 +22,7 @@
   - [🎬 Video Generation](#-video-generation) — SVI2-Pro · LongCat · LTX-2.3, RIFE frame-gen, RTX ×2/×4 upscale
   - [🧠 LLM Inference](#-llm-inference) — llama.cpp + speculative decoding (MTP)
   - [🎤 Voice Generation (EmotionTTS)](#-voice-generation-emotiontts) — IndexTTS-2 emotion vectors + storyboard
+  - [🧊 Image-to-3D](#-image-to-3d) — Microsoft TRELLIS.2, single image → watertight GLB mesh
   - [🎨 Image Generation](#-image-generation) — Stable Diffusion · FLUX (coming soon)
 - [✨ What nexus-dnn Is For](#-what-nexus-dnn-is-for)
 - [🧭 System At A Glance](#-system-at-a-glance)
@@ -113,6 +115,7 @@ Today that means the repo can host:
 - Host-managed backend runtime leasing
 - Emotional TTS pipelines
 - Image-to-video and long-video generation flows
+- Image-to-3D mesh generation (single image → watertight GLB)
 - Extension-owned UI surfaces mounted inside the host app
 
 ## 🧩 Supported Capabilities
@@ -124,6 +127,7 @@ Everything below runs **locally**, on a single consumer GPU, behind the same hos
 | 🎬 **[Video Generation](#-video-generation)** | SVI2-Pro · LongCat · LTX-2.3 | Text→Video, Image→Video, **infinite length**, **RIFE** frame-gen, **RTX ×2/×4** upscale | 🟢 Stable |
 | 🧠 **[LLM Inference](#-llm-inference)** | llama.cpp | **Speculative decoding via MTP**, GGUF, host-managed runtime leases | 🟢 Stable |
 | 🎤 **[Voice Generation](#-voice-generation-emotiontts)** | IndexTTS-2 (EmotionTTS) | **8-axis emotion vectors**, **storyboard**, custom-voice upload | 🟢 Stable |
+| 🧊 **[Image-to-3D](#-image-to-3d)** | Microsoft TRELLIS.2 | Single image → **watertight GLB**, mesh-only or **textured**, triangle-budget decimation, in-browser **3D preview** | 🟢 Stable |
 | 🎨 **[Image Generation](#-image-generation)** | Stable Diffusion · FLUX | Text→Image | 🟠 Coming soon |
 
 ---
@@ -177,6 +181,36 @@ State-of-the-art emotional text-to-speech via **IndexTTS-2**, running in a host-
 
 ---
 
+### 🧊 Image-to-3D
+
+> `nexus.3d.trellis2` · operator `trellis2.generate_3d`
+
+Turn a **single image** into a **watertight 3D mesh** with **Microsoft TRELLIS.2** (a 4B
+flow-matching model over an O-Voxel sparse structure), then orbit and download the result as a
+**GLB** — all on a local GPU.
+
+<p align="center">
+  <img alt="TRELLIS 2 — image-to-3D generative surface" src="docs/screenshots/trellis2-image-to-3d.svg" width="100%">
+</p>
+
+- 🧊 **Single image → watertight GLB** — upload a subject on a clean background; the pipeline runs
+  image → sparse structure → shape → mesh decode → GLB export and returns a downloadable artifact.
+- 🎚️ **Tunable flow** — sparse-structure and shape flow steps, deterministic seed, and a
+  **triangle-budget** decimation target for light, game-ready meshes.
+- 🎨 **Mesh-only or textured** — skip the texture pass for a fast `MeshOnly` GLB, or bake a full
+  PBR texture for a shaded result.
+- 🧭 **In-browser 3D preview** — every result renders in an interactive `<model-viewer>` (orbit,
+  auto-rotate, neutral/ACES tone-mapping, exposure) with a live FORMAT / TRIANGLES / VERTICES
+  readout and one-click GLB download.
+- 🛡️ **Host-managed** — install, runtime lease, storage, and `/media` artifact serving all flow
+  through the same host foundation as the video and LLM stacks.
+
+Validated end-to-end on the **DGX Spark (GB10, aarch64 Blackwell `sm_121`)** with vendored native
+kernels. See [`extensions/builtin/trellis2/README.md`](extensions/builtin/trellis2/README.md), or
+open the standalone showcase: [`docs/showcase/trellis2-image-to-3d.html`](docs/showcase/trellis2-image-to-3d.html).
+
+---
+
 ### 🎨 Image Generation
 
 > 🟠 Coming soon
@@ -215,6 +249,15 @@ flowchart LR
 ## 🖼️ UI Screenshots
 
 <table>
+<tr>
+<td align="center" colspan="2">
+
+**Image-to-3D — TRELLIS 2 generative surface**
+
+![Image-to-3D](docs/screenshots/trellis2-image-to-3d.svg)
+
+</td>
+</tr>
 <tr>
 <td align="center" width="50%">
 
@@ -290,6 +333,7 @@ flowchart LR
 | `nexus.video.ltx23` | 🟢 active product surface | LTX 2.3 image-to-video with host-managed runtime profiles |
 | `nexus.video.longcat` | 🟡 active extension, still evolving | LongCat-based long-video generation paths |
 | `nexus.video.svi2-pro` | 🟡 advanced / high-requirement path | SVI 2.0 Pro image-to-video for Blackwell-focused setups |
+| `nexus.3d.trellis2` | 🟢 active product surface | Image→3D mesh generation (Microsoft TRELLIS.2), GLB export, in-app 3D viewer |
 
 Several of these extensions ship more than operators:
 

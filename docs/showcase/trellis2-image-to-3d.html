@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nexus-dnn · Image-to-3D (TRELLIS 2) — showcase</title>
+  <style>
+    :root {
+      --surface: #0c0e10;
+      --surface-low: #111416;
+      --ink: #f0f0f3;
+      --muted: #aaabae;
+      --faint: #747578;
+      --accent: #ba9eff;
+      --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(620px 620px at 8% -6%, rgba(132,85,239,0.18), transparent 68%),
+        var(--surface);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      padding: 48px 24px 64px;
+    }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    h1 { margin: 8px 0 0; font-size: clamp(2rem, 1.4rem + 2.4vw, 2.875rem); font-weight: 600; letter-spacing: -0.02em; }
+    p.lede { margin: 12px 0 0; max-width: 64ch; color: var(--muted); font-size: 15px; line-height: 1.55; text-align: center; }
+    figure {
+      margin: 12px 0 0;
+      width: min(1280px, 100%);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    }
+    figure img { display: block; width: 100%; height: auto; }
+    .meta { color: var(--faint); font-family: var(--font-mono); font-size: 12px; }
+    .meta a { color: var(--accent); text-decoration: none; }
+    .meta a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header style="display:flex;flex-direction:column;align-items:center;text-align:center;">
+    <span class="eyebrow">GENERATIVE SURFACE · IMAGE TO 3D</span>
+    <h1>TRELLIS 2</h1>
+    <p class="lede">
+      Turn a single image into a watertight 3D mesh with Microsoft TRELLIS.2 — orbit the result in
+      an in-browser preview and export a GLB, all on a local GPU. This is a static showcase of the
+      live <code>nexus.3d.trellis2</code> extension surface.
+    </p>
+  </header>
+
+  <figure>
+    <img src="../screenshots/trellis2-image-to-3d.svg" alt="TRELLIS 2 image-to-3D generative surface">
+  </figure>
+
+  <p class="meta">
+    operator <strong>trellis2.generate_3d</strong> ·
+    <a href="../../extensions/builtin/trellis2/README.md">extension README</a> ·
+    <a href="../../README.md#-image-to-3d">capability docs</a>
+  </p>
+</body>
+</html>
