@@ -43,6 +43,13 @@
 
 `uv` matters because several built-in extensions use host-managed Python environments.
 
+> **GPU / production install?** See
+> [docs/deployment/container-and-cuda-dependencies.md](docs/deployment/container-and-cuda-dependencies.md)
+> → "Installation by platform". On **linux-aarch64 (DGX Spark)** run the
+> container (`just dgx-deploy`); on **Windows** use the native build script
+> [`dockerfiles/win64.build.ps1`](dockerfiles/win64.build.ps1) (no Windows
+> container — CUDA is Linux-container-only).
+
 ### 2. Clone and start
 
 ```bash
