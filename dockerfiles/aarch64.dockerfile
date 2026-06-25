@@ -60,13 +60,13 @@ RUN for pj in extensions/builtin/*/web/package.json; do \
 RUN cargo build --release -p nexus-core --bin nexus-dnn \
  && cp target/release/nexus-dnn /usr/local/bin/nexus-dnn
 
-# CUDA 13 runtime base: provides system libcudart/libcublas/libcublasLt.so.13
-# that the prebuilt stable-diffusion.cpp `sd` binary links against. torch-based
-# extensions bring their own bundled CUDA libs in-venv and are unaffected.
-FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04 AS runtime
+# CUDA 13 DEVEL base: nvcc + headers for runtime JIT (trellis2 nvdiffrast plugin);
+# also carries libcudart/libcublas.so.13 for the prebuilt `sd`. GL libs = utils3d glcontext.
+FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ffmpeg gcc g++ make git curl ca-certificates xz-utils libssl3 \
+      ffmpeg gcc g++ make git curl ca-certificates xz-utils libssl3 libgomp1 \
+      libx11-dev libgl1-mesa-dev libegl1-mesa-dev libglu1-mesa-dev \
  && rm -rf /var/lib/apt/lists/*
 RUN printf '#!/bin/sh\nexec cc "$@"\n'  > /usr/local/bin/clang   && chmod +x /usr/local/bin/clang \
  && printf '#!/bin/sh\nexec c++ "$@"\n' > /usr/local/bin/clang++ && chmod +x /usr/local/bin/clang++
