@@ -102,6 +102,8 @@ async def generate_fake_e2e(
         faces=faces,
         fallbacks=[],
         dinov3_model="fake",
+        residency=validated.residency,
+        tf32=False,
     )
 
     await emit(

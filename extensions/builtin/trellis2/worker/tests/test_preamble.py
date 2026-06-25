@@ -7,6 +7,7 @@ from trellis2_worker.preamble import (
     attention_backend,
     dinov3_model_id,
     redirect_dinov3_in_cache,
+    tf32_enabled,
 )
 
 
@@ -35,6 +36,21 @@ def test_dinov3_mirror_when_opted_in(monkeypatch):
 def test_redirect_noop_without_mirror(monkeypatch, tmp_path):
     monkeypatch.delenv("TRELLIS2_DINOV3_MIRROR", raising=False)
     assert redirect_dinov3_in_cache(str(tmp_path)) == []
+
+
+def test_tf32_enabled_by_default(monkeypatch):
+    monkeypatch.delenv("TRELLIS2_TF32", raising=False)
+    assert tf32_enabled() is True
+
+
+def test_tf32_disabled_when_zero(monkeypatch):
+    monkeypatch.setenv("TRELLIS2_TF32", "0")
+    assert tf32_enabled() is False
+
+
+def test_tf32_disabled_when_false(monkeypatch):
+    monkeypatch.setenv("TRELLIS2_TF32", "false")
+    assert tf32_enabled() is False
 
 
 def test_redirect_rewrites_pipeline_json_when_mirror(monkeypatch, tmp_path):

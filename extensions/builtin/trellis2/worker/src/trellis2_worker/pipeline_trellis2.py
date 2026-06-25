@@ -24,19 +24,44 @@ from .health import compute_cap, gpu_available
 from .main import WorkerError
 from .metadata import build_metadata
 from .params import GenerateParams, NVDIFFRAST_FACE_LIMIT, validate_generate_params
-from .preamble import apply_env, attention_backend, dinov3_model_id, redirect_dinov3_in_cache
+from .preamble import (
+    apply_env,
+    attention_backend,
+    dinov3_model_id,
+    redirect_dinov3_in_cache,
+    tf32_enabled,
+)
 from .rpc import ErrorCodes, Notifications
 
 TRELLIS_REPO = "microsoft/TRELLIS.2-4B"
 
 
-def _load_pipeline() -> Any:
+def _apply_perf_backends() -> bool:
+    """Enable TF32 matmul + cuDNN + high fp32 matmul precision on Blackwell when
+    TRELLIS2_TF32 is on (default). Process-global torch flags, so set per render
+    from the env toggle. Returns the effective on/off for telemetry."""
+    import torch
+
+    on = tf32_enabled()
+    torch.backends.cuda.matmul.allow_tf32 = on
+    torch.backends.cudnn.allow_tf32 = on
+    torch.set_float32_matmul_precision("high" if on else "highest")
+    return on
+
+
+def _load_pipeline(low_vram: bool) -> Any:
     """Lazy-import + load the TRELLIS.2 pipeline onto CUDA. Skips the gated
-    RMBG-2.0 model (rembg_model=None) — the operator pre-cleans the input."""
+    RMBG-2.0 model (rembg_model=None) — the operator pre-cleans the input.
+
+    low_vram=False keeps all weights GPU-resident (no per-stage CPU offload) —
+    the right mode on GB10's 128GB unified memory. low_vram=True restores the
+    block-swap path for tight-VRAM hosts. Set BEFORE .cuda() so the pipeline's
+    low-VRAM-aware .to() either moves every model now or defers to per-stage."""
     from trellis2.pipelines import Trellis2ImageTo3DPipeline
 
     pipeline = Trellis2ImageTo3DPipeline.from_pretrained(TRELLIS_REPO)
     pipeline.rembg_model = None
+    pipeline.low_vram = low_vram
     pipeline.cuda()
     return pipeline
 
@@ -138,10 +163,13 @@ def generate_real(
     redirect_dinov3_in_cache()
     fallbacks: list[str] = []
 
+    tf32_on = _apply_perf_backends()
+    low_vram = validated.residency == "low_vram"
+
     emit_sync(Notifications.PROGRESS, {"stage": "load", "step": 0, "total": 0})
     load_t0 = time.time()
     try:
-        pipeline = _load_pipeline()
+        pipeline = _load_pipeline(low_vram)
     except (FileNotFoundError, OSError) as exc:
         raise WorkerError(ErrorCodes.MODEL_MISSING, f"model missing: {exc}")
     except Exception as exc:
@@ -202,6 +230,8 @@ def generate_real(
         faces=faces,
         fallbacks=fallbacks,
         dinov3_model=dinov3_model_id(),
+        residency=validated.residency,
+        tf32=tf32_on,
     )
 
     emit_sync(

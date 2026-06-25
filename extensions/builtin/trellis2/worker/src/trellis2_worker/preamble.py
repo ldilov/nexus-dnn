@@ -42,6 +42,13 @@ def dinov3_model_id() -> str:
     return DINOV3_MIRROR if use_dinov3_mirror() else DINOV3_OFFICIAL
 
 
+def tf32_enabled() -> bool:
+    """TF32 matmul + cuDNN acceleration (Blackwell/sm_121). On by default — the
+    fp32 matmul speedup is large and the quality impact on this generative 3D
+    pipeline is negligible. Set TRELLIS2_TF32=0 (or false) to force strict fp32."""
+    return os.environ.get("TRELLIS2_TF32", "1") not in ("0", "false", "False")
+
+
 def redirect_dinov3_in_cache(hf_home: str | None = None) -> list[str]:
     """When the mirror is requested, rewrite cached pipeline.json files so the
     image_cond_model resolves to the non-gated mirror. Returns patched paths.

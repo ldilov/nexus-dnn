@@ -25,6 +25,8 @@ def build_metadata(
     fallbacks: list[str],
     trellis_model: str = MODEL_TRELLIS,
     dinov3_model: str = MODEL_DINOV3,
+    residency: str = "balanced",
+    tf32: bool = True,
 ) -> dict[str, Any]:
     return {
         "attention_backend": attention_backend,
@@ -35,4 +37,5 @@ def build_metadata(
         "fallbacks": list(fallbacks),
         "profile": profile,
         "models": {"trellis": trellis_model, "dinov3": dinov3_model},
+        "perf": {"residency": residency, "tf32": bool(tf32)},
     }
