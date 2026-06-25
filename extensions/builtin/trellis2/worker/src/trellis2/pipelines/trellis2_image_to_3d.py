@@ -101,7 +101,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pipeline.shape_slat_normalization = args['shape_slat_normalization']
         pipeline.tex_slat_normalization = args['tex_slat_normalization']
 
-        pipeline.image_cond_model = getattr(image_feature_extractor, args['image_cond_model']['name'])(**args['image_cond_model']['args'])
+        # nexus: route gated facebook/dinov3 to the non-gated kiennt120 mirror.
+        _icm_args = dict(args['image_cond_model'].get('args', {}))
+        if _icm_args.get('model_name') == 'facebook/dinov3-vitl16-pretrain-lvd1689m':
+            _icm_args['model_name'] = 'kiennt120/dinov3-vitl16-pretrain-lvd1689m'
+        pipeline.image_cond_model = getattr(image_feature_extractor, args['image_cond_model']['name'])(**_icm_args)
         pipeline.rembg_model = None
         
         pipeline.low_vram = args.get('low_vram', True)

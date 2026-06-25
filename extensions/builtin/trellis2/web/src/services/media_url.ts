@@ -4,7 +4,8 @@ import { EXTENSION_PREFIX } from "./http";
  * `GET /api/v1/extensions/nexus.3d.trellis2/media/:ref` (path-segment form). */
 export function mediaUrlForRef(ref: string | null): string | null {
   if (!ref) return null;
-  return `${EXTENSION_PREFIX}/media/${encodeURIComponent(ref)}`;
+  const path = ref.split("/").map(encodeURIComponent).join("/");
+  return `${EXTENSION_PREFIX}/media/${path}`;
 }
 
 /** Probe whether a media ref still resolves via a bodyless HEAD request.

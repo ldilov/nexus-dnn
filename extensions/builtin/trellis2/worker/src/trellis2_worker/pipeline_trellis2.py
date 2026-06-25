@@ -148,17 +148,20 @@ def generate_real(
         raise WorkerError(ErrorCodes.GENERATION_FAILED, f"pipeline load failed: {exc}")
     load_s = time.time() - load_t0
 
-    def _emit_stage(stage: str, step: int, total: int) -> None:
-        emit_sync(Notifications.PROGRESS, {"stage": stage, "step": step, "total": total})
-
-    pbar = _CancellingProgressBar(_emit_stage, cancel_event)
-
     image = _open_image(str(image_path))
+    emit_sync(Notifications.PROGRESS, {"stage": "run", "step": 0, "total": 0})
     run_t0 = time.time()
     try:
+        # upstream run() has no pbar; steps go via sampler params. Cancel is
+        # coarse (checked between worker stages, not inside the sampler loop).
         seed_kwarg = {"seed": validated.seed} if validated.seed is not None else {}
-        # verify on GB10 (P6): upstream run() seed= + pbar= contract is assumed.
-        outputs = pipeline.run(image, preprocess_image=False, pbar=pbar, **seed_kwarg)
+        ss_params = {"steps": validated.sparse_steps} if validated.sparse_steps else {}
+        outputs = pipeline.run(
+            image,
+            preprocess_image=False,
+            sparse_structure_sampler_params=ss_params,
+            **seed_kwarg,
+        )
         mesh = outputs[0]
         mesh.simplify(NVDIFFRAST_FACE_LIMIT)
         emit_sync(Notifications.PROGRESS, {"stage": "glb", "step": 0, "total": 0})

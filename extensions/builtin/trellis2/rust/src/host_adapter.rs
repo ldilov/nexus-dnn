@@ -38,7 +38,7 @@ pub struct Trellis2LeaseFactory {
 const MODEL_FAMILIES: &[&str] = &[
     "huggingface:microsoft/TRELLIS.2-4B",
     "huggingface:microsoft/TRELLIS-image-large",
-    "huggingface:facebook/dinov3-vitl16-pretrain-lvd1689m",
+    "huggingface:kiennt120/dinov3-vitl16-pretrain-lvd1689m",
 ];
 
 impl Trellis2LeaseFactory {

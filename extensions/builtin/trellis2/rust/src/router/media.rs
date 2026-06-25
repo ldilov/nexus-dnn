@@ -14,7 +14,7 @@ use crate::router::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/media/{media_ref}", get(media).head(media_head))
+        .route("/media/{*media_ref}", get(media).head(media_head))
         .route("/generate/jobs/{job_id}/output", get(job_output))
 }
 
