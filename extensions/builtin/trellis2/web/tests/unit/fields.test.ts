@@ -3,6 +3,7 @@ import { DEFAULT_PARAMS } from "../../src/domain/defaults";
 import {
   ADVANCED_FIELDS,
   FIELD_SPECS,
+  isFieldActive,
   PRIMARY_FIELDS,
 } from "../../src/domain/fields";
 
@@ -73,9 +74,29 @@ describe("operator fields", () => {
     expect(spec?.max).toBe(100);
   });
 
-  test("max_num_tokens has a floor of zero", () => {
+  test("max_num_tokens has a floor of zero and a tightened ceiling", () => {
     const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
     expect(spec?.min).toBe(0);
+    expect(spec?.max).toBe(131_072);
+  });
+
+  test("max_num_tokens is gated to the 1536 cascade", () => {
+    const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
+    expect(spec?.gate?.key).toBe("pipeline_type");
+    expect(spec?.gate?.in).toEqual(["1536_cascade"]);
+  });
+
+  test("isFieldActive disables max_num_tokens outside the 1536 cascade", () => {
+    const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
+    if (!spec) throw new Error("max_num_tokens spec missing");
+    expect(isFieldActive(spec, { pipeline_type: "1024_cascade" })).toBe(false);
+    expect(isFieldActive(spec, { pipeline_type: "1536_cascade" })).toBe(true);
+  });
+
+  test("isFieldActive leaves ungated fields always active", () => {
+    const seed = FIELD_SPECS.find((f) => f.key === "seed");
+    if (!seed) throw new Error("seed spec missing");
+    expect(isFieldActive(seed, {})).toBe(true);
   });
 
   test("primary keeps seed + sparse_steps; advanced holds the rest", () => {

@@ -540,13 +540,21 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if preprocess_image:
             image = self.preprocess_image(image)
         torch.manual_seed(seed)
+        # nexus: per-stage progress hook (set by the worker); drives the workflow DAG.
+        _cb = getattr(self, "_nexus_stage_cb", None)
+        if _cb:
+            _cb("encode")
         cond_512 = self.get_cond([image], 512)
         cond_1024 = self.get_cond([image], 1024) if pipeline_type != '512' else None
         ss_res = {'512': 32, '1024': 64, '1024_cascade': 32, '1536_cascade': 32}[pipeline_type]
+        if _cb:
+            _cb("sparse")
         coords = self.sample_sparse_structure(
             cond_512, ss_res,
             num_samples, sparse_structure_sampler_params
         )
+        if _cb:
+            _cb("shape")
         if pipeline_type == '512':
             shape_slat = self.sample_shape_slat(
                 cond_512, self.models['shape_slat_flow_model_512'],
@@ -575,6 +583,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 coords, shape_slat_sampler_params,
                 max_num_tokens
             )
+            if _cb:
+                _cb("texture")
             tex_slat = self.sample_tex_slat(
                 cond_1024, self.models['tex_slat_flow_model_1024'],
                 shape_slat, tex_slat_sampler_params
@@ -592,6 +602,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 shape_slat, tex_slat_sampler_params
             )
         torch.cuda.empty_cache()
+        if _cb:
+            _cb("decode")
         out_mesh = self.decode_latent(shape_slat, tex_slat, res)
         if return_latent:
             return out_mesh, (shape_slat, tex_slat, res)

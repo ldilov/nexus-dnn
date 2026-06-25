@@ -2,9 +2,11 @@ import { type ReactElement, useId, useState } from "react";
 import { FieldControl, type FieldValue } from "../../../components/form/field_control";
 import {
   ADVANCED_FIELDS,
+  isFieldActive,
   PRIMARY_FIELDS,
   type TunableFieldKey,
 } from "../../../domain/fields";
+import { matchPreset, PRESETS } from "../../../domain/presets";
 import { useGenerateRequest } from "../../../store/generate_request_store";
 import type { GenerateParams } from "../../../services/types";
 import { ImageUploader } from "./image_uploader";
@@ -14,15 +16,34 @@ import * as styles from "./generate_form.css";
 const STRING_KEYS = new Set<TunableFieldKey>(["pipeline_type", "residency"]);
 
 export function GenerateForm(): ReactElement {
-  const { params, generate, updateParam } = useGenerateRequest();
+  const { params, generate, updateParam, applyParams } = useGenerateRequest();
   const disabled = generate.phase === "running";
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const advancedId = useId();
+  const activePreset = matchPreset(params);
 
   return (
     <div className={styles.form}>
       <span className={styles.sectionLabel}>Input image</span>
       <ImageUploader />
+
+      <span className={styles.sectionLabel}>Quality preset</span>
+      <div className={styles.presetRow}>
+        {PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            disabled={disabled}
+            className={styles.presetButton}
+            data-active={activePreset === preset.id}
+            aria-pressed={activePreset === preset.id}
+            onClick={() => applyParams(preset.params)}
+          >
+            <span className={styles.presetLabel}>{preset.label}</span>
+            <span className={styles.presetHint}>{preset.hint}</span>
+          </button>
+        ))}
+      </div>
 
       <span className={styles.sectionLabel}>Generation</span>
       <div className={styles.grid}>
@@ -77,7 +98,7 @@ export function GenerateForm(): ReactElement {
                 key={spec.key}
                 spec={spec}
                 value={params[spec.key] as FieldValue | undefined}
-                disabled={disabled}
+                disabled={disabled || !isFieldActive(spec, params)}
                 onChange={(value) => applyChange(spec.key, value)}
               />
             ))}

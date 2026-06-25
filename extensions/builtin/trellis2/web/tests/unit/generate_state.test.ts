@@ -16,7 +16,8 @@ describe("generate_state reducer", () => {
     const next = reduceFrame(startedState(), frame);
     expect(next.phase).toBe("running");
     expect(next.stage).toBe("shape");
-    expect(next.stageStates.preprocess).toBe("done");
+    expect(next.stageStates.load).toBe("done");
+    expect(next.stageStates.encode).toBe("done");
     expect(next.stageStates.sparse).toBe("done");
     expect(next.stageStates.shape).toBe("active");
     expect(next.stageStates.glb).toBe("idle");
@@ -28,7 +29,7 @@ describe("generate_state reducer", () => {
       method: "trellis2.generate.progress",
       params: { stage: "sparse", step: 6, total: 12 },
     });
-    expect(state.overallFraction).toBeCloseTo(0.3125);
+    expect(state.overallFraction).toBeCloseTo(2.5 / 7);
     expect(state.step).toBe(6);
     expect(state.totalSteps).toBe(12);
 
@@ -36,7 +37,7 @@ describe("generate_state reducer", () => {
       method: "trellis2.generate.progress",
       params: { stage: "sparse", step: 5, total: 12 },
     });
-    expect(state.overallFraction).toBeCloseTo(0.3125);
+    expect(state.overallFraction).toBeCloseTo(2.5 / 7);
   });
 
   test("tolerates unknown stage strings without touching the graph", () => {
@@ -46,7 +47,7 @@ describe("generate_state reducer", () => {
     });
     expect(next.stage).toBe("future_stage");
     expect(next.step).toBe(2);
-    expect(next.stageStates.preprocess).toBe("idle");
+    expect(next.stageStates.load).toBe("idle");
   });
 
   test("ignores unknown methods like runtime.memory_stats", () => {
@@ -77,7 +78,7 @@ describe("generate_state reducer", () => {
   test("error frame marks the active known stage errored", () => {
     let state = reduceFrame(startedState(), {
       method: "trellis2.generate.progress",
-      params: { stage: "mesh", step: 1, total: 4 },
+      params: { stage: "decode", step: 1, total: 4 },
     });
     state = reduceFrame(state, {
       method: "trellis2.generate.error",
@@ -85,7 +86,7 @@ describe("generate_state reducer", () => {
     });
     expect(state.phase).toBe("error");
     expect(state.errorCode).toBe(73);
-    expect(state.stageStates.mesh).toBe("error");
+    expect(state.stageStates.decode).toBe("error");
   });
 
   test("cancelledState flips phase without losing prior data", () => {

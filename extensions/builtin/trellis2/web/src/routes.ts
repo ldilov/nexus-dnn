@@ -1,6 +1,6 @@
 import { type LoaderFunctionArgs, redirect, type RouteObject } from "react-router";
+import { DagView } from "./views/dag/dag.view";
 import { GenerateView } from "./views/generate/generate.view";
-import { PipelineView } from "./views/pipeline/pipeline.view";
 import { WorkspaceLayout } from "./views/workspace/workspace.layout";
 
 export function buildRoutes(): RouteObject[] {
@@ -19,7 +19,7 @@ export function buildRoutes(): RouteObject[] {
             redirect(`/${requireParam(params, "deploymentId")}/generate`),
         },
         { path: "generate", Component: GenerateView },
-        { path: "dag", Component: PipelineView },
+        { path: "dag", Component: DagView },
       ],
     },
   ];

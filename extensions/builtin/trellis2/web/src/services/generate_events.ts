@@ -8,21 +8,21 @@ export const GENERATE_METHODS = {
   error: "trellis2.generate.error",
 } as const;
 
-/** Worker stage vocabulary, ordered. `texture` only appears when texture:true.
- * The UI tolerates unknown stages — this list only drives the pipeline graph
- * and default ordering, never frame parsing. */
-export const PIPELINE_STAGES = [
-  "preprocess",
-  "dinov3",
+/** Worker stage vocabulary, in emission order. `texture` only fires for the
+ * default `1024_cascade` pipeline_type; other presets leave it idle. The UI
+ * tolerates unknown stages — this list only drives the workflow DAG and default
+ * ordering, never frame parsing. */
+export const WORKFLOW_STAGES = [
+  "load",
+  "encode",
   "sparse",
   "shape",
-  "decode",
-  "mesh",
   "texture",
+  "decode",
   "glb",
 ] as const;
 
-export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 
 export interface ProgressFrame {
   method: "trellis2.generate.progress";

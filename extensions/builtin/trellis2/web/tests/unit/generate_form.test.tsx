@@ -78,7 +78,7 @@ describe("GenerateForm", () => {
     renderForm();
     expect(screen.getByText("Seed")).toBeTruthy();
     expect(screen.getByText("Sparse steps")).toBeTruthy();
-    expect(screen.queryByText("Detail / pipeline")).toBeNull();
+    expect(screen.queryByText("Detail preset")).toBeNull();
     expect(screen.queryByText("Metallic")).toBeNull();
   });
 
@@ -90,7 +90,7 @@ describe("GenerateForm", () => {
     fireEvent.click(header);
 
     expect(header.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Detail / pipeline")).toBeTruthy();
+    expect(screen.getByText("Detail preset")).toBeTruthy();
     expect(screen.getByText("Texture steps")).toBeTruthy();
     expect(screen.getByText("Texture resolution")).toBeTruthy();
     expect(screen.getByText("Metallic")).toBeTruthy();
@@ -111,7 +111,7 @@ describe("GenerateForm", () => {
     renderForm(true);
     fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
 
-    const pipeline = screen.getByLabelText("Detail / pipeline") as HTMLSelectElement;
+    const pipeline = screen.getByLabelText("Detail preset") as HTMLSelectElement;
     fireEvent.change(pipeline, { target: { value: "1536_cascade" } });
 
     const textureSize = screen.getByLabelText("Texture resolution") as HTMLSelectElement;
@@ -127,5 +127,31 @@ describe("GenerateForm", () => {
     expect(params.pipeline_type).toBe("1536_cascade");
     expect(params.texture_size).toBe(4096);
     expect(params.metallic).toBe(0.5);
+  });
+
+  test("applies a quality preset to the whole param set", async () => {
+    renderForm(true);
+    fireEvent.click(screen.getByRole("button", { name: /Fast/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
+
+    const [{ params }] = firstCall();
+    expect(params.pipeline_type).toBe("512");
+    expect(params.shape_steps).toBe(8);
+    expect(params.texture_size).toBe(1024);
+    expect(params.simplify_target).toBe(100_000);
+  });
+
+  test("gates Max tokens behind the 1536 cascade", () => {
+    renderForm();
+    fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
+
+    const maxTokens = screen.getByLabelText("Max tokens") as HTMLInputElement;
+    expect(maxTokens.disabled).toBe(true);
+
+    const pipeline = screen.getByLabelText("Detail preset") as HTMLSelectElement;
+    fireEvent.change(pipeline, { target: { value: "1536_cascade" } });
+    expect(maxTokens.disabled).toBe(false);
   });
 });

@@ -93,6 +93,7 @@ interface GenerateRequestActions {
     key: K,
     value: GenerateParamsState[K],
   ) => void;
+  applyParams: (patch: Partial<GenerateParamsState>) => void;
   setImage: (ref: string, name: string) => void;
   clearImage: () => void;
   startJob: () => Promise<void>;
@@ -132,6 +133,10 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
     },
     [],
   );
+
+  const applyParams = useCallback((patch: Partial<GenerateParamsState>) => {
+    setParams((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   const setImage = useCallback((ref: string, name: string) => {
     setImageRef(ref);
@@ -247,6 +252,7 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
       imageName,
       generate,
       updateParam,
+      applyParams,
       setImage,
       clearImage,
       startJob,
@@ -260,6 +266,7 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
       imageName,
       generate,
       updateParam,
+      applyParams,
       setImage,
       clearImage,
       startJob,

@@ -17,13 +17,12 @@ interface GenerateProgressProps {
 /** Friendly labels for the known worker vocab. Unknown stages are humanized
  * generically so a vocab change never blanks the readout. */
 const STAGE_LABELS: Record<string, string> = {
-  preprocess: "Preprocessing image…",
-  dinov3: "Encoding image (DINOv3)…",
-  sparse: "Building O-Voxel sparse structure…",
+  load: "Loading model…",
+  encode: "Encoding image (DINOv3)…",
+  sparse: "Building sparse structure…",
   shape: "Decoding shape…",
-  decode: "Decoding mesh…",
-  mesh: "Assembling mesh…",
   texture: "Baking texture…",
+  decode: "Decoding mesh…",
   glb: "Exporting GLB…",
 };
 

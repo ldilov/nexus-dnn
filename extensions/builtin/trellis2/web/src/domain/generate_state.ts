@@ -1,7 +1,7 @@
 import {
   type GenerateFrame,
-  PIPELINE_STAGES,
-  type PipelineStage,
+  WORKFLOW_STAGES,
+  type WorkflowStage,
 } from "../services/generate_events";
 import type { GenerationMetadata } from "../services/types";
 
@@ -18,7 +18,7 @@ export interface GenerateState {
   step: number;
   totalSteps: number;
   overallFraction: number;
-  stageStates: Record<PipelineStage, StageState>;
+  stageStates: Record<WorkflowStage, StageState>;
   glbRef: string | null;
   /** No thumbnail at MVP-0 — kept nullable for forward-compat, always null. */
   thumbnailRef: string | null;
@@ -27,9 +27,9 @@ export interface GenerateState {
   errorMessage: string | null;
 }
 
-function freshStageStates(): Record<PipelineStage, StageState> {
-  const states = {} as Record<PipelineStage, StageState>;
-  for (const stage of PIPELINE_STAGES) states[stage] = "idle";
+function freshStageStates(): Record<WorkflowStage, StageState> {
+  const states = {} as Record<WorkflowStage, StageState>;
+  for (const stage of WORKFLOW_STAGES) states[stage] = "idle";
   return states;
 }
 
@@ -51,21 +51,21 @@ export function startedState(): GenerateState {
   return { ...INITIAL_STATE, stageStates: freshStageStates(), phase: "running" };
 }
 
-function isPipelineStage(value: string): value is PipelineStage {
-  return (PIPELINE_STAGES as readonly string[]).includes(value);
+function isWorkflowStage(value: string): value is WorkflowStage {
+  return (WORKFLOW_STAGES as readonly string[]).includes(value);
 }
 
 /** Advance the known-stage graph: every stage up to `current` is done, the
  * current one is active, the rest stay idle. Unknown stages leave the graph
  * untouched (we cannot place them on the canonical line). */
 function advanceStages(
-  prev: Record<PipelineStage, StageState>,
+  prev: Record<WorkflowStage, StageState>,
   current: string,
-): Record<PipelineStage, StageState> {
-  if (!isPipelineStage(current)) return prev;
+): Record<WorkflowStage, StageState> {
+  if (!isWorkflowStage(current)) return prev;
   const next = { ...prev };
   let reached = false;
-  for (const stage of PIPELINE_STAGES) {
+  for (const stage of WORKFLOW_STAGES) {
     if (stage === current) {
       next[stage] = "active";
       reached = true;
@@ -80,8 +80,8 @@ function advanceStages(
  * within-stage step ratio. Unknown stages contribute only the step ratio. */
 function fractionFor(stage: string, step: number, total: number): number {
   const within = total > 0 ? Math.min(1, step / total) : 0;
-  const index = isPipelineStage(stage) ? PIPELINE_STAGES.indexOf(stage) : 0;
-  const span = 1 / PIPELINE_STAGES.length;
+  const index = isWorkflowStage(stage) ? WORKFLOW_STAGES.indexOf(stage) : 0;
+  const span = 1 / WORKFLOW_STAGES.length;
   return Math.min(0.99, span * (index + within));
 }
 
@@ -102,7 +102,7 @@ export function reduceFrame(state: GenerateState, frame: GenerateFrame): Generat
     }
     case "trellis2.generate.done": {
       const completed = freshStageStates();
-      for (const stage of PIPELINE_STAGES) completed[stage] = "done";
+      for (const stage of WORKFLOW_STAGES) completed[stage] = "done";
       return {
         ...state,
         phase: "done",
@@ -115,7 +115,7 @@ export function reduceFrame(state: GenerateState, frame: GenerateFrame): Generat
     }
     case "trellis2.generate.error": {
       const errored = { ...state.stageStates };
-      if (state.stage && isPipelineStage(state.stage)) errored[state.stage] = "error";
+      if (state.stage && isWorkflowStage(state.stage)) errored[state.stage] = "error";
       return {
         ...state,
         phase: "error",

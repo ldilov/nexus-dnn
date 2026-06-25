@@ -49,6 +49,20 @@ export const stageRow = style({
   fontSize: vars.text.caption,
 });
 
+export const stageName = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.space.sm,
+  minWidth: 0,
+});
+
+export const stageIndex = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  fontVariantNumeric: "tabular-nums",
+  color: vars.color.textFaint,
+});
+
 export const actions = style({
   display: "flex",
   gap: vars.space.sm,

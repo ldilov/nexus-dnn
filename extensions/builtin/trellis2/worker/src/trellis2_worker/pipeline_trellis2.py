@@ -149,7 +149,13 @@ def generate_real(
     load_s = time.time() - load_t0
 
     image = _open_image(str(image_path))
-    emit_sync(Notifications.PROGRESS, {"stage": "run", "step": 0, "total": 0})
+
+    def _stage_cb(stage: str) -> None:
+        if cancel_event.is_set():
+            raise GenerationCancelled()
+        emit_sync(Notifications.PROGRESS, {"stage": stage, "step": 0, "total": 0})
+
+    pipeline._nexus_stage_cb = _stage_cb
     run_t0 = time.time()
     try:
         # upstream run() has no pbar; steps go via sampler params. Cancel is
