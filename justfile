@@ -3,6 +3,8 @@
 
 dgx_user := "ldilov"
 dgx_host := "192.168.50.22"
+# CUDA 13 devel image (has nvcc) for building GB10/aarch64 wheels; the runtime image lacks nvcc.
+cuda_devel := "nvidia/cuda:13.0.1-devel-ubuntu24.04"
 
 # List available recipes.
 default:
@@ -49,6 +51,34 @@ dgx-pull src dest=".":
     else
         scp -i "$key" -o StrictHostKeyChecking=no -r "$user@$host:{{src}}" "{{dest}}"
     fi
+
+# Run a local SCRIPT in a fresh cuda-devel container mounting the nexusdata volume (GB10 builds/spikes).
+# Pushes script -> /data/_spike, runs detached. gpus=1 adds --gpus all; forwards $HF_TOKEN if set in env.
+[no-cd]
+dgx-devel-run script name="spike" gpus="1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    key="${DGX_KEY:-$HOME/.ssh/.dgx_session_key}"
+    user="${DGX_USER:-{{dgx_user}}}"; host="${DGX_HOST:-{{dgx_host}}}"
+    [ -f "{{script}}" ] || { echo "fatal: script '{{script}}' not found." >&2; exit 1; }
+    [ -f "$key" ] || { echo "fatal: ssh key '$key' not found (set DGX_KEY)." >&2; exit 1; }
+    base="$(basename "{{script}}")"
+    scp -i "$key" -o StrictHostKeyChecking=no "{{script}}" "$user@$host:~/$base"
+    gpuflag=""; [ "{{gpus}}" = "1" ] && gpuflag="--gpus all"
+    tokenflag=""; [ -n "${HF_TOKEN:-}" ] && tokenflag="-e HF_TOKEN=$HF_TOKEN"
+    rc="docker exec nexusdnn mkdir -p /data/_spike && docker cp ~/$base nexusdnn:/data/_spike/$base && (docker rm -f {{name}} 2>/dev/null || true); docker run -d $gpuflag $tokenflag -v nexusdata:/data --name {{name}} {{cuda_devel}} bash /data/_spike/$base"
+    ssh -i "$key" -o StrictHostKeyChecking=no "$user@$host" "$rc"
+    echo ">>> launched container '{{name}}' running $base (read logs: just dgx-vol-cat _spike/<logfile>)"
+
+# Cat a file from the nexusdata volume (path relative to /data) via the running host container.
+[no-cd]
+dgx-vol-cat relpath:
+    @just --justfile "{{justfile()}}" _dgx-exec "docker exec nexusdnn cat /data/{{relpath}}"
+
+# Remove throwaway cuda-devel spike containers whose name contains <prefix>.
+[no-cd]
+dgx-devel-clean prefix="spike":
+    @just --justfile "{{justfile()}}" _dgx-exec "docker ps -aq --filter name={{prefix}} | xargs -r docker rm -f; echo cleaned"
 
 # List containers on the Spark (name, status, image).
 [no-cd]
