@@ -10,6 +10,88 @@ cuda_devel := "nvidia/cuda:13.0.1-devel-ubuntu24.04"
 default:
     @just --list
 
+# Install + START nexus-dnn on THIS machine, OS-aware (build-first, start on success):
+#   Windows (x86_64)         -> native host build  : dockerfiles/win64.build.ps1 -Run
+#   aarch64 Linux (DGX/GB10) -> docker image+run   : dockerfiles/aarch64.dockerfile -> container nexusdnn
+# Other targets have no GPU build path here (see install-plan for a no-op dry run).
+# data="" -> per-OS default (Windows: repo .nexus-data ; docker: named volume nexusdata).
+# prereqs=1 forwards -InstallPrereqs to the Windows script (winget git/uv).
+install port="3000" workers="4" tag="local" data="" prereqs="0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    os="$(uname -s 2>/dev/null || echo unknown)"
+    arch="$(uname -m 2>/dev/null || echo unknown)"
+    echo ">>> nexus-dnn install — os=$os arch=$arch port={{port}} workers={{workers}}"
+    case "$os" in
+      MINGW*|MSYS*|CYGWIN*|Windows_NT)
+        ps1="$root/dockerfiles/win64.build.ps1"
+        [ -f "$ps1" ] || { echo "fatal: $ps1 missing." >&2; exit 1; }
+        psexe="$(command -v pwsh || command -v powershell || true)"
+        [ -n "$psexe" ] || { echo "fatal: neither pwsh nor powershell on PATH." >&2; exit 1; }
+        bid="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo dev)"
+        export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+        winps1="$ps1"; command -v cygpath >/dev/null 2>&1 && winps1="$(cygpath -w "$ps1")"
+        echo ">>> Windows native host build (build + start) via $(basename "$psexe") [build=$bid]"
+        args=(-NoProfile -ExecutionPolicy Bypass -File "$winps1" -BuildId "$bid" -Port {{port}} -EmotionTtsMaxWorkers {{workers}} -Run)
+        [ "{{prereqs}}" = "1" ] && args+=(-InstallPrereqs)
+        if [ -n "{{data}}" ]; then
+          windata="{{data}}"; command -v cygpath >/dev/null 2>&1 && windata="$(cygpath -w "{{data}}")"
+          args+=(-DataDir "$windata")
+        fi
+        exec "$psexe" "${args[@]}"
+        ;;
+      Linux)
+        case "$arch" in
+          aarch64|arm64) : ;;
+          *) echo "fatal: Linux $arch has no GPU build path here (aarch64.dockerfile is GB10/aarch64-only)." >&2; exit 1 ;;
+        esac
+        command -v docker >/dev/null 2>&1 || { echo "fatal: docker not found on PATH." >&2; exit 1; }
+        cd "$root"
+        dockerfile="dockerfiles/aarch64.dockerfile"
+        [ -f "$dockerfile" ] || { echo "fatal: $dockerfile missing." >&2; exit 1; }
+        bid="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+        img="ldilov/nexusdnn:{{tag}}"
+        vol="{{data}}"; [ -z "$vol" ] && vol="nexusdata"
+        echo ">>> [1/4] build $img (NEXUS_BUILD_ID=$bid) — old container keeps serving until this succeeds"
+        docker build --build-arg NEXUS_BUILD_ID="$bid" -t "$img" -f "$dockerfile" .
+        echo ">>> [2/4] swap container nexusdnn (vol=$vol)"
+        docker stop nexusdnn >/dev/null 2>&1 || true
+        docker rm nexusdnn >/dev/null 2>&1 || true
+        docker run -d --name nexusdnn --restart unless-stopped --gpus all \
+          -p "{{port}}:{{port}}" -v "$vol:/data" \
+          -e EMOTIONTTS_MAX_WORKERS="{{workers}}" -e NEXUS_DATA_DIR=/data -e NEXUS_PORT="{{port}}" "$img"
+        echo ">>> [3/4] settle"; sleep 6
+        docker ps --format 'table {{{{.Names}}\t{{{{.Status}}\t{{{{.Image}}' | grep -E 'NAMES|nexusdnn' || true
+        echo ">>> [4/4] health http://localhost:{{port}}/"
+        for i in $(seq 1 25); do
+          code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:{{port}}/" 2>/dev/null || echo 000)"
+          echo "  try $i: http $code"; [ "$code" = "200" ] && break; sleep 3
+        done
+        echo ">>> INSTALL_OK $img on :{{port}} (vol=$vol)"
+        ;;
+      Darwin)
+        echo "fatal: macOS has no GPU host build path here — use a DGX (docker) or Windows (native)." >&2; exit 1 ;;
+      *)
+        echo "fatal: unsupported OS '$os'." >&2; exit 1 ;;
+    esac
+
+# Dry run: print which path `just install` would take on THIS machine (no build, no run).
+install-plan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    os="$(uname -s 2>/dev/null || echo unknown)"; arch="$(uname -m 2>/dev/null || echo unknown)"
+    echo "os=$os arch=$arch"
+    case "$os" in
+      MINGW*|MSYS*|CYGWIN*|Windows_NT) echo "path: Windows native host build -> dockerfiles/win64.build.ps1 -Run" ;;
+      Linux) case "$arch" in
+          aarch64|arm64) echo "path: docker image -> dockerfiles/aarch64.dockerfile + run container nexusdnn" ;;
+          *) echo "path: UNSUPPORTED (Linux $arch — aarch64-only build path)" ;;
+        esac ;;
+      Darwin) echo "path: UNSUPPORTED (macOS)" ;;
+      *) echo "path: UNSUPPORTED ($os)" ;;
+    esac
+
 # SSH to the Spark. No args -> interactive shell; with args -> run remotely.
 # Keep <cmd> free of $/backtick/! — they expand LOCALLY here; use _dgx-exec instead.
 [no-cd]
