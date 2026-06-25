@@ -75,7 +75,8 @@ RUN curl -fsSL https://github.com/astral-sh/uv/releases/latest/download/uv-aarch
  && uv --version
 COPY --from=builder /usr/local/bin/nexus-dnn /usr/local/bin/nexus-dnn
 COPY --from=builder /app/extensions/builtin /usr/local/share/nexus-dnn/extensions/builtin
-# `../../../../binaries/...` both in-repo and in this image.
+# Vendored wheels: ext workers `[tool.uv.sources]` ref `../../../../binaries/...`
+# (resolves the same in-repo + in-image). Covers svi2-pro AND trellis2 sm_121 kernels.
 COPY --from=builder /app/binaries /usr/local/share/nexus-dnn/binaries
 COPY --from=builder /app/binaries/linux-aarch64/sd-cli-linux-aarch64 /usr/local/bin/sd
 RUN chmod +x /usr/local/bin/sd

@@ -1,0 +1,7 @@
+id: "trellis2.layout.main"
+displayName: "TRELLIS 2 — Image to 3D"
+description: "Generate a downloadable 3D mesh (GLB) from a single image. Recipe view + DAG view."
+icon: "cube"
+
+root:
+  type: trellis2-app
