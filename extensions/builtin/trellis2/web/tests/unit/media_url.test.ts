@@ -8,9 +8,9 @@ describe("mediaUrlForRef", () => {
     );
   });
 
-  test("encodes refs with reserved characters", () => {
-    expect(mediaUrlForRef("a/b c")).toBe(
-      "/api/v1/extensions/nexus.3d.trellis2/media/a%2Fb%20c",
+  test("preserves slashes, encodes reserved chars within segments", () => {
+    expect(mediaUrlForRef("meshes/a b/out.glb")).toBe(
+      "/api/v1/extensions/nexus.3d.trellis2/media/meshes/a%20b/out.glb",
     );
   });
 

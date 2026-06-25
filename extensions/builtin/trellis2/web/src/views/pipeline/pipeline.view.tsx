@@ -58,7 +58,7 @@ export function PipelineView(): ReactElement {
       <div className={styles.side}>
         <Panel
           elevation="raised"
-          title="Pipeline"
+          title="Workflow"
           description="preprocess → dinov3 → sparse → shape → decode → mesh → glb. Live state mirrors the worker."
         >
           <div className={styles.stageList}>

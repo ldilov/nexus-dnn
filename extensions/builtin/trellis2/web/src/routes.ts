@@ -19,7 +19,7 @@ export function buildRoutes(): RouteObject[] {
             redirect(`/${requireParam(params, "deploymentId")}/generate`),
         },
         { path: "generate", Component: GenerateView },
-        { path: "pipeline", Component: PipelineView },
+        { path: "dag", Component: PipelineView },
       ],
     },
   ];

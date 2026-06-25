@@ -11,7 +11,7 @@ interface TabDef {
 
 const TABS: readonly TabDef[] = [
   { to: "generate", label: "Generate" },
-  { to: "pipeline", label: "Pipeline" },
+  { to: "dag", label: "Workflow" },
 ];
 
 export function WorkspaceLayout(): ReactElement {

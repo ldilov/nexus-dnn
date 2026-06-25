@@ -1,4 +1,5 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
+import { ModelViewer } from "../../../components/media/model_viewer";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty_state";
 import { presentGenerateError } from "../../../domain/error_codes";
@@ -138,18 +139,20 @@ function DoneResult({
 
   return (
     <output className={styles.resultCard}>
-      <div className={styles.resultRow}>
+      {glbUrl ? (
+        <ModelViewer url={glbUrl} alt="Generated 3D mesh preview" />
+      ) : (
         <div className={styles.thumbPlaceholder} aria-hidden="true">
           3D
         </div>
-        <div className={styles.resultMeta}>
-          <MetadataView metadata={state.metadata} glbRef={state.glbRef} />
-          {glbUrl ? (
-            <a className={styles.downloadLink} href={glbUrl} download={downloadName}>
-              Download GLB
-            </a>
-          ) : null}
-        </div>
+      )}
+      <div className={styles.resultMeta}>
+        <MetadataView metadata={state.metadata} glbRef={state.glbRef} />
+        {glbUrl ? (
+          <a className={styles.downloadLink} href={glbUrl} download={downloadName}>
+            Download GLB
+          </a>
+        ) : null}
       </div>
       <div className={styles.actions}>
         <Button variant="secondary" onClick={onReset}>
