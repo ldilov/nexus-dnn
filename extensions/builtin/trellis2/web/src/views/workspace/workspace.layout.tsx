@@ -21,6 +21,7 @@ export function WorkspaceLayout(): ReactElement {
   return (
     <GenerateRequestProvider>
       <div className={styles.shell}>
+        <div className={styles.glow} aria-hidden="true" />
         <header className={styles.header}>
           <div className={styles.titleBlock}>
             <span className={styles.eyebrow}>GENERATIVE SURFACE · IMAGE TO 3D</span>

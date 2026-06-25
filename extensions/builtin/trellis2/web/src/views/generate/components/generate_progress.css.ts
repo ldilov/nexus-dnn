@@ -8,17 +8,37 @@ export const root = style({
 });
 
 export const stageLine = style({
-  fontSize: vars.text.body,
-  fontWeight: 600,
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  fontWeight: 500,
   color: vars.color.text,
+});
+
+const dotPulse = keyframes({
+  "0%, 100%": { opacity: 1, transform: "scale(1)" },
+  "50%": { opacity: 0.5, transform: "scale(0.88)" },
+});
+
+export const stageDot = style({
+  width: "8px",
+  height: "8px",
+  flexShrink: 0,
+  borderRadius: "50%",
+  background: vars.color.accent,
+  boxShadow: `0 0 8px ${vars.color.accentGlow}`,
+  animation: `${dotPulse} 1.5s ease-in-out infinite`,
+  "@media": { "(prefers-reduced-motion: reduce)": { animation: "none" } },
 });
 
 export const progressTrack = style({
   position: "relative",
   width: "100%",
-  height: "8px",
+  height: "6px",
   borderRadius: vars.radius.pill,
-  background: vars.color.surfaceInset,
+  background: vars.color.surfaceFloor,
   overflow: "hidden",
 });
 
@@ -34,28 +54,35 @@ export const progressFill = style({
 export const statRow = style({
   display: "flex",
   flexWrap: "wrap",
-  gap: vars.space.lg,
+  gap: vars.space.section,
 });
 
 export const stat = style({
   display: "flex",
   flexDirection: "column",
-  gap: "2px",
+  gap: vars.space.xs,
 });
 
 export const statLabel = style({
-  fontSize: vars.text.micro,
-  letterSpacing: "0.08em",
+  fontFamily: vars.font.mono,
+  fontSize: "9.5px",
+  letterSpacing: "0.12em",
   textTransform: "uppercase",
   color: vars.color.textFaint,
 });
 
 export const statValue = style({
   fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
-  fontWeight: 600,
+  fontSize: "1.3125rem",
+  fontWeight: 500,
+  lineHeight: 1,
   color: vars.color.text,
   fontVariantNumeric: "tabular-nums",
+});
+
+export const statValueAccent = style({
+  color: vars.color.accent,
+  textTransform: "capitalize",
 });
 
 export const actions = style({
@@ -84,57 +111,37 @@ export const errorHint = style({
   color: vars.color.textMuted,
 });
 
-const pulse = keyframes({
-  "0%, 100%": { opacity: 0.55 },
-  "50%": { opacity: 1 },
-});
-
 export const resultCard = style({
   display: "flex",
   flexDirection: "column",
   gap: vars.space.lg,
 });
 
-export const resultRow = style({
+export const doneHead = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.lg,
-  flexWrap: "wrap",
+  gap: vars.space.sm,
 });
 
-export const resultThumb = style({
-  width: "140px",
-  height: "140px",
+export const doneDot = style({
+  width: "8px",
+  height: "8px",
   flexShrink: 0,
-  objectFit: "cover",
-  borderRadius: vars.radius.md,
-  background: vars.color.canvas,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  borderRadius: "50%",
+  background: vars.color.success,
+  boxShadow: "0 0 8px color-mix(in oklab, #22c55e 60%, transparent)",
 });
 
-export const thumbPlaceholder = style({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "140px",
-  height: "140px",
-  flexShrink: 0,
-  borderRadius: vars.radius.md,
-  background: vars.color.canvas,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
-  color: vars.color.textFaint,
-  fontFamily: vars.font.mono,
-  fontSize: "2rem",
-  animation: `${pulse} 2.4s ease-in-out infinite`,
-  "@media": { "(prefers-reduced-motion: reduce)": { animation: "none" } },
+export const doneTitle = style({
+  fontSize: vars.text.subhead,
+  fontWeight: vars.weight.semibold,
+  color: vars.color.text,
 });
 
-export const resultMeta = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.md,
-  minWidth: 0,
-  flex: 1,
+export const doneHint = style({
+  margin: 0,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
 });
 
 export const reportGrid = style({
@@ -164,24 +171,4 @@ export const reportValue = style({
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
-});
-
-export const downloadLink = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  height: "40px",
-  padding: `0 ${vars.space.lg}`,
-  borderRadius: vars.radius.md,
-  background: vars.color.accent,
-  color: vars.color.accentOn,
-  fontWeight: 600,
-  fontSize: vars.text.body,
-  textDecoration: "none",
-  alignSelf: "flex-start",
-  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,
-  selectors: {
-    "&:hover": { background: vars.color.accentDim, boxShadow: vars.shadow.glow },
-    "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
-  },
 });

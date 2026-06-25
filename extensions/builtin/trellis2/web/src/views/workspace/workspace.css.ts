@@ -2,6 +2,9 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 export const shell = style({
+  position: "relative",
+  isolation: "isolate",
+  overflowX: "clip",
   display: "flex",
   flexDirection: "column",
   gap: vars.space.xl,
@@ -9,6 +12,21 @@ export const shell = style({
   maxWidth: "1320px",
   margin: "0 auto",
   padding: vars.space.xl,
+});
+
+/** Fixed radial accent bloom in the upper-left — the Spectral Graphite
+ * "powered-on" atmosphere. Decorative, behind all content, never interactive. */
+export const glow = style({
+  position: "absolute",
+  top: "-220px",
+  left: "-180px",
+  width: "640px",
+  height: "640px",
+  zIndex: -1,
+  pointerEvents: "none",
+  background: `radial-gradient(circle at center, ${vars.color.accentGlow}, transparent 68%)`,
+  filter: "blur(60px)",
+  opacity: 0.7,
 });
 
 export const header = style({
@@ -22,7 +40,9 @@ export const header = style({
 export const titleBlock = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.xs,
+  gap: vars.space.md,
+  maxWidth: "64ch",
+  minWidth: 0,
 });
 
 export const eyebrow = style({
@@ -34,15 +54,20 @@ export const eyebrow = style({
 });
 
 export const title = style({
+  margin: 0,
   fontFamily: vars.font.display,
-  fontSize: vars.text.head,
-  fontWeight: 700,
+  fontSize: "clamp(2rem, 1.35rem + 2.4vw, 2.875rem)",
+  fontWeight: vars.weight.semibold,
   letterSpacing: vars.tracking.display,
+  lineHeight: 1.02,
   color: vars.color.text,
+  textWrap: "balance",
 });
 
 export const subtitle = style({
-  fontSize: vars.text.caption,
+  margin: 0,
+  fontSize: vars.text.body,
+  lineHeight: 1.55,
   color: vars.color.textMuted,
   maxWidth: "62ch",
 });

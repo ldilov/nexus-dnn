@@ -9,6 +9,7 @@ import type { GenerationJob } from "../../services/types";
 import { GenerateForm } from "./components/generate_form";
 import { GenerateProgress } from "./components/generate_progress";
 import { HistoryList } from "./components/history_list";
+import { PreviewStage } from "./components/preview_stage";
 import * as styles from "./generate.css";
 
 export function GenerateView(): ReactElement {
@@ -36,36 +37,43 @@ export function GenerateView(): ReactElement {
   );
 
   return (
-    <div className={styles.layout}>
-      <div className={styles.column}>
-        <Panel
-          eyebrow="OPERATOR · TRELLIS2.GENERATE_3D"
-          title="New mesh"
-          description="One image in, one watertight GLB out."
-        >
-          <GenerateForm />
-          <div className={styles.submitRow}>
-            {busy ? (
-              <Button variant="danger" onClick={() => void cancel()}>
-                Cancel generation
-              </Button>
-            ) : (
-              <Button onClick={() => void submit()} disabled={blocked}>
-                Generate
-              </Button>
-            )}
-          </div>
-        </Panel>
+    <div className={styles.view}>
+      <PreviewStage state={generate} />
+      <div className={styles.layout}>
+        <div className={styles.column}>
+          <Panel
+            eyebrow="OPERATOR · TRELLIS2.GENERATE_3D"
+            title="New mesh"
+            description="One image in, one watertight GLB out."
+          >
+            <GenerateForm />
+            <div className={styles.submitRow}>
+              {busy ? (
+                <Button variant="danger" onClick={() => void cancel()}>
+                  Cancel generation
+                </Button>
+              ) : (
+                <Button onClick={() => void submit()} disabled={blocked}>
+                  Generate
+                </Button>
+              )}
+            </div>
+          </Panel>
 
-        <Panel elevation="raised" title="Progress" description="Live state mirrors the worker.">
-          <GenerateProgress state={generate} onCancel={() => void cancel()} onReset={resetGenerate} />
-        </Panel>
-      </div>
+          <Panel elevation="raised" title="Progress" description="Live state mirrors the worker.">
+            <GenerateProgress
+              state={generate}
+              onCancel={() => void cancel()}
+              onReset={resetGenerate}
+            />
+          </Panel>
+        </div>
 
-      <div className={styles.column}>
-        <Panel title="History" description="Past generations and their GLB downloads.">
-          <HistoryList jobs={history.jobs} onOpen={handleOpen} onDelete={handleDelete} />
-        </Panel>
+        <div className={styles.column}>
+          <Panel title="History" description="Past generations and their GLB downloads.">
+            <HistoryList jobs={history.jobs} onOpen={handleOpen} onDelete={handleDelete} />
+          </Panel>
+        </div>
       </div>
     </div>
   );

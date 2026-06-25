@@ -1,4 +1,5 @@
 import type { GenerateParams } from "../services/types";
+import presetData from "./presets.json";
 
 export type PresetId = "fast" | "balanced" | "max";
 
@@ -35,52 +36,26 @@ export const PRESET_KEYS = [
   "simplify_target",
 ] as const;
 
-/** Fast → Balanced (== operator defaults) → Max detail. Balanced mirrors
- * DEFAULT_PARAMS exactly so a fresh form shows Balanced selected. */
-export const PRESETS: readonly GeneratePreset[] = [
-  {
-    id: "fast",
-    label: "Fast",
-    hint: "512 · quick draft",
-    params: {
-      pipeline_type: "512",
-      sparse_steps: 8,
-      shape_steps: 8,
-      texture_steps: 8,
-      texture_size: 1024,
-      max_num_tokens: 49_152,
-      simplify_target: 100_000,
-    },
-  },
-  {
-    id: "balanced",
-    label: "Balanced",
-    hint: "1024 cascade · default",
-    params: {
-      pipeline_type: "1024_cascade",
-      sparse_steps: 12,
-      shape_steps: 12,
-      texture_steps: 12,
-      texture_size: 2048,
-      max_num_tokens: 49_152,
-      simplify_target: 1_000_000,
-    },
-  },
-  {
-    id: "max",
-    label: "Max detail",
-    hint: "1536 cascade · slow",
-    params: {
-      pipeline_type: "1536_cascade",
-      sparse_steps: 20,
-      shape_steps: 25,
-      texture_steps: 25,
-      texture_size: 4096,
-      max_num_tokens: 98_304,
-      simplify_target: 1_000_000,
-    },
-  },
-] as const;
+/** Raw shape of a preset entry in presets.json (untyped JSON before mapping). */
+interface RawPreset {
+  id: string;
+  label: string;
+  hint: string;
+  params: Record<string, unknown>;
+}
+
+/** Fast → Balanced (== operator defaults) → Max detail. Definitions ship as
+ * declarative data in presets.json, installed with the extension; this module
+ * adds types + the active-preset matcher. Balanced mirrors DEFAULT_PARAMS so a
+ * fresh form selects it. */
+export const PRESETS: readonly GeneratePreset[] = (
+  presetData.presets as readonly RawPreset[]
+).map((preset) => ({
+  id: preset.id as PresetId,
+  label: preset.label,
+  hint: preset.hint,
+  params: preset.params as PresetParams,
+}));
 
 /** The id of the preset whose pinned keys all match params, or null (custom). */
 export function matchPreset(params: Partial<GenerateParams>): PresetId | null {

@@ -11,6 +11,7 @@ import { useGenerateRequest } from "../../../store/generate_request_store";
 import type { GenerateParams } from "../../../services/types";
 import { GuidanceSection } from "./guidance_section";
 import { ImageUploader } from "./image_uploader";
+import { PresetMenu } from "./preset_menu";
 import * as styles from "./generate_form.css";
 
 /** Param keys whose value is a string enum rather than a number. */
@@ -29,22 +30,12 @@ export function GenerateForm(): ReactElement {
       <ImageUploader />
 
       <span className={styles.sectionLabel}>Quality preset</span>
-      <div className={styles.presetRow}>
-        {PRESETS.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            disabled={disabled}
-            className={styles.presetButton}
-            data-active={activePreset === preset.id}
-            aria-pressed={activePreset === preset.id}
-            onClick={() => applyParams(preset.params)}
-          >
-            <span className={styles.presetLabel}>{preset.label}</span>
-            <span className={styles.presetHint}>{preset.hint}</span>
-          </button>
-        ))}
-      </div>
+      <PresetMenu
+        presets={PRESETS}
+        activeId={activePreset}
+        disabled={disabled}
+        onApply={(preset) => applyParams(preset.params)}
+      />
 
       <span className={styles.sectionLabel}>Generation</span>
       <div className={styles.grid}>

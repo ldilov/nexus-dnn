@@ -3,6 +3,7 @@ import { createGlobalTheme, globalStyle } from "@vanilla-extract/css";
 export const vars = createGlobalTheme("trellis2-app", {
   color: {
     surface: "var(--surface, #0c0e10)",
+    surfaceFloor: "var(--surface-floor, #000000)",
     surfaceMuted: "var(--surface-low, #111416)",
     surfaceRaised: "var(--surface-default, #171a1c)",
     surfaceHigh: "var(--surface-high, #1d2023)",

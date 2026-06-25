@@ -131,7 +131,8 @@ describe("GenerateForm", () => {
 
   test("applies a quality preset to the whole param set", async () => {
     renderForm(true);
-    fireEvent.click(screen.getByRole("button", { name: /Fast/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Presets/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Fast/ }));
 
     fireEvent.click(screen.getByRole("button", { name: "run" }));
     await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));

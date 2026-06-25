@@ -21,56 +21,14 @@ export const grid = style({
   gap: vars.space.lg,
 });
 
-export const presetRow = style({
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-  gap: vars.space.sm,
-});
-
-export const presetButton = style({
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  gap: "2px",
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: vars.color.surfaceMuted,
-  border: `1px solid ${vars.color.borderSubtle}`,
-  cursor: "pointer",
-  textAlign: "left",
-  transition: `border-color ${vars.motion.fast}, background ${vars.motion.fast}`,
-  selectors: {
-    "&:hover:not(:disabled)": { borderColor: vars.color.accent },
-    "&[data-active='true']": {
-      borderColor: vars.color.accent,
-      background: vars.color.surfaceHigh,
-      boxShadow: vars.shadow.glow,
-    },
-    "&:disabled": { opacity: 0.5, cursor: "not-allowed" },
-    "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
-  },
-});
-
-export const presetLabel = style({
-  fontSize: vars.text.body,
-  fontWeight: 600,
-  color: vars.color.text,
-});
-
-export const presetHint = style({
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
-  color: vars.color.textMuted,
-});
-
 export const textureRow = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: vars.space.lg,
-  padding: vars.space.md,
+  padding: `${vars.space.lg} ${vars.space.lg}`,
   borderRadius: vars.radius.md,
-  background: vars.color.surfaceMuted,
+  background: vars.color.surfaceFloor,
 });
 
 export const textureCopy = style({

@@ -1,4 +1,4 @@
-import { PIPELINE_STAGES } from "../src/services/generate_events";
+import { WORKFLOW_STAGES } from "../src/services/generate_events";
 import type { GenerateParams, GenerationJob } from "../src/services/types";
 
 const PREFIX = "/api/v1/extensions/nexus.3d.trellis2";
@@ -49,7 +49,7 @@ function jrpc(method: string, params: unknown): string {
 }
 
 function buildTimeline(params: GenerateParams): MockFrame[] {
-  const stages = PIPELINE_STAGES.filter((s) => s !== "texture" || params.texture);
+  const stages = WORKFLOW_STAGES.filter((s) => s !== "texture" || params.texture);
   const total = params.sparse_steps ?? 12;
   const frames: MockFrame[] = [];
   let elapsed = 0;

@@ -1,10 +1,8 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
-import { ModelViewer } from "../../../components/media/model_viewer";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty_state";
 import { presentGenerateError } from "../../../domain/error_codes";
 import type { GenerateState } from "../../../domain/generate_state";
-import { mediaUrlForRef } from "../../../services/media_url";
 import type { GenerationMetadata } from "../../../services/types";
 import * as styles from "./generate_progress.css";
 
@@ -93,6 +91,7 @@ export function GenerateProgress({
   return (
     <div className={styles.root}>
       <output className={styles.stageLine} aria-live="polite">
+        <span className={styles.stageDot} aria-hidden="true" />
         {stageLabel(state)}
       </output>
       {/* biome-ignore lint/a11y/useFocusableInteractive: progressbar is a non-interactive ARIA role */}
@@ -111,7 +110,7 @@ export function GenerateProgress({
       </div>
       <div className={styles.statRow} aria-live="polite">
         <Stat label="Overall" value={`${pct}%`} />
-        <Stat label="Stage" value={state.stage ? humanizeStage(state.stage) : "—"} />
+        <Stat label="Stage" value={state.stage ? humanizeStage(state.stage) : "—"} accent />
         <Stat
           label="Step"
           value={state.totalSteps ? `${state.step} / ${state.totalSteps}` : "—"}
@@ -133,26 +132,14 @@ function DoneResult({
   state: GenerateState;
   onReset: () => void;
 }): ReactElement {
-  const glbUrl = mediaUrlForRef(state.glbRef);
-  const downloadName = state.glbRef ? `${state.glbRef}.glb` : "mesh.glb";
-
   return (
     <output className={styles.resultCard}>
-      {glbUrl ? (
-        <ModelViewer url={glbUrl} alt="Generated 3D mesh preview" />
-      ) : (
-        <div className={styles.thumbPlaceholder} aria-hidden="true">
-          3D
-        </div>
-      )}
-      <div className={styles.resultMeta}>
-        <MetadataView metadata={state.metadata} glbRef={state.glbRef} />
-        {glbUrl ? (
-          <a className={styles.downloadLink} href={glbUrl} download={downloadName}>
-            Download GLB
-          </a>
-        ) : null}
+      <div className={styles.doneHead}>
+        <span className={styles.doneDot} aria-hidden="true" />
+        <span className={styles.doneTitle}>Mesh ready</span>
       </div>
+      <p className={styles.doneHint}>Preview, orbit and download the GLB from the stage above.</p>
+      <MetadataView metadata={state.metadata} glbRef={state.glbRef} />
       <div className={styles.actions}>
         <Button variant="secondary" onClick={onReset}>
           New generation
@@ -171,11 +158,25 @@ function stageLabel(state: GenerateState): string {
   return STAGE_LABELS[state.stage] ?? `${humanizeStage(state.stage)}…`;
 }
 
-function Stat({ label, value }: { label: string; value: string }): ReactElement {
+function Stat({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}): ReactElement {
   return (
     <div className={styles.stat}>
       <span className={styles.statLabel}>{label}</span>
-      <span className={styles.statValue}>{value}</span>
+      <span
+        className={[styles.statValue, accent ? styles.statValueAccent : ""]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {value}
+      </span>
     </div>
   );
 }

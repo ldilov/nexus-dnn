@@ -13,7 +13,7 @@ export const previewCard = style({
   gap: vars.space.md,
   padding: vars.space.md,
   borderRadius: vars.radius.md,
-  background: vars.color.surfaceMuted,
+  background: vars.color.surfaceFloor,
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
 });
 

@@ -46,7 +46,7 @@ const inputBase = style({
   height: "44px",
   padding: "0 14px",
   borderRadius: "9px",
-  background: vars.color.surface,
+  background: vars.color.surfaceFloor,
   color: vars.color.text,
   border: "none",
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
@@ -94,7 +94,7 @@ export const invalidInput = style({
 const trackBase = {
   height: "5px",
   borderRadius: vars.radius.pill,
-  background: `linear-gradient(to right, ${vars.color.accent} var(--trellis2-slider-fill, 0%), ${vars.color.surface} var(--trellis2-slider-fill, 0%))`,
+  background: `linear-gradient(to right, ${vars.color.accent} var(--trellis2-slider-fill, 0%), ${vars.color.surfaceFloor} var(--trellis2-slider-fill, 0%))`,
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
 };
 
