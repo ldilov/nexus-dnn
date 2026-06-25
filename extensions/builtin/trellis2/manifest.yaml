@@ -55,9 +55,9 @@ dependencies:
       type: model_artifact
       requires: [python]
       spec:
-        # GATED (Meta) — operator HF token must hold the grant. Non-gated mirror
-        # kiennt120/dinov3-vitl16-pretrain-lvd1689m is the dev fallback (P0-COMPLETE).
-        family_id: "huggingface:facebook/dinov3-vitl16-pretrain-lvd1689m"
+        # Non-gated mirror (SHA-verified byte-identical to facebook/dinov3-vitl16-
+        # pretrain-lvd1689m). Official gated id needs an HF grant; mirror avoids the token.
+        family_id: "huggingface:kiennt120/dinov3-vitl16-pretrain-lvd1689m"
         acceleration_match: "matches_runtime_step:python"
     - id: validate
       type: validation

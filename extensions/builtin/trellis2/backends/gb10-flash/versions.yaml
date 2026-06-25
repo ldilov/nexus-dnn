@@ -18,6 +18,6 @@ versions:
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "dinov3"
         role: "image_encoder"
-        source: { kind: "huggingface", repo: "facebook/dinov3-vitl16-pretrain-lvd1689m", revision: "main" }
+        source: { kind: "huggingface", repo: "kiennt120/dinov3-vitl16-pretrain-lvd1689m", revision: "main" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
