@@ -167,6 +167,9 @@ def generate_real(
         emit_sync(Notifications.PROGRESS, {"stage": "glb", "step": 0, "total": 0})
         glb = _to_glb(mesh, validated)
         glb.export(str(output_path), extension_webp=True)
+        from .glb import patch_glb_metallic
+
+        patch_glb_metallic(output_path, validated.metallic)
         vertices, faces = _mesh_counts(mesh)
     except GenerationCancelled:
         raise

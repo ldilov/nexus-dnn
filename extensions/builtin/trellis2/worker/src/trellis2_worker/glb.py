@@ -24,6 +24,48 @@ def _pad4(data: bytes, pad_byte: int) -> bytes:
     return data + bytes([pad_byte]) * (4 - rem)
 
 
+def patch_glb_metallic(path: Path, metallic_factor: float) -> bool:
+    """Rewrite a GLB so every material's `metallicFactor` = `metallic_factor`.
+
+    TRELLIS bakes a uniform fully-metallic map (metallic=1) which renders black
+    without strong IBL. Clamping the factor (default 0 = dielectric) lets the
+    baked base-color/roughness read correctly in DCCs/engines. Edits only the
+    JSON chunk; the BIN chunk (geometry + texture images) is preserved verbatim.
+    Returns True if any material was changed.
+    """
+    factor = max(0.0, min(1.0, float(metallic_factor)))
+    data = path.read_bytes()
+    magic, _ver, _total = struct.unpack("<III", data[:12])
+    if magic != GLB_MAGIC:
+        return False
+    off = 12
+    json_len, json_type = struct.unpack("<II", data[off : off + 8])
+    off += 8
+    if json_type != CHUNK_JSON:
+        return False
+    json_bytes = data[off : off + json_len]
+    rest = data[off + json_len :]
+
+    gltf = json.loads(json_bytes)
+    changed = False
+    for mat in gltf.get("materials", []):
+        pbr = mat.setdefault("pbrMetallicRoughness", {})
+        if pbr.get("metallicFactor") != factor:
+            pbr["metallicFactor"] = factor
+            changed = True
+    if not changed:
+        return False
+
+    new_json = _pad4(json.dumps(gltf, separators=(",", ":")).encode("utf-8"), 0x20)
+    total = 12 + 8 + len(new_json) + len(rest)
+    with path.open("wb") as fh:
+        fh.write(struct.pack("<III", GLB_MAGIC, GLB_VERSION, total))
+        fh.write(struct.pack("<II", len(new_json), CHUNK_JSON))
+        fh.write(new_json)
+        fh.write(rest)
+    return True
+
+
 def write_minimal_glb(output_path: Path) -> tuple[Path, int, int]:
     """Write a single-triangle GLB. Returns (path, vertices, faces)."""
     positions = [

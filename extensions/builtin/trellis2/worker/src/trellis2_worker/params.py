@@ -34,6 +34,7 @@ class GenerateParams:
         "texture",
         "residency",
         "texture_size",
+        "metallic",
     )
 
     def __init__(self, **kw: Any) -> None:
@@ -101,6 +102,12 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
         params.get("texture_size"), name="texture_size", default=DEFAULT_TEXTURE_SIZE
     )
 
+    metallic_raw = params.get("metallic", 0.0)
+    try:
+        metallic = max(0.0, min(1.0, float(metallic_raw)))
+    except (TypeError, ValueError):
+        raise ValueError("metallic must be a number in [0, 1]")
+
     return GenerateParams(
         image_path=image_path,
         output_path=output_path,
@@ -111,4 +118,5 @@ def validate_generate_params(params: dict[str, Any]) -> GenerateParams:
         texture=texture,
         residency=residency,
         texture_size=texture_size,
+        metallic=metallic,
     )

@@ -28,6 +28,9 @@ inputs:
   - name: texture
     type: boolean
     required: false
+  - name: metallic
+    type: number
+    required: false
   - name: residency
     type: string
     required: false
