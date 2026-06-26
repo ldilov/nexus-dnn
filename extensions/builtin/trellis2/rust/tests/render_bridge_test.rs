@@ -247,6 +247,173 @@ async fn start_strips_client_path_aliases() {
     assert!(params.get("ref_image_path").is_none());
 }
 
+/// Seed `uploads/in.png` AND a `meshes/base.glb` so `/refine/start` (which
+/// resolves both the image and mesh refs under the workspace) has real files.
+fn app_with_image_and_mesh(
+    pool: sqlx::SqlitePool,
+    factory: Arc<dyn trellis2_extension::backend_client::LeaseFactory>,
+) -> (axum::Router, PathBuf, String, String) {
+    let (router, workspace, image_ref) = app_with_image(pool, factory);
+    let meshes = workspace.join("meshes");
+    std::fs::create_dir_all(&meshes).unwrap();
+    std::fs::write(meshes.join("base.glb"), b"GLBDATA").unwrap();
+    (router, workspace, image_ref, "meshes/base.glb".to_string())
+}
+
+#[tokio::test]
+async fn refine_requires_mesh() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
+
+    let body = serde_json::json!({ "image": image_ref, "mesh": "", "params": {} });
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/refine/start")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn refine_rejects_mesh_ref_not_in_workspace() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
+
+    let body = serde_json::json!({
+        "image": image_ref,
+        "mesh": "../etc/passwd",
+        "params": {}
+    });
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/refine/start")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "traversal mesh ref rejected");
+}
+
+/// CRIT-1 for refine: client path aliases are stripped; the host injects
+/// absolute `mesh`/`mesh_path`/`image`/`face_image_path` and a host `output_path`.
+#[tokio::test]
+async fn refine_strips_client_path_aliases_and_injects_host_paths() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref, mesh_ref) =
+        app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
+    let store = trellis2_extension::storage::Store::new(pool);
+
+    let body = serde_json::json!({
+        "image": image_ref,
+        "mesh": mesh_ref,
+        "face_image": "uploads/in.png",
+        "params": {
+            "output_path": "/etc/evil.glb",
+            "image_path": "/etc/shadow",
+            "ref_image_path": "/etc/passwd",
+            "mesh": "/etc/evil_mesh.glb",
+            "mesh_path": "/etc/evil_mesh.glb",
+            "face_image_path": "/etc/evil_face.png",
+            "resolution": 1024,
+            "max_views": 2,
+            "seed": 3
+        }
+    });
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/refine/start")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, resp_body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK, "{resp_body}");
+    let job_id = resp_body["jobId"].as_str().unwrap().to_string();
+
+    let job = store.get_job(&job_id).await.unwrap();
+    let params: Value = serde_json::from_str(&job.params_json).unwrap();
+
+    let out = params["output_path"].as_str().unwrap();
+    assert_ne!(out, "/etc/evil.glb", "client output_path must be stripped");
+    assert!(
+        out.replace('\\', "/").contains("/meshes/"),
+        "host output_path under workspace, got {out}"
+    );
+
+    let mesh = params["mesh"].as_str().unwrap();
+    let mesh_path = params["mesh_path"].as_str().unwrap();
+    assert_ne!(mesh, "/etc/evil_mesh.glb", "client mesh must be stripped");
+    assert_eq!(mesh, mesh_path, "mesh and mesh_path are the same host path");
+    assert!(
+        mesh.replace('\\', "/").ends_with("meshes/base.glb"),
+        "mesh is the resolved absolute ref, got {mesh}"
+    );
+    assert!(std::path::Path::new(mesh).is_absolute());
+
+    let img = params["image"].as_str().unwrap();
+    assert!(img.replace('\\', "/").ends_with("uploads/in.png"));
+    assert!(std::path::Path::new(img).is_absolute());
+
+    let face = params["face_image_path"].as_str().unwrap();
+    assert_ne!(face, "/etc/evil_face.png", "client face path must be stripped");
+    assert!(face.replace('\\', "/").ends_with("uploads/in.png"));
+    assert!(std::path::Path::new(face).is_absolute());
+
+    assert!(params.get("image_path").is_none());
+    assert!(params.get("ref_image_path").is_none());
+    assert!(params.get("face_image").is_none());
+    assert_eq!(params["resolution"], 1024, "tunables pass through");
+    assert_eq!(params["max_views"], 2);
+}
+
+#[tokio::test]
+async fn refine_without_face_image_omits_face_path() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref, mesh_ref) =
+        app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
+    let store = trellis2_extension::storage::Store::new(pool);
+
+    let body = serde_json::json!({ "image": image_ref, "mesh": mesh_ref, "params": {} });
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/refine/start")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, resp_body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK, "{resp_body}");
+    let job_id = resp_body["jobId"].as_str().unwrap().to_string();
+
+    let job = store.get_job(&job_id).await.unwrap();
+    let params: Value = serde_json::from_str(&job.params_json).unwrap();
+    assert!(
+        params.get("face_image_path").is_none(),
+        "no face crop -> no face_image_path"
+    );
+    assert!(params["mesh"].as_str().unwrap().replace('\\', "/").ends_with("meshes/base.glb"));
+}
+
 #[tokio::test]
 async fn generation_failure_persists_error_and_emits_error_frame() {
     let pool = fixtures::memory_pool().await;

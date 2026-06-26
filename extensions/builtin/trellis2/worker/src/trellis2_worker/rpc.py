@@ -15,6 +15,8 @@ class Methods:
     HEALTH = "trellis2.runtime.health"
     GENERATE_START = "trellis2.generate.start"
     GENERATE_CANCEL = "trellis2.generate.cancel"
+    REFINE_START = "trellis2.refine.start"
+    REFINE_CANCEL = "trellis2.refine.cancel"
 
 
 class Notifications:

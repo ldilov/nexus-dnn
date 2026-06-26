@@ -59,6 +59,24 @@ export interface GenerateParams {
   texture_guidance_interval_end?: number;
 }
 
+/** Geometry-refine voxel resolution. Higher recovers more face detail at a
+ * heavier VRAM/time cost. */
+export type RefineResolution = 512 | 1024 | 1536;
+
+/** Tunable inputs for the `trellis2.refine_3d` operator. The mesh + source
+ * image refs are carried TOP-LEVEL in the start body, not inside params. */
+export interface RefineParams {
+  /** Voxel resolution for the high-res shape SLAT pass. */
+  resolution?: RefineResolution;
+  /** Conditioning views fed to the refine pass (source image + face crop). */
+  max_views?: number;
+  seed?: number;
+  /** Mesh/shape refinement flow steps. */
+  shape_steps?: number;
+  /** Re-bake a texture after the geometry refine. */
+  generate_texture_slat?: boolean;
+}
+
 export type GenerationJobStatus =
   | "queued"
   | "running"

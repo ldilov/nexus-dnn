@@ -22,6 +22,9 @@ export interface GenerateState {
   glbRef: string | null;
   /** No thumbnail at MVP-0 — kept nullable for forward-compat, always null. */
   thumbnailRef: string | null;
+  /** Source image ref the result was built from. Carried so a finished mesh can
+   * be re-fed to the refine pass without re-uploading. Null until known. */
+  inputImageRef: string | null;
   metadata: GenerationMetadata | null;
   errorCode: number | null;
   errorMessage: string | null;
@@ -42,13 +45,19 @@ export const INITIAL_STATE: GenerateState = {
   stageStates: freshStageStates(),
   glbRef: null,
   thumbnailRef: null,
+  inputImageRef: null,
   metadata: null,
   errorCode: null,
   errorMessage: null,
 };
 
-export function startedState(): GenerateState {
-  return { ...INITIAL_STATE, stageStates: freshStageStates(), phase: "running" };
+export function startedState(inputImageRef: string | null = null): GenerateState {
+  return {
+    ...INITIAL_STATE,
+    stageStates: freshStageStates(),
+    phase: "running",
+    inputImageRef,
+  };
 }
 
 function isWorkflowStage(value: string): value is WorkflowStage {

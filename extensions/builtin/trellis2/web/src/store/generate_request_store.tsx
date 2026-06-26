@@ -27,8 +27,9 @@ import {
   startGenerate,
   subscribeGenerateStream,
 } from "../services/generate_client";
+import { startRefine } from "../services/refine_client";
 import { getGenerationJob } from "../services/history_client";
-import type { GenerateParams, GenerationJob } from "../services/types";
+import type { GenerateParams, GenerationJob, RefineParams } from "../services/types";
 
 export const ACTIVE_JOB_KEY = "nexus.3d.trellis2.active-job";
 
@@ -67,6 +68,7 @@ function jobToState(job: GenerationJob): GenerateState {
       overallFraction: 1,
       glbRef: job.glbRef,
       thumbnailRef: null,
+      inputImageRef: job.inputImageRef,
       metadata: job.metadata,
     };
   }
@@ -105,6 +107,12 @@ interface GenerateRequestActions {
   setImage: (ref: string, name: string) => void;
   clearImage: () => void;
   startJob: () => Promise<void>;
+  startRefine: (
+    meshRef: string,
+    imageRef: string,
+    params: RefineParams,
+    faceImageRef?: string,
+  ) => Promise<void>;
   cancelJob: () => Promise<void>;
   resetGenerate: () => void;
   showJobResult: (job: GenerationJob) => Promise<void>;
@@ -174,10 +182,32 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
     const guidance = buildGuidancePatch(guidanceDraft);
     const body = { image: imageRef, params: { ...params, ...guidance } };
     const { jobId } = await startGenerate(body);
-    setGenerate(startedState());
+    setGenerate(startedState(imageRef));
     persistActiveJob(jobId);
     subscribeToJob(jobId);
   }, [imageRef, params, guidanceDraft, subscribeToJob]);
+
+  const startRefineJob = useCallback(
+    async (
+      meshRef: string,
+      sourceImageRef: string,
+      refineParams: RefineParams,
+      faceImageRef?: string,
+    ) => {
+      streamCleanup.current?.();
+      const body = {
+        mesh: meshRef,
+        image: sourceImageRef,
+        params: refineParams,
+        ...(faceImageRef ? { face_image: faceImageRef } : {}),
+      };
+      const { jobId } = await startRefine(body);
+      setGenerate(startedState(sourceImageRef));
+      persistActiveJob(jobId);
+      subscribeToJob(jobId);
+    },
+    [subscribeToJob],
+  );
 
   const cancelJob = useCallback(async () => {
     const jobId = readActiveJobId();
@@ -272,6 +302,7 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
       setImage,
       clearImage,
       startJob,
+      startRefine: startRefineJob,
       cancelJob,
       resetGenerate,
       showJobResult,
@@ -288,6 +319,7 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
       setImage,
       clearImage,
       startJob,
+      startRefineJob,
       cancelJob,
       resetGenerate,
       showJobResult,

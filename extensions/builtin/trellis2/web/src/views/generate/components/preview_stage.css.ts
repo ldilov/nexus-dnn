@@ -183,6 +183,12 @@ export const actions = style({
   marginTop: "auto",
   paddingTop: vars.space.lg,
   display: "flex",
+  flexDirection: "column",
+  gap: vars.space.md,
+});
+
+export const actionRow = style({
+  display: "flex",
   gap: vars.space.md,
 });
 
@@ -221,4 +227,121 @@ export const downloadIcon = style({
   fontFamily: "'Material Symbols Outlined'",
   fontSize: "18px",
   lineHeight: 1,
+});
+
+/** Download steps down to a quiet outlined treatment so the accent-filled
+ * "Refine detail" reads as the primary next action on a finished mesh. */
+export const downloadSecondary = style({
+  background: "transparent",
+  color: vars.color.text,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  selectors: {
+    "&:hover": {
+      background: `color-mix(in oklab, ${vars.color.accent} 6%, transparent)`,
+      boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+    },
+  },
+});
+
+export const refine = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: vars.space.xs,
+  flex: 1,
+  height: "42px",
+  padding: `0 ${vars.space.lg}`,
+  border: "none",
+  borderRadius: vars.radius.md,
+  background: vars.color.accent,
+  color: vars.color.accentOn,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.body,
+  fontWeight: vars.weight.semibold,
+  cursor: "pointer",
+  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}, opacity ${vars.motion.fast}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      background: vars.color.accentDim,
+      boxShadow: vars.shadow.glow,
+    },
+    "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
+  },
+});
+
+export const refineIcon = style({
+  fontFamily: "'Material Symbols Outlined'",
+  fontSize: "18px",
+  lineHeight: 1,
+});
+
+export const cropSlot = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.sm,
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceInset,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+});
+
+export const cropLabel = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.xs,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  letterSpacing: "0.04em",
+  color: vars.color.textMuted,
+  minWidth: 0,
+});
+
+export const cropLabelIcon = style({
+  fontFamily: "'Material Symbols Outlined'",
+  fontSize: "16px",
+  lineHeight: 1,
+  color: vars.color.textFaint,
+  flexShrink: 0,
+});
+
+export const cropName = style({
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  color: vars.color.text,
+});
+
+export const cropButton = style({
+  flexShrink: 0,
+  background: "transparent",
+  border: "none",
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  borderRadius: vars.radius.sm,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  fontWeight: vars.weight.medium,
+  color: vars.color.textMuted,
+  cursor: "pointer",
+  transition: `color ${vars.motion.fast}, background ${vars.motion.fast}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      color: vars.color.text,
+      background: `color-mix(in oklab, ${vars.color.accent} 8%, transparent)`,
+    },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
+  },
+});
+
+export const cropInput = style({
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: 0,
+  margin: "-1px",
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
 });

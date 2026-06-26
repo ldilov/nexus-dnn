@@ -1,10 +1,14 @@
 import pytest
 
 from trellis2_worker.params import (
+    DEFAULT_REFINE_MAX_NUM_TOKENS,
+    DEFAULT_REFINE_MAX_VIEWS,
+    DEFAULT_REFINE_RESOLUTION,
     DEFAULT_SIMPLIFY_TARGET,
     DEFAULT_SPARSE_STEPS,
     NVDIFFRAST_FACE_LIMIT,
     validate_generate_params,
+    validate_refine_params,
 )
 
 
@@ -154,3 +158,77 @@ def test_per_stage_levers_are_independent():
     assert v.stage_sampler_params("sparse") == {"steps": 12, "guidance_strength": 6.5}
     assert v.stage_sampler_params("shape") == {"steps": 12}
     assert v.stage_sampler_params("texture") == {"steps": 12, "guidance_strength": 3.0}
+
+
+def _ok_refine_params(**overrides) -> dict:
+    base = {"mesh_path": "in.glb", "image_path": "in.png", "output_path": "out.glb"}
+    base.update(overrides)
+    return base
+
+
+def test_refine_defaults_applied():
+    v = validate_refine_params(_ok_refine_params())
+    assert v.mesh_path == "in.glb"
+    assert v.image_path == "in.png"
+    assert v.face_image_path is None
+    assert v.resolution == DEFAULT_REFINE_RESOLUTION
+    assert v.max_views == DEFAULT_REFINE_MAX_VIEWS
+    assert v.max_num_tokens == DEFAULT_REFINE_MAX_NUM_TOKENS
+    assert v.residency == "balanced"
+
+
+def test_refine_mesh_aliases_accepted():
+    assert validate_refine_params(
+        {"mesh": "a.glb", "image_path": "i.png", "output_path": "o.glb"}
+    ).mesh_path == "a.glb"
+
+
+def test_refine_missing_mesh_rejected():
+    with pytest.raises(ValueError, match="mesh"):
+        validate_refine_params({"image_path": "i.png", "output_path": "o.glb"})
+
+
+def test_refine_missing_image_rejected():
+    with pytest.raises(ValueError, match="image"):
+        validate_refine_params({"mesh_path": "m.glb", "output_path": "o.glb"})
+
+
+def test_refine_missing_output_rejected():
+    with pytest.raises(ValueError, match="output_path"):
+        validate_refine_params({"mesh_path": "m.glb", "image_path": "i.png"})
+
+
+def test_refine_invalid_resolution_rejected():
+    with pytest.raises(ValueError, match="resolution"):
+        validate_refine_params(_ok_refine_params(resolution=2048))
+
+
+def test_refine_face_image_threaded_through():
+    v = validate_refine_params(_ok_refine_params(face_image_path="face.png"))
+    assert v.face_image_path == "face.png"
+
+
+def test_refine_stage_sampler_params_shape_and_texture_only():
+    v = validate_refine_params(_ok_refine_params(shape_steps=7, texture_steps=9))
+    assert v.stage_sampler_params("shape") == {"steps": 7}
+    assert v.stage_sampler_params("texture") == {"steps": 9}
+    with pytest.raises(ValueError, match="refine stage"):
+        v.stage_sampler_params("sparse")
+
+
+def test_refine_guidance_levers_merged_into_stage_params():
+    v = validate_refine_params(
+        _ok_refine_params(shape_guidance_strength=5.0, texture_guidance_rescale=0.4)
+    )
+    assert v.stage_sampler_params("shape") == {"steps": 12, "guidance_strength": 5.0}
+    assert v.stage_sampler_params("texture") == {"steps": 12, "guidance_rescale": 0.4}
+
+
+def test_refine_invalid_residency_rejected():
+    with pytest.raises(ValueError, match="residency"):
+        validate_refine_params(_ok_refine_params(residency="hyper"))
+
+
+def test_refine_params_dict_required():
+    with pytest.raises(ValueError, match="object"):
+        validate_refine_params("not-a-dict")  # type: ignore

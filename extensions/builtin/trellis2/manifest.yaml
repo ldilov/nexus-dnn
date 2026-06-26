@@ -109,6 +109,7 @@ backend_runtimes:
     supported_roles: ["mesh.generate"]
 operators:
   - file: "operators/generate_3d.yaml"
+  - file: "operators/refine_3d.yaml"
 recipes:
   - file: "recipes/trellis2_generate.yaml"
 ui:

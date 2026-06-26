@@ -2,6 +2,8 @@ from typing import *
 import torch
 import torch.nn as nn
 import numpy as np
+import trimesh
+import o_voxel
 from PIL import Image
 from .base import Pipeline
 from . import samplers, rembg
@@ -31,6 +33,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
     model_names_to_load = [
         'sparse_structure_flow_model',
         'sparse_structure_decoder',
+        'shape_slat_encoder',
         'shape_slat_flow_model_512',
         'shape_slat_flow_model_1024',
         'shape_slat_decoder',
@@ -488,7 +491,194 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 )
             )
         return out_mesh
-    
+
+    def preprocess_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """
+        Normalize an input mesh into the canonical unit cube the encoder expects.
+
+        Centers and scales vertices into [-0.5, 0.5] and swaps Y/Z (GLB->voxel
+        axis convention), matching the texturing pipeline's preprocessing.
+        """
+        vertices = mesh.vertices
+        vertices_min = vertices.min(axis=0)
+        vertices_max = vertices.max(axis=0)
+        center = (vertices_min + vertices_max) / 2
+        scale = 0.99999 / (vertices_max - vertices_min).max()
+        vertices = (vertices - center) * scale
+        tmp = vertices[:, 1].copy()
+        vertices[:, 1] = -vertices[:, 2]
+        vertices[:, 2] = tmp
+        assert np.all(vertices >= -0.5) and np.all(vertices <= 0.5), 'vertices out of range'
+        return trimesh.Trimesh(vertices=vertices, faces=mesh.faces, process=False)
+
+    def encode_shape_slat(
+        self,
+        mesh: trimesh.Trimesh,
+        resolution: int = 1024,
+    ) -> SparseTensor:
+        """
+        Encode an existing mesh into a shape structured latent (SLat).
+
+        Voxelizes the mesh into a flexible dual grid at `resolution`, then runs
+        the shape encoder to produce the SLat used to seed high-res refinement.
+        """
+        vertices = torch.from_numpy(mesh.vertices).float()
+        faces = torch.from_numpy(mesh.faces).long()
+
+        voxel_indices, dual_vertices, intersected = o_voxel.convert.mesh_to_flexible_dual_grid(
+            vertices.cpu(), faces.cpu(),
+            grid_size=resolution,
+            aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+            face_weight=1.0,
+            boundary_weight=0.2,
+            regularization_weight=1e-2,
+            timing=False,
+        )
+
+        vertices = SparseTensor(
+            feats=dual_vertices * resolution - voxel_indices,
+            coords=torch.cat([torch.zeros_like(voxel_indices[:, 0:1]), voxel_indices], dim=-1)
+        ).to(self.device)
+        intersected = vertices.replace(intersected).to(self.device)
+
+        if self.low_vram:
+            self.models['shape_slat_encoder'].to(self.device)
+        shape_slat = self.models['shape_slat_encoder'](vertices, intersected)
+        if self.low_vram:
+            self.models['shape_slat_encoder'].cpu()
+        return shape_slat
+
+    def sample_mesh_slat(
+        self,
+        mesh_slat: SparseTensor,
+        cond: dict,
+        flow_model,
+        resolution: int,
+        sampler_params: dict = {},
+        max_num_tokens: int = 50000,
+        downsampling: int = 16,
+    ) -> Tuple[SparseTensor, int]:
+        """
+        Re-sample a high-resolution shape SLat from an encoded mesh SLat.
+
+        Upsamples the encoded mesh structure, quantizes it to the highest grid
+        that fits the token budget, then samples a new shape SLat conditioned on
+        the image. This is the geometry-refinement step (mirrors run()'s cascade
+        tail but seeded from the existing mesh instead of sampled-from-noise).
+        """
+        if self.low_vram:
+            self.models['shape_slat_decoder'].to(self.device)
+            self.models['shape_slat_decoder'].low_vram = True
+        hr_coords = self.models['shape_slat_decoder'].upsample(mesh_slat, upsample_times=4)
+        if self.low_vram:
+            self.models['shape_slat_decoder'].cpu()
+            self.models['shape_slat_decoder'].low_vram = False
+
+        hr_resolution = resolution
+        lr_resolution = resolution
+        while True:
+            quant_coords = torch.cat([
+                hr_coords[:, :1],
+                ((hr_coords[:, 1:] + 0.5) / lr_resolution * (hr_resolution // downsampling)).int(),
+            ], dim=1)
+            coords = quant_coords.unique(dim=0)
+            num_tokens = coords.shape[0]
+            if num_tokens < max_num_tokens:
+                break
+            hr_resolution -= 128
+            if hr_resolution < 1024 and resolution >= 1024:
+                hr_resolution = 1024
+                break
+            if hr_resolution < 512:
+                hr_resolution = 512
+                break
+
+        coords_dev = coords.to(self.device)
+        noise = SparseTensor(
+            feats=torch.randn(coords.shape[0], flow_model.in_channels, device=self.device),
+            coords=coords_dev,
+        )
+        sampler_params = {**self.shape_slat_sampler_params, **sampler_params}
+        if self.low_vram:
+            flow_model.to(self.device)
+        slat = self.shape_slat_sampler.sample(
+            flow_model,
+            noise,
+            **cond,
+            **sampler_params,
+            verbose=True,
+            tqdm_desc="Sampling shape SLat",
+        ).samples
+        if self.low_vram:
+            flow_model.cpu()
+
+        std = torch.tensor(self.shape_slat_normalization['std'])[None].to(slat.device)
+        mean = torch.tensor(self.shape_slat_normalization['mean'])[None].to(slat.device)
+        slat = slat * std + mean
+        return slat, hr_resolution
+
+    @torch.no_grad()
+    def refine_mesh(
+        self,
+        mesh: trimesh.Trimesh,
+        image: Union[Image.Image, list],
+        seed: int = 42,
+        shape_slat_sampler_params: dict = {},
+        tex_slat_sampler_params: dict = {},
+        resolution: int = 1024,
+        max_num_tokens: int = 50000,
+        return_latent: bool = False,
+        downsampling: int = 16,
+        max_views: int = 4,
+    ) -> List[MeshWithVoxel]:
+        """
+        Refine an existing mesh's geometry at high resolution, conditioned on image(s).
+
+        Re-encodes the finished mesh to a shape SLat and re-samples shape + texture
+        SLat at `resolution` (512/1024/1536) to recover detail the base pass starved
+        (e.g. faces on full-body meshes). `image` may be a single image or a list of
+        up to `max_views` conditioning views (e.g. add a tight face crop to bias the
+        new geometry toward the face).
+        """
+        if resolution not in (512, 1024, 1536):
+            raise ValueError(f"Invalid refine resolution: {resolution}")
+
+        mesh = self.preprocess_mesh(mesh)
+        torch.manual_seed(seed)
+        _cb = getattr(self, "_nexus_stage_cb", None)
+        if _cb:
+            _cb("encode")
+
+        images = list(image)[:max_views] if isinstance(image, (list, tuple)) else [image]
+        cond = self.get_cond(images, 512 if resolution == 512 else 1024)
+        mesh_slat = self.encode_shape_slat(mesh, resolution)
+
+        if resolution == 512:
+            shape_model = self.models['shape_slat_flow_model_512']
+            tex_model = self.models['tex_slat_flow_model_512']
+        else:
+            shape_model = self.models['shape_slat_flow_model_1024']
+            tex_model = self.models['tex_slat_flow_model_1024']
+
+        if _cb:
+            _cb("shape")
+        shape_slat, res = self.sample_mesh_slat(
+            mesh_slat, cond, shape_model, resolution,
+            shape_slat_sampler_params, max_num_tokens, downsampling,
+        )
+        if _cb:
+            _cb("texture")
+        tex_slat = self.sample_tex_slat(
+            cond, tex_model, shape_slat, tex_slat_sampler_params,
+        )
+        torch.cuda.empty_cache()
+        if _cb:
+            _cb("decode")
+        out_mesh = self.decode_latent(shape_slat, tex_slat, res)
+        if return_latent:
+            return out_mesh, (shape_slat, tex_slat, res)
+        return out_mesh
+
     @torch.no_grad()
     def run(
         self,

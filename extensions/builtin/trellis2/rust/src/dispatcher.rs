@@ -6,7 +6,7 @@ use nexus_events::emitter::RunNodeEmitter;
 use serde_json::{json, Value as JsonValue};
 use tokio::sync::{broadcast, Mutex};
 
-use crate::backend_client::{methods, BackendClient, LeaseProvider};
+use crate::backend_client::{BackendClient, LeaseProvider};
 use crate::domain::JobId;
 use crate::host_contract::NotificationEnvelope;
 use crate::node_events::{StageTracker, Transition};
@@ -194,6 +194,11 @@ async fn newest_glb(dir: &std::path::Path) -> Option<String> {
 
 pub struct GenerationTask {
     pub job_id: JobId,
+    /// Worker RPC fired for this job — `trellis2.generate.start` for a base
+    /// generation, `trellis2.refine.start` for a refine pass. Both emit the
+    /// shared `trellis2.generate.*` notifications, so the relay/terminal handling
+    /// below is identical regardless of which one ran.
+    pub method: &'static str,
     pub params: JsonValue,
     pub client: BackendClient,
     pub store: Store,
@@ -217,6 +222,7 @@ pub fn spawn_generation(task: GenerationTask) {
     tokio::spawn(async move {
         let GenerationTask {
             job_id,
+            method,
             params,
             client,
             store,
@@ -263,9 +269,7 @@ pub fn spawn_generation(task: GenerationTask) {
             }
         });
 
-        let outcome = client
-            .call_long_running(methods::GENERATE_START, params.clone())
-            .await;
+        let outcome = client.call_long_running(method, params.clone()).await;
 
         relay.abort();
 

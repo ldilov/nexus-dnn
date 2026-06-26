@@ -69,6 +69,7 @@ pub fn http_routes() -> Vec<String> {
     vec![
         "/capabilities".into(),
         "/generate/start".into(),
+        "/refine/start".into(),
         "/generate/jobs".into(),
         "/generate/jobs/{job_id}".into(),
         "/generate/jobs/{job_id}/cancel".into(),

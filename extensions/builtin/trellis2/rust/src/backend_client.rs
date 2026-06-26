@@ -11,6 +11,8 @@ pub mod methods {
     pub const HEALTH: &str = "trellis2.runtime.health";
     pub const GENERATE_START: &str = "trellis2.generate.start";
     pub const GENERATE_CANCEL: &str = "trellis2.generate.cancel";
+    pub const REFINE_START: &str = "trellis2.refine.start";
+    pub const REFINE_CANCEL: &str = "trellis2.refine.cancel";
     pub const RELEASE_MEMORY: &str = "runtime.release_memory";
 }
 

@@ -1,21 +1,80 @@
-import type { ReactElement } from "react";
+import { type ChangeEvent, type ReactElement, useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 import { ModelViewer } from "../../../components/media/model_viewer";
+import { DEFAULT_REFINE_PARAMS } from "../../../domain/defaults";
 import type { GeneratePhase, GenerateState } from "../../../domain/generate_state";
+import { ExtensionApiError } from "../../../services/http";
 import { mediaUrlForRef } from "../../../services/media_url";
+import { uploadImage } from "../../../services/upload_client";
+import { useGenerateRequest } from "../../../store/generate_request_store";
 import * as styles from "./preview_stage.css";
 
 interface PreviewStageProps {
   state: GenerateState;
 }
 
+const FACE_CROP_ACCEPT = "image/png,image/jpeg,image/webp";
+
 /** Persistent 3D preview bar above the workspace — a viewport (live mesh once a
  * run completes, atmospheric empty stage otherwise) paired with the result's
- * format/topology readout and GLB download. */
+ * format/topology readout, GLB download and a geometry "Refine detail" pass. */
 export function PreviewStage({ state }: PreviewStageProps): ReactElement {
+  const { startRefine } = useGenerateRequest();
+  const cropInputRef = useRef<HTMLInputElement | null>(null);
+  const [cropRef, setCropRef] = useState<string | null>(null);
+  const [cropName, setCropName] = useState<string | null>(null);
+  const [cropUploading, setCropUploading] = useState(false);
+  const [refining, setRefining] = useState(false);
+
   const glbUrl = state.phase === "done" ? mediaUrlForRef(state.glbRef) : null;
   const status = describeStatus(state.phase);
   const meta = readMeta(state);
   const downloadName = state.glbRef ? `${state.glbRef}.glb` : "mesh.glb";
+  const canRefine = Boolean(state.glbRef) && Boolean(state.inputImageRef) && !refining;
+
+  const pickCrop = useCallback(() => cropInputRef.current?.click(), []);
+
+  const onCropPicked = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setCropUploading(true);
+    try {
+      const { ref } = await uploadImage(file);
+      setCropRef(ref);
+      setCropName(file.name);
+    } catch (err) {
+      const message =
+        err instanceof ExtensionApiError ? err.message : "Face crop upload failed — try again.";
+      toast.error(message);
+    } finally {
+      setCropUploading(false);
+    }
+  }, []);
+
+  const clearCrop = useCallback(() => {
+    setCropRef(null);
+    setCropName(null);
+  }, []);
+
+  const onRefine = useCallback(async () => {
+    if (!state.glbRef || !state.inputImageRef) return;
+    setRefining(true);
+    try {
+      await startRefine(
+        state.glbRef,
+        state.inputImageRef,
+        DEFAULT_REFINE_PARAMS,
+        cropRef ?? undefined,
+      );
+    } catch (err) {
+      const message =
+        err instanceof ExtensionApiError ? err.message : "Could not start refine — try again.";
+      toast.error(message);
+    } finally {
+      setRefining(false);
+    }
+  }, [state.glbRef, state.inputImageRef, cropRef, startRefine]);
 
   return (
     <section className={styles.stage} aria-label="Mesh preview">
@@ -52,24 +111,70 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
         </div>
 
         <div className={styles.actions}>
-          {glbUrl ? (
-            <a className={styles.download} href={glbUrl} download={downloadName}>
-              <span className={styles.downloadIcon} aria-hidden="true">
-                download
+          <div className={styles.actionRow}>
+            {glbUrl ? (
+              <a
+                className={[styles.download, styles.downloadSecondary].join(" ")}
+                href={glbUrl}
+                download={downloadName}
+              >
+                <span className={styles.downloadIcon} aria-hidden="true">
+                  download
+                </span>
+                Download GLB
+              </a>
+            ) : (
+              <span
+                className={[styles.download, styles.downloadDisabled].join(" ")}
+                aria-disabled="true"
+              >
+                <span className={styles.downloadIcon} aria-hidden="true">
+                  download
+                </span>
+                Download GLB
               </span>
-              Download GLB
-            </a>
-          ) : (
-            <span
-              className={[styles.download, styles.downloadDisabled].join(" ")}
-              aria-disabled="true"
+            )}
+
+            <button
+              type="button"
+              className={styles.refine}
+              onClick={() => void onRefine()}
+              disabled={!canRefine}
+              aria-busy={refining || undefined}
             >
-              <span className={styles.downloadIcon} aria-hidden="true">
-                download
+              <span className={styles.refineIcon} aria-hidden="true">
+                auto_fix_high
               </span>
-              Download GLB
-            </span>
-          )}
+              Refine detail
+            </button>
+          </div>
+
+          {glbUrl ? (
+            <div className={styles.cropSlot}>
+              <span className={styles.cropLabel}>
+                <span className={styles.cropLabelIcon} aria-hidden="true">
+                  face
+                </span>
+                <span className={styles.cropName}>{cropName ?? "Face crop · optional"}</span>
+              </span>
+              <input
+                ref={cropInputRef}
+                type="file"
+                className={styles.cropInput}
+                accept={FACE_CROP_ACCEPT}
+                tabIndex={-1}
+                onChange={(e) => void onCropPicked(e)}
+              />
+              <button
+                type="button"
+                className={styles.cropButton}
+                onClick={cropRef ? clearCrop : pickCrop}
+                disabled={cropUploading}
+              >
+                {cropUploading ? "Uploading…" : cropRef ? "Remove" : "Attach"}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

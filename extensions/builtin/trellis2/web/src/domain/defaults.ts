@@ -1,4 +1,4 @@
-import type { GenerateParams } from "../services/types";
+import type { GenerateParams, RefineParams } from "../services/types";
 
 /** Operator defaults for `trellis2.generate_3d`. MVP-0 ships MeshOnly
  * (texture OFF). The input image is supplied top-level, not in params.
@@ -16,4 +16,12 @@ export const DEFAULT_PARAMS: GenerateParams = {
   texture: false,
   remove_background: true,
   residency: "balanced",
+};
+
+/** Minimal defaults for the geometry-refine pass. 1024-res shape SLAT recovers
+ * the melted face; max_views lets the source image plus an optional face crop
+ * both condition the new detail. */
+export const DEFAULT_REFINE_PARAMS: RefineParams = {
+  resolution: 1024,
+  max_views: 4,
 };
