@@ -192,6 +192,12 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         cond = self.image_cond_model(image)
         if self.low_vram:
             self.image_cond_model.cpu()
+        # nexus: fuse multi-view conditioning (e.g. body + face crop) into one
+        # batch-1 token sequence so cross-attn matches the single-mesh latent.
+        if cond.ndim == 2:
+            cond = cond.unsqueeze(0)
+        if cond.shape[0] > 1:
+            cond = cond.reshape(1, -1, cond.shape[-1])
         if not include_neg_cond:
             return {'cond': cond}
         neg_cond = torch.zeros_like(cond)
