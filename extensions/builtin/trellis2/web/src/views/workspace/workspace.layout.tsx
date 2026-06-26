@@ -1,23 +1,10 @@
 import type { ReactElement } from "react";
-import { NavLink, Outlet, useParams } from "react-router";
+import { Outlet } from "react-router";
 import { Toaster } from "sonner";
 import { GenerateRequestProvider } from "../../store/generate_request_store";
 import * as styles from "./workspace.css";
 
-interface TabDef {
-  to: string;
-  label: string;
-}
-
-const TABS: readonly TabDef[] = [
-  { to: "generate", label: "Generate" },
-  { to: "dag", label: "Workflow" },
-];
-
 export function WorkspaceLayout(): ReactElement {
-  const { deploymentId } = useParams();
-  const base = deploymentId ? `/${deploymentId}` : "";
-
   return (
     <GenerateRequestProvider>
       <div className={styles.shell}>
@@ -31,19 +18,6 @@ export function WorkspaceLayout(): ReactElement {
               subject, tune the flow, and export a GLB.
             </p>
           </div>
-          <nav className={styles.tabs} aria-label="Workspace sections">
-            {TABS.map((tab) => (
-              <NavLink
-                key={tab.to}
-                to={`${base}/${tab.to}`}
-                className={({ isActive }) =>
-                  [styles.tab, isActive ? styles.tabActive : ""].filter(Boolean).join(" ")
-                }
-              >
-                {tab.label}
-              </NavLink>
-            ))}
-          </nav>
         </header>
         <main className={styles.main}>
           <Outlet />

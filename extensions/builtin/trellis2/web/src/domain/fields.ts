@@ -131,7 +131,6 @@ export const FIELD_SPECS: readonly FieldSpec[] = [
     step: 4_096,
     default: 49_152,
     advanced: true,
-    gate: { key: "pipeline_type", in: ["1536_cascade"] },
   },
   {
     key: "simplify_target",

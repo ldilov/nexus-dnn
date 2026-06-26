@@ -72,41 +72,6 @@ export const subtitle = style({
   maxWidth: "62ch",
 });
 
-export const tabs = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  padding: vars.space.xs,
-  borderRadius: vars.radius.pill,
-  background: vars.color.surfaceInset,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
-});
-
-export const tab = style({
-  appearance: "none",
-  border: "none",
-  background: "transparent",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.caption,
-  fontWeight: 600,
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  borderRadius: vars.radius.pill,
-  cursor: "pointer",
-  textDecoration: "none",
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
-  selectors: {
-    "&:hover": { color: vars.color.text },
-    "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
-  },
-});
-
-export const tabActive = style({
-  background: vars.color.surfaceHigh,
-  color: vars.color.text,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
-});
-
 export const main = style({
   display: "flex",
   flexDirection: "column",
