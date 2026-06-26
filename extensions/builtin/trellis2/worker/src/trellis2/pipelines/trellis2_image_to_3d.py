@@ -7,6 +7,7 @@ import o_voxel
 from PIL import Image
 from .base import Pipeline
 from . import samplers, rembg
+from .. import models
 from ..modules.sparse import SparseTensor
 from ..modules import image_feature_extractor
 from ..representations import Mesh, MeshWithVoxel
@@ -120,6 +121,13 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             'alpha': slice(5, 6),
         }
         pipeline._device = 'cpu'
+
+        # nexus: shape_slat_encoder isn't in pipeline.json's models dict (base run
+        # never needs it) so load it explicitly for refine_mesh's mesh->SLat encode.
+        if pipeline.models.get('shape_slat_encoder') is None:
+            encoder = models.from_pretrained(f"{path}/ckpts/shape_enc_next_dc_f16c32_fp16")
+            encoder.eval()
+            pipeline.models['shape_slat_encoder'] = encoder
 
         return pipeline
 
