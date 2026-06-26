@@ -80,16 +80,15 @@ describe("operator fields", () => {
     expect(spec?.max).toBe(131_072);
   });
 
-  test("max_num_tokens is gated to the 1536 cascade", () => {
+  test("max_num_tokens is ungated", () => {
     const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
-    expect(spec?.gate?.key).toBe("pipeline_type");
-    expect(spec?.gate?.in).toEqual(["1536_cascade"]);
+    expect(spec?.gate).toBeUndefined();
   });
 
-  test("isFieldActive disables max_num_tokens outside the 1536 cascade", () => {
+  test("isFieldActive keeps max_num_tokens active in every pipeline type", () => {
     const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
     if (!spec) throw new Error("max_num_tokens spec missing");
-    expect(isFieldActive(spec, { pipeline_type: "1024_cascade" })).toBe(false);
+    expect(isFieldActive(spec, { pipeline_type: "1024_cascade" })).toBe(true);
     expect(isFieldActive(spec, { pipeline_type: "1536_cascade" })).toBe(true);
   });
 

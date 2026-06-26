@@ -198,12 +198,12 @@ describe("GenerateForm", () => {
     expect(params).not.toHaveProperty("sparse_guidance_interval_end");
   });
 
-  test("gates Max tokens behind the 1536 cascade", () => {
+  test("keeps Max tokens enabled across every pipeline type", () => {
     renderForm();
     fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
 
     const maxTokens = screen.getByLabelText("Max tokens") as HTMLInputElement;
-    expect(maxTokens.disabled).toBe(true);
+    expect(maxTokens.disabled).toBe(false);
 
     const pipeline = screen.getByLabelText("Detail preset") as HTMLSelectElement;
     fireEvent.change(pipeline, { target: { value: "1536_cascade" } });
