@@ -17,6 +17,8 @@ class Methods:
     GENERATE_CANCEL = "trellis2.generate.cancel"
     REFINE_START = "trellis2.refine.start"
     REFINE_CANCEL = "trellis2.refine.cancel"
+    PROJECT_START = "trellis2.project.start"
+    PROJECT_CANCEL = "trellis2.project.cancel"
 
 
 class Notifications:

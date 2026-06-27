@@ -70,6 +70,7 @@ pub fn http_routes() -> Vec<String> {
         "/capabilities".into(),
         "/generate/start".into(),
         "/refine/start".into(),
+        "/project/start".into(),
         "/generate/jobs".into(),
         "/generate/jobs/{job_id}".into(),
         "/generate/jobs/{job_id}/cancel".into(),

@@ -19,6 +19,8 @@ def test_frozen_method_names():
     assert Methods.GENERATE_CANCEL == "trellis2.generate.cancel"
     assert Methods.REFINE_START == "trellis2.refine.start"
     assert Methods.REFINE_CANCEL == "trellis2.refine.cancel"
+    assert Methods.PROJECT_START == "trellis2.project.start"
+    assert Methods.PROJECT_CANCEL == "trellis2.project.cancel"
 
 
 def test_frozen_notification_names():

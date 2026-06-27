@@ -1,7 +1,7 @@
 import { type ChangeEvent, type ReactElement, useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ModelViewer } from "../../../components/media/model_viewer";
-import { DEFAULT_REFINE_PARAMS } from "../../../domain/defaults";
+import { DEFAULT_PROJECT_PARAMS, DEFAULT_REFINE_PARAMS } from "../../../domain/defaults";
 import type { GeneratePhase, GenerateState } from "../../../domain/generate_state";
 import type { RefineResolution } from "../../../services/types";
 import { ExtensionApiError } from "../../../services/http";
@@ -18,14 +18,16 @@ const FACE_CROP_ACCEPT = "image/png,image/jpeg,image/webp";
 
 /** Persistent 3D preview bar above the workspace — a viewport (live mesh once a
  * run completes, atmospheric empty stage otherwise) paired with the result's
- * format/topology readout, GLB download and a geometry "Refine detail" pass. */
+ * format/topology readout, GLB download, a geometry "Refine detail" pass and a
+ * "Project photo" pass that textures the mesh with the real source image. */
 export function PreviewStage({ state }: PreviewStageProps): ReactElement {
-  const { startRefine } = useGenerateRequest();
+  const { startRefine, startProject } = useGenerateRequest();
   const cropInputRef = useRef<HTMLInputElement | null>(null);
   const [cropRef, setCropRef] = useState<string | null>(null);
   const [cropName, setCropName] = useState<string | null>(null);
   const [cropUploading, setCropUploading] = useState(false);
   const [refining, setRefining] = useState(false);
+  const [projecting, setProjecting] = useState(false);
   const [resolution, setResolution] = useState<RefineResolution>(
     DEFAULT_REFINE_PARAMS.resolution ?? 1536,
   );
@@ -41,7 +43,9 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
   const status = describeStatus(state.phase);
   const meta = readMeta(state);
   const downloadName = state.glbRef ? `${state.glbRef}.glb` : "mesh.glb";
-  const canRefine = Boolean(state.glbRef) && Boolean(state.inputImageRef) && !refining;
+  const hasResult = Boolean(state.glbRef) && Boolean(state.inputImageRef);
+  const canRefine = hasResult && !refining && !projecting;
+  const canProject = hasResult && !refining && !projecting;
 
   const pickCrop = useCallback(() => cropInputRef.current?.click(), []);
 
@@ -102,6 +106,22 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
     startRefine,
   ]);
 
+  const onProject = useCallback(async () => {
+    if (!state.glbRef || !state.inputImageRef) return;
+    setProjecting(true);
+    try {
+      await startProject(state.glbRef, state.inputImageRef, { ...DEFAULT_PROJECT_PARAMS });
+    } catch (err) {
+      const message =
+        err instanceof ExtensionApiError
+          ? err.message
+          : "Could not start photo projection — try again.";
+      toast.error(message);
+    } finally {
+      setProjecting(false);
+    }
+  }, [state.glbRef, state.inputImageRef, startProject]);
+
   return (
     <section className={styles.stage} aria-label="Mesh preview">
       <div className={styles.viewport}>
@@ -160,7 +180,9 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
                 Download GLB
               </span>
             )}
+          </div>
 
+          <div className={styles.actionRow}>
             <button
               type="button"
               className={styles.refine}
@@ -172,6 +194,19 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
                 auto_fix_high
               </span>
               Refine detail
+            </button>
+
+            <button
+              type="button"
+              className={styles.project}
+              onClick={() => void onProject()}
+              disabled={!canProject}
+              aria-busy={projecting || undefined}
+            >
+              <span className={styles.projectIcon} aria-hidden="true">
+                wallpaper
+              </span>
+              Project photo
             </button>
           </div>
 

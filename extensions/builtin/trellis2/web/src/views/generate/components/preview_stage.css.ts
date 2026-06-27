@@ -276,6 +276,42 @@ export const refineIcon = style({
   lineHeight: 1,
 });
 
+/** Photo-projection sits beside the accent-filled "Refine detail" as the quieter
+ * sibling action, so it takes a quiet outlined treatment to keep one clear
+ * primary on the finished-mesh row. */
+export const project = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: vars.space.xs,
+  flex: 1,
+  height: "42px",
+  padding: `0 ${vars.space.lg}`,
+  borderRadius: vars.radius.md,
+  background: "transparent",
+  color: vars.color.text,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.body,
+  fontWeight: vars.weight.semibold,
+  cursor: "pointer",
+  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}, opacity ${vars.motion.fast}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      background: `color-mix(in oklab, ${vars.color.accent} 6%, transparent)`,
+      boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+    },
+    "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
+  },
+});
+
+export const projectIcon = style({
+  fontFamily: "'Material Symbols Outlined'",
+  fontSize: "18px",
+  lineHeight: 1,
+});
+
 export const controls = style({
   display: "flex",
   flexDirection: "column",

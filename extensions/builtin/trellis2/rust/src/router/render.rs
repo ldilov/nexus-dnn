@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/generate/start", post(start))
         .route("/refine/start", post(start_refine))
+        .route("/project/start", post(start_project))
         .route("/generate/jobs", get(list_jobs))
         .route("/generate/jobs/{job_id}", get(get_job).delete(delete_job))
         .route("/generate/jobs/{job_id}/cancel", post(cancel))
@@ -309,6 +310,128 @@ fn prepare_refine_params(
 }
 
 #[derive(Debug, Deserialize)]
+struct ProjectRequest {
+    /// Workspace-relative ref of the real source photo to project (required).
+    image: String,
+    /// Workspace-relative ref of the input GLB to re-texture (required).
+    mesh: String,
+    #[serde(default)]
+    params: JsonValue,
+}
+
+async fn start_project(State(state): State<AppState>, Json(body): Json<ProjectRequest>) -> Response {
+    match start_project_impl(&state, body).await {
+        Ok(job_id) => Json(json!({ "jobId": job_id.as_str() })).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn start_project_impl(state: &AppState, body: ProjectRequest) -> Result<JobId> {
+    if body.image.trim().is_empty() {
+        return Err(Trellis2Error::validation("image ref is required"));
+    }
+    if body.mesh.trim().is_empty() {
+        return Err(Trellis2Error::validation("mesh ref is required"));
+    }
+
+    // Resolve every client-supplied ref to ABSOLUTE through the media guard
+    // (rejects `..`/absolute); the worker's contract is absolute paths.
+    let image_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.image)
+        .await
+        .map_err(|_| Trellis2Error::validation("image ref not found in workspace"))?;
+    let image_abs = image_abs.to_string_lossy().to_string();
+
+    let mesh_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.mesh)
+        .await
+        .map_err(|_| Trellis2Error::validation("mesh ref not found in workspace"))?;
+    let mesh_abs = mesh_abs.to_string_lossy().to_string();
+
+    let prepared = prepare_project_params(state, &image_abs, &mesh_abs, body.params);
+    let params_json = serde_json::to_string(&prepared)?;
+
+    // Acquire (may spawn the worker) BEFORE any DB row, so a spawn failure
+    // orphans nothing; the guard releases the refcount on any early-return.
+    let client = state.provider.acquire_for_generation().await?;
+    let guard = GenerationGuard::new(state.provider.clone());
+
+    let job_id = JobId::new();
+    state
+        .store
+        .create_job(&job_id, &body.image, &params_json)
+        .await?;
+
+    state.channels.register(job_id.as_str()).await;
+
+    let emitter = state
+        .event_bus
+        .clone()
+        .map(|bus| RunNodeEmitter::new(bus, job_id.as_str().to_string()));
+
+    guard.disarm();
+    spawn_generation(GenerationTask {
+        job_id: job_id.clone(),
+        method: methods::PROJECT_START,
+        params: prepared,
+        client,
+        store: state.store.clone(),
+        channels: state.channels.clone(),
+        emitter,
+        provider: state.provider.clone(),
+        workspace_dir: state.workspace_dir.clone(),
+    });
+
+    Ok(job_id)
+}
+
+/// Build the worker `project.start` params: carry the caller's params, STRIP every
+/// client-supplied path alias, then set the host-chosen ABSOLUTE `mesh`/`mesh_path`,
+/// `image`, and a fresh `output_path`. Stripping is the same CRIT-1 guard as
+/// generate/refine — the worker honours these path keys, so they must never come
+/// from the client. Projection tunables (`azimuth`/`elevation`/`texture_size`/
+/// `residency`) pass through untouched. Pure data shaping — no I/O.
+fn prepare_project_params(
+    state: &AppState,
+    image_abs: &str,
+    mesh_abs: &str,
+    params: JsonValue,
+) -> JsonValue {
+    let mut obj = match params {
+        JsonValue::Object(map) => map,
+        JsonValue::Null => serde_json::Map::new(),
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("params".to_string(), other);
+            map
+        }
+    };
+    obj.remove("output_path");
+    obj.remove("image_path");
+    obj.remove("ref_image_path");
+    obj.remove("image");
+    obj.remove("mesh");
+    obj.remove("mesh_path");
+
+    obj.insert("image".to_string(), JsonValue::String(image_abs.to_string()));
+    obj.insert("mesh".to_string(), JsonValue::String(mesh_abs.to_string()));
+    obj.insert(
+        "mesh_path".to_string(),
+        JsonValue::String(mesh_abs.to_string()),
+    );
+
+    let job_dir = JobId::new();
+    let out = state
+        .workspace_dir
+        .join("meshes")
+        .join(job_dir.as_str())
+        .join("out.glb");
+    obj.insert(
+        "output_path".to_string(),
+        JsonValue::String(out.to_string_lossy().to_string()),
+    );
+    JsonValue::Object(obj)
+}
+
+#[derive(Debug, Deserialize)]
 struct ListQuery {
     #[serde(default = "default_limit")]
     limit: i64,
@@ -363,13 +486,16 @@ async fn cancel_impl(state: &AppState, job_id: &str) -> Result<()> {
     let id = JobId::try_from(job_id)?;
     let _ = state.store.get_job(id.as_str()).await?;
     if let Some(client) = state.provider.current().await {
-        // Generate/refine share one jobs table; the row doesn't record which RPC
-        // ran. Best-effort cancel both — the worker ignores the non-matching id.
+        // One jobs table covers generate/refine/project; the row doesn't record
+        // which ran, so best-effort cancel all (the worker ignores stale ids).
         let _ = client
             .call(methods::GENERATE_CANCEL, json!({ "job_id": id.as_str() }))
             .await;
         let _ = client
             .call(methods::REFINE_CANCEL, json!({ "job_id": id.as_str() }))
+            .await;
+        let _ = client
+            .call(methods::PROJECT_CANCEL, json!({ "job_id": id.as_str() }))
             .await;
     }
     state.store.mark_cancelled(&id).await?;

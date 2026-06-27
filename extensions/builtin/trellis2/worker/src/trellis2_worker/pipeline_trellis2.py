@@ -26,8 +26,10 @@ from .metadata import build_metadata
 from .params import (
     GenerateParams,
     NVDIFFRAST_FACE_LIMIT,
+    ProjectParams,
     RefineParams,
     validate_generate_params,
+    validate_project_params,
     validate_refine_params,
 )
 from .preamble import (
@@ -416,9 +418,131 @@ def refine_real(
     }
 
 
+def project_real(
+    params: dict[str, Any],
+    emit_sync: Callable[[str, dict[str, Any]], None],
+    cancel_event: threading.Event,
+) -> dict[str, Any]:
+    """Synchronous (runs under asyncio.to_thread). Texture-projection pass:
+    project ONE real source photo onto a finished mesh's existing UVs, replacing
+    the model's hallucinated baseColor on front-facing surfaces. Pure nvdiffrast
+    (needs CUDA) — NO TRELLIS model load, so it's fast (seconds). The input mesh
+    is loaded preserving UV + PBR material; the projector composites over the
+    existing texture. emit_sync is notify_from_thread bound to a method name."""
+    apply_env()
+    validated = validate_project_params(params or {})
+
+    output_path = _resolve_under_workspace(validated.output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not gpu_available():
+        raise WorkerError(ErrorCodes.GPU_NOT_SUPPORTED, "CUDA device not available")
+
+    mesh_path = _resolve_under_workspace(validated.mesh_path)
+    if not mesh_path.is_file():
+        raise WorkerError(ErrorCodes.GENERATION_FAILED, "input mesh not found")
+
+    image_path = _resolve_under_workspace(validated.image_path)
+    if not image_path.is_file():
+        raise WorkerError(ErrorCodes.GENERATION_FAILED, "input image not found")
+
+    fallbacks: list[str] = []
+    tf32_on = _apply_perf_backends()
+
+    if cancel_event.is_set():
+        raise GenerationCancelled()
+
+    import trimesh
+
+    emit_sync(Notifications.PROGRESS, {"stage": "load", "step": 0, "total": 0})
+    load_t0 = time.time()
+    loaded = trimesh.load(str(mesh_path), process=False)
+    if isinstance(loaded, trimesh.Trimesh):
+        in_mesh = loaded
+    else:
+        geometries = list(loaded.geometry.values())
+        if not geometries:
+            raise WorkerError(ErrorCodes.GENERATION_FAILED, "mesh has no geometry")
+        in_mesh = geometries[0]
+    image = _open_image(str(image_path))
+    load_s = time.time() - load_t0
+
+    run_t0 = time.time()
+    try:
+        if cancel_event.is_set():
+            raise GenerationCancelled()
+        emit_sync(Notifications.PROGRESS, {"stage": "project", "step": 0, "total": 0})
+        from trellis2.pipelines.texture_projection import texture_mesh_with_multiview
+
+        textured, _, _ = texture_mesh_with_multiview(
+            in_mesh,
+            [image],
+            [validated.azimuth],
+            [validated.elevation],
+            texture_size=validated.texture_size,
+            fill_holes=True,
+            blend_texture=True,
+        )
+        emit_sync(Notifications.PROGRESS, {"stage": "export", "step": 0, "total": 0})
+        textured.export(str(output_path))
+        vertices, faces = _mesh_counts(textured)
+    except GenerationCancelled:
+        raise
+    except WorkerError:
+        raise
+    except Exception as exc:
+        raise WorkerError(ErrorCodes.GENERATION_FAILED, f"projection failed: {exc}")
+    run_s = time.time() - run_t0
+
+    glb_bytes = output_path.stat().st_size if output_path.exists() else 0
+    cap = compute_cap()
+
+    metadata = build_metadata(
+        profile="projection",
+        attention_backend=attention_backend(),
+        compute_cap=cap,
+        native_sm121=cap == "12.1",
+        load_s=load_s,
+        run_s=run_s,
+        vertices=vertices,
+        faces=faces,
+        fallbacks=fallbacks,
+        dinov3_model=dinov3_model_id(),
+        residency=validated.residency,
+        tf32=tf32_on,
+    )
+
+    emit_sync(
+        Notifications.ARTIFACT_CREATED,
+        {
+            "role": "mesh.glb",
+            "output_path": str(output_path),
+            "bytes": glb_bytes,
+            "mime_type": "model/gltf-binary",
+        },
+    )
+    emit_sync(
+        Notifications.MEMORY_STATS,
+        {
+            "peak_vram_bytes": vram.peak_allocated(),
+            "free_vram_bytes": vram.probe_free_vram(),
+            "device": "cuda",
+        },
+    )
+    return {
+        "status": "ok",
+        "profile": "projection",
+        "output_path": str(output_path),
+        "bytes": glb_bytes,
+        "mesh": {"vertices": vertices, "faces": faces},
+        "metadata_json": metadata,
+    }
+
+
 def register_trellis2_handlers(worker: Any) -> None:
     cancel_event = threading.Event()
     refine_cancel_event = threading.Event()
+    project_cancel_event = threading.Event()
 
     async def _generate_start(params: dict[str, Any]) -> dict[str, Any]:
         import asyncio
@@ -476,6 +600,34 @@ def register_trellis2_handlers(worker: Any) -> None:
         refine_cancel_event.set()
         return {"cancelled": True}
 
+    async def _project_start(params: dict[str, Any]) -> dict[str, Any]:
+        import asyncio
+
+        project_cancel_event.clear()
+
+        def _emit_sync(method: str, payload: dict[str, Any]) -> None:
+            worker.notify_from_thread(method, payload)
+
+        try:
+            result = await asyncio.to_thread(
+                project_real, params or {}, _emit_sync, project_cancel_event
+            )
+        except GenerationCancelled:
+            raise WorkerError(ErrorCodes.CANCELLED, "projection cancelled")
+        await worker.emit_notification(
+            Notifications.DONE,
+            {
+                "output_path": result["output_path"],
+                "bytes": result["bytes"],
+                "profile": "projection",
+            },
+        )
+        return result
+
+    async def _project_cancel(_params: Any) -> dict[str, Any]:
+        project_cancel_event.set()
+        return {"cancelled": True}
+
     from .health import build_health
 
     worker.health_fn = lambda: build_health(worker.profile)
@@ -483,6 +635,13 @@ def register_trellis2_handlers(worker: Any) -> None:
     worker.register(Methods.GENERATE_CANCEL, _generate_cancel)
     worker.register(Methods.REFINE_START, _refine_start)
     worker.register(Methods.REFINE_CANCEL, _refine_cancel)
+    worker.register(Methods.PROJECT_START, _project_start)
+    worker.register(Methods.PROJECT_CANCEL, _project_cancel)
 
 
-__all__ = ["generate_real", "refine_real", "register_trellis2_handlers"]
+__all__ = [
+    "generate_real",
+    "refine_real",
+    "project_real",
+    "register_trellis2_handlers",
+]

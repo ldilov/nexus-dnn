@@ -48,11 +48,11 @@ impl BackendRuntimeLease for MockGenerationLease {
                 "gpu_supported": true,
                 "sm": [12, 1]
             })),
-            "trellis2.generate.cancel" | "trellis2.refine.cancel" => {
-                Ok(json!({ "cancelled": true }))
-            }
+            "trellis2.generate.cancel"
+            | "trellis2.refine.cancel"
+            | "trellis2.project.cancel" => Ok(json!({ "cancelled": true })),
             "runtime.release_memory" => Ok(json!({ "released": true })),
-            "trellis2.generate.start" | "trellis2.refine.start" => {
+            "trellis2.generate.start" | "trellis2.refine.start" | "trellis2.project.start" => {
                 for (stage, total) in [("sparse", 4u64), ("shape", 3u64), ("export", 1u64)] {
                     for step in 0..total {
                         emit(

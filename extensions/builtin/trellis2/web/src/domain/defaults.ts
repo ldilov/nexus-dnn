@@ -1,4 +1,4 @@
-import type { GenerateParams, RefineParams } from "../services/types";
+import type { GenerateParams, ProjectParams, RefineParams } from "../services/types";
 
 /** Operator defaults for `trellis2.generate_3d`. MVP-0 ships MeshOnly
  * (texture OFF). The input image is supplied top-level, not in params.
@@ -28,4 +28,13 @@ export const DEFAULT_REFINE_PARAMS: RefineParams = {
   shape_steps: 25,
   texture_steps: 25,
   max_num_tokens: 98_304,
+};
+
+/** Defaults for the photo-projection pass. v1 projects the source photo from a
+ * straight-on front view (azimuth/elevation 0) at a high texture resolution so the
+ * mesh inherits the real photo's likeness without re-sampling geometry. */
+export const DEFAULT_PROJECT_PARAMS: ProjectParams = {
+  azimuth: 0,
+  elevation: 0,
+  texture_size: 4096,
 };

@@ -1,6 +1,9 @@
 import pytest
 
 from trellis2_worker.params import (
+    DEFAULT_PROJECT_AZIMUTH,
+    DEFAULT_PROJECT_ELEVATION,
+    DEFAULT_PROJECT_TEXTURE_SIZE,
     DEFAULT_REFINE_MAX_NUM_TOKENS,
     DEFAULT_REFINE_MAX_VIEWS,
     DEFAULT_REFINE_RESOLUTION,
@@ -8,8 +11,10 @@ from trellis2_worker.params import (
     DEFAULT_REFINE_TEXTURE_STEPS,
     DEFAULT_SIMPLIFY_TARGET,
     DEFAULT_SPARSE_STEPS,
+    MAX_TEXTURE_SIZE,
     NVDIFFRAST_FACE_LIMIT,
     validate_generate_params,
+    validate_project_params,
     validate_refine_params,
 )
 
@@ -240,3 +245,82 @@ def test_refine_invalid_residency_rejected():
 def test_refine_params_dict_required():
     with pytest.raises(ValueError, match="object"):
         validate_refine_params("not-a-dict")  # type: ignore
+
+
+def _ok_project_params(**overrides) -> dict:
+    base = {"mesh_path": "in.glb", "image_path": "in.png", "output_path": "out.glb"}
+    base.update(overrides)
+    return base
+
+
+def test_project_defaults_applied():
+    v = validate_project_params(_ok_project_params())
+    assert v.mesh_path == "in.glb"
+    assert v.image_path == "in.png"
+    assert v.output_path == "out.glb"
+    assert v.azimuth == DEFAULT_PROJECT_AZIMUTH
+    assert v.elevation == DEFAULT_PROJECT_ELEVATION
+    assert v.texture_size == DEFAULT_PROJECT_TEXTURE_SIZE
+    assert v.remove_background is True
+    assert v.residency == "balanced"
+
+
+def test_project_mesh_aliases_accepted():
+    assert validate_project_params(
+        {"mesh": "a.glb", "image_path": "i.png", "output_path": "o.glb"}
+    ).mesh_path == "a.glb"
+
+
+def test_project_image_aliases_accepted():
+    assert validate_project_params(
+        {"mesh_path": "m.glb", "image": "i.png", "output_path": "o.glb"}
+    ).image_path == "i.png"
+    assert validate_project_params(
+        {"mesh_path": "m.glb", "ref_image_path": "r.png", "output_path": "o.glb"}
+    ).image_path == "r.png"
+
+
+def test_project_missing_mesh_rejected():
+    with pytest.raises(ValueError, match="mesh"):
+        validate_project_params({"image_path": "i.png", "output_path": "o.glb"})
+
+
+def test_project_missing_image_rejected():
+    with pytest.raises(ValueError, match="image"):
+        validate_project_params({"mesh_path": "m.glb", "output_path": "o.glb"})
+
+
+def test_project_missing_output_rejected():
+    with pytest.raises(ValueError, match="output_path"):
+        validate_project_params({"mesh_path": "m.glb", "image_path": "i.png"})
+
+
+def test_project_azimuth_elevation_threaded_through():
+    v = validate_project_params(_ok_project_params(azimuth=90, elevation=-15.5))
+    assert v.azimuth == 90.0
+    assert v.elevation == -15.5
+
+
+def test_project_non_numeric_azimuth_rejected():
+    with pytest.raises(ValueError, match="azimuth"):
+        validate_project_params(_ok_project_params(azimuth="left"))
+
+
+def test_project_texture_size_clamped_to_max():
+    v = validate_project_params(_ok_project_params(texture_size=MAX_TEXTURE_SIZE * 2))
+    assert v.texture_size == MAX_TEXTURE_SIZE
+
+
+def test_project_remove_background_coerced_to_bool():
+    assert validate_project_params(_ok_project_params(remove_background=0)).remove_background is False
+    assert validate_project_params(_ok_project_params(remove_background=1)).remove_background is True
+
+
+def test_project_invalid_residency_rejected():
+    with pytest.raises(ValueError, match="residency"):
+        validate_project_params(_ok_project_params(residency="hyper"))
+
+
+def test_project_params_dict_required():
+    with pytest.raises(ValueError, match="object"):
+        validate_project_params("not-a-dict")  # type: ignore

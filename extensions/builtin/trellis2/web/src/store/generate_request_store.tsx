@@ -28,8 +28,14 @@ import {
   subscribeGenerateStream,
 } from "../services/generate_client";
 import { startRefine } from "../services/refine_client";
+import { startProject } from "../services/project_client";
 import { getGenerationJob } from "../services/history_client";
-import type { GenerateParams, GenerationJob, RefineParams } from "../services/types";
+import type {
+  GenerateParams,
+  GenerationJob,
+  ProjectParams,
+  RefineParams,
+} from "../services/types";
 
 export const ACTIVE_JOB_KEY = "nexus.3d.trellis2.active-job";
 
@@ -112,6 +118,11 @@ interface GenerateRequestActions {
     imageRef: string,
     params: RefineParams,
     faceImageRef?: string,
+  ) => Promise<void>;
+  startProject: (
+    meshRef: string,
+    imageRef: string,
+    params: ProjectParams,
   ) => Promise<void>;
   cancelJob: () => Promise<void>;
   resetGenerate: () => void;
@@ -202,6 +213,18 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
         ...(faceImageRef ? { face_image: faceImageRef } : {}),
       };
       const { jobId } = await startRefine(body);
+      setGenerate(startedState(sourceImageRef));
+      persistActiveJob(jobId);
+      subscribeToJob(jobId);
+    },
+    [subscribeToJob],
+  );
+
+  const startProjectJob = useCallback(
+    async (meshRef: string, sourceImageRef: string, projectParams: ProjectParams) => {
+      streamCleanup.current?.();
+      const body = { mesh: meshRef, image: sourceImageRef, params: projectParams };
+      const { jobId } = await startProject(body);
       setGenerate(startedState(sourceImageRef));
       persistActiveJob(jobId);
       subscribeToJob(jobId);
@@ -303,6 +326,7 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
       clearImage,
       startJob,
       startRefine: startRefineJob,
+      startProject: startProjectJob,
       cancelJob,
       resetGenerate,
       showJobResult,
@@ -320,6 +344,7 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
       clearImage,
       startJob,
       startRefineJob,
+      startProjectJob,
       cancelJob,
       resetGenerate,
       showJobResult,

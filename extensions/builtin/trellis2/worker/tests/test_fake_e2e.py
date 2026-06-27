@@ -8,6 +8,7 @@ from trellis2_worker.cancel import GenerationCancelled
 from trellis2_worker.main import Worker
 from trellis2_worker.pipeline_fake import (
     generate_fake_e2e,
+    project_fake_e2e,
     refine_fake_e2e,
     register_fake_handlers,
 )
@@ -231,3 +232,92 @@ def test_fake_refine_missing_mesh_rejected(tmp_path: Path):
     del params["mesh_path"]
     with pytest.raises(ValueError, match="mesh"):
         validate_refine_params(params)
+
+
+def _base_project_params(tmp_path: Path, **overrides) -> dict:
+    out = tmp_path / "project" / "mesh.glb"
+    params = {
+        "mesh_path": "in.glb",
+        "image_path": "x.png",
+        "output_path": str(out),
+        "azimuth": 0.0,
+        "elevation": 0.0,
+        "residency": "balanced",
+    }
+    params.update(overrides)
+    return params
+
+
+def _drive_project(tmp_path: Path, params: dict):
+    worker = Worker(profile="fake")
+    notes: list[tuple[str, dict]] = []
+
+    async def _capture(method: str, payload: dict):
+        notes.append((method, payload))
+
+    worker.emit_notification = _capture  # type: ignore
+    register_fake_handlers(worker)
+    handler = worker._handlers[Methods.PROJECT_START]
+    result = asyncio.new_event_loop().run_until_complete(handler(params))
+    return result, notes
+
+
+def test_fake_project_produces_glb_and_metadata(tmp_path: Path):
+    result, _ = _drive_project(tmp_path, _base_project_params(tmp_path))
+
+    out = Path(result["output_path"])
+    assert out.exists() and out.stat().st_size > 0
+    assert out.read_bytes()[:4] == b"glTF"
+
+    assert result["status"] == "ok"
+    assert result["profile"] == "fake"
+    assert result["metadata_json"]["profile"] == "fake"
+
+
+def test_fake_project_emits_ordered_progress_then_done(tmp_path: Path):
+    _, notes = _drive_project(tmp_path, _base_project_params(tmp_path))
+    methods = [m for m, _ in notes]
+
+    assert methods[0] == Notifications.PROGRESS
+    assert methods[-1] == Notifications.DONE
+    assert Notifications.ARTIFACT_CREATED in methods
+
+    stages = [p["stage"] for m, p in notes if m == Notifications.PROGRESS]
+    assert stages[0] == "start"
+    for expected in ("load", "project", "export"):
+        assert expected in stages, expected
+
+
+def test_fake_project_artifact_is_gltf_binary_mime(tmp_path: Path):
+    _, notes = _drive_project(tmp_path, _base_project_params(tmp_path))
+    artifact = next(p for m, p in notes if m == Notifications.ARTIFACT_CREATED)
+    assert artifact["mime_type"] == "model/gltf-binary"
+    assert artifact["role"] == "mesh.glb"
+
+
+def test_fake_project_cancels_cooperatively_and_writes_no_glb(tmp_path: Path):
+    params = _base_project_params(tmp_path)
+    notes: list[tuple[str, dict]] = []
+
+    async def _emit(method: str, payload: dict) -> None:
+        notes.append((method, payload))
+
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    with pytest.raises(GenerationCancelled):
+        asyncio.new_event_loop().run_until_complete(
+            project_fake_e2e(params, _emit, cancel_event=cancel_event)
+        )
+
+    assert not Path(params["output_path"]).exists()
+    assert Notifications.DONE not in [m for m, _ in notes]
+
+
+def test_fake_project_missing_image_rejected(tmp_path: Path):
+    from trellis2_worker.params import validate_project_params
+
+    params = _base_project_params(tmp_path)
+    del params["image_path"]
+    with pytest.raises(ValueError, match="image"):
+        validate_project_params(params)

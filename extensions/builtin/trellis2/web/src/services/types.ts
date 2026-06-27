@@ -81,6 +81,18 @@ export interface RefineParams {
   generate_texture_slat?: boolean;
 }
 
+/** Tunable inputs for the `trellis2.project_3d` operator — re-textures a finished
+ * mesh by projecting the real source photo onto it. The mesh + source image refs
+ * are carried TOP-LEVEL in the start body, not inside params. */
+export interface ProjectParams {
+  /** Camera azimuth (degrees) the source photo is projected from. 0 = front. */
+  azimuth?: number;
+  /** Camera elevation (degrees) the source photo is projected from. */
+  elevation?: number;
+  /** Baked texture resolution in pixels (square). */
+  texture_size?: number;
+}
+
 export type GenerationJobStatus =
   | "queued"
   | "running"

@@ -195,9 +195,10 @@ async fn newest_glb(dir: &std::path::Path) -> Option<String> {
 pub struct GenerationTask {
     pub job_id: JobId,
     /// Worker RPC fired for this job — `trellis2.generate.start` for a base
-    /// generation, `trellis2.refine.start` for a refine pass. Both emit the
-    /// shared `trellis2.generate.*` notifications, so the relay/terminal handling
-    /// below is identical regardless of which one ran.
+    /// generation, `trellis2.refine.start` for a refine pass, or
+    /// `trellis2.project.start` for a texture projection. All emit the shared
+    /// `trellis2.generate.*` notifications, so the relay/terminal handling below
+    /// is identical regardless of which one ran.
     pub method: &'static str,
     pub params: JsonValue,
     pub client: BackendClient,

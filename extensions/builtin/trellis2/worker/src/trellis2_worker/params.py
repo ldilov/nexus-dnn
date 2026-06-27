@@ -48,6 +48,12 @@ DEFAULT_REFINE_TEXTURE_STEPS = 25
 VALID_REFINE_RESOLUTIONS = (512, 1024, 1536)
 REFINE_GUIDANCE_STAGES = ("shape", "texture")
 
+# Texture projection re-uses the generate texture-size cap (4096 default here so a
+# single photo projects at high fidelity onto the mesh's existing UV layout).
+DEFAULT_PROJECT_TEXTURE_SIZE = 4096
+DEFAULT_PROJECT_AZIMUTH = 0.0
+DEFAULT_PROJECT_ELEVATION = 0.0
+
 
 class GenerateParams:
     """Validated, defaulted view of the operator inputs. Immutable-by-convention:
@@ -445,4 +451,80 @@ def validate_refine_params(params: dict[str, Any]) -> RefineParams:
         texture_size=texture_size,
         metallic=metallic,
         **guidance,
+    )
+
+
+def _coerce_float(value: Any, *, name: str, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+
+
+class ProjectParams:
+    """Validated, defaulted view of the texture-projection inputs. Projects one
+    real source photo (at a single azimuth/elevation) onto a finished mesh's
+    existing UVs, compositing over the model's hallucinated baseColor texture.
+    Pure nvdiffrast — no TRELLIS model load. Immutable-by-convention."""
+
+    __slots__ = (
+        "mesh_path",
+        "image_path",
+        "output_path",
+        "azimuth",
+        "elevation",
+        "texture_size",
+        "remove_background",
+        "residency",
+    )
+
+    def __init__(self, **kw: Any) -> None:
+        for name in self.__slots__:
+            setattr(self, name, kw[name])
+
+    def as_dict(self) -> dict[str, Any]:
+        return {name: getattr(self, name) for name in self.__slots__}
+
+
+def validate_project_params(params: dict[str, Any]) -> ProjectParams:
+    if not isinstance(params, dict):
+        raise ValueError("params must be an object")
+
+    mesh_path = _require_str(params, "mesh_path", "mesh")
+    image_path = _require_str(params, "image_path", "image", "ref_image_path")
+    output_path = _require_str(params, "output_path")
+
+    azimuth = _coerce_float(
+        params.get("azimuth"), name="azimuth", default=DEFAULT_PROJECT_AZIMUTH
+    )
+    elevation = _coerce_float(
+        params.get("elevation"), name="elevation", default=DEFAULT_PROJECT_ELEVATION
+    )
+
+    texture_size = _coerce_int(
+        params.get("texture_size"),
+        name="texture_size",
+        default=DEFAULT_PROJECT_TEXTURE_SIZE,
+    )
+    texture_size = min(texture_size, MAX_TEXTURE_SIZE)
+
+    remove_background = bool(
+        params.get("remove_background", DEFAULT_REMOVE_BACKGROUND)
+    )
+
+    residency = params.get("residency", "balanced")
+    if residency not in VALID_RESIDENCY:
+        raise ValueError(f"residency must be one of {VALID_RESIDENCY}")
+
+    return ProjectParams(
+        mesh_path=mesh_path,
+        image_path=image_path,
+        output_path=output_path,
+        azimuth=azimuth,
+        elevation=elevation,
+        texture_size=texture_size,
+        remove_background=remove_background,
+        residency=residency,
     )
