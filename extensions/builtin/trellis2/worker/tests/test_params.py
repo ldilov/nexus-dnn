@@ -4,6 +4,8 @@ from trellis2_worker.params import (
     DEFAULT_REFINE_MAX_NUM_TOKENS,
     DEFAULT_REFINE_MAX_VIEWS,
     DEFAULT_REFINE_RESOLUTION,
+    DEFAULT_REFINE_SHAPE_STEPS,
+    DEFAULT_REFINE_TEXTURE_STEPS,
     DEFAULT_SIMPLIFY_TARGET,
     DEFAULT_SPARSE_STEPS,
     NVDIFFRAST_FACE_LIMIT,
@@ -220,8 +222,14 @@ def test_refine_guidance_levers_merged_into_stage_params():
     v = validate_refine_params(
         _ok_refine_params(shape_guidance_strength=5.0, texture_guidance_rescale=0.4)
     )
-    assert v.stage_sampler_params("shape") == {"steps": 12, "guidance_strength": 5.0}
-    assert v.stage_sampler_params("texture") == {"steps": 12, "guidance_rescale": 0.4}
+    assert v.stage_sampler_params("shape") == {
+        "steps": DEFAULT_REFINE_SHAPE_STEPS,
+        "guidance_strength": 5.0,
+    }
+    assert v.stage_sampler_params("texture") == {
+        "steps": DEFAULT_REFINE_TEXTURE_STEPS,
+        "guidance_rescale": 0.4,
+    }
 
 
 def test_refine_invalid_residency_rejected():

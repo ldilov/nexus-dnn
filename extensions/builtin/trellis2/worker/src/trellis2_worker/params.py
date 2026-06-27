@@ -38,9 +38,13 @@ MAX_GUIDANCE_STRENGTH = 100.0
 MAX_RESCALE_T = 10.0
 GUIDANCE_STAGES = ("sparse", "shape", "texture")
 
-DEFAULT_REFINE_RESOLUTION = 1024
+# Refine must default at least as strong as a good generate, else re-sampling the
+# whole shape downgrades the mesh and the face looks worse (heavier but correct).
+DEFAULT_REFINE_RESOLUTION = 1536
 DEFAULT_REFINE_MAX_VIEWS = 4
-DEFAULT_REFINE_MAX_NUM_TOKENS = 50000
+DEFAULT_REFINE_MAX_NUM_TOKENS = 98304
+DEFAULT_REFINE_SHAPE_STEPS = 25
+DEFAULT_REFINE_TEXTURE_STEPS = 25
 VALID_REFINE_RESOLUTIONS = (512, 1024, 1536)
 REFINE_GUIDANCE_STAGES = ("shape", "texture")
 
@@ -371,10 +375,10 @@ def validate_refine_params(params: dict[str, Any]) -> RefineParams:
             raise ValueError("seed must be an integer")
 
     shape_steps = _coerce_int(
-        params.get("shape_steps"), name="shape_steps", default=DEFAULT_SHAPE_STEPS
+        params.get("shape_steps"), name="shape_steps", default=DEFAULT_REFINE_SHAPE_STEPS
     )
     texture_steps = _coerce_int(
-        params.get("texture_steps"), name="texture_steps", default=DEFAULT_TEXTURE_STEPS
+        params.get("texture_steps"), name="texture_steps", default=DEFAULT_REFINE_TEXTURE_STEPS
     )
 
     resolution_raw = params.get("resolution")

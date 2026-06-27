@@ -18,10 +18,14 @@ export const DEFAULT_PARAMS: GenerateParams = {
   residency: "balanced",
 };
 
-/** Minimal defaults for the geometry-refine pass. 1024-res shape SLAT recovers
- * the melted face; max_views lets the source image plus an optional face crop
- * both condition the new detail. */
+/** Defaults for the geometry-refine pass. A refine re-samples the WHOLE shape, so
+ * it must run at least as strong as a good generate (1536 / 25 steps / high token
+ * budget) or it downgrades the mesh; max_views lets the source image plus an
+ * optional face crop both condition the recovered detail. */
 export const DEFAULT_REFINE_PARAMS: RefineParams = {
-  resolution: 1024,
+  resolution: 1536,
   max_views: 4,
+  shape_steps: 25,
+  texture_steps: 25,
+  max_num_tokens: 98_304,
 };

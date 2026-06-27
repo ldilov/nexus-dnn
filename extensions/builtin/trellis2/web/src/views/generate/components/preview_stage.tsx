@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { ModelViewer } from "../../../components/media/model_viewer";
 import { DEFAULT_REFINE_PARAMS } from "../../../domain/defaults";
 import type { GeneratePhase, GenerateState } from "../../../domain/generate_state";
+import type { RefineResolution } from "../../../services/types";
 import { ExtensionApiError } from "../../../services/http";
 import { mediaUrlForRef } from "../../../services/media_url";
 import { uploadImage } from "../../../services/upload_client";
@@ -25,6 +26,9 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
   const [cropName, setCropName] = useState<string | null>(null);
   const [cropUploading, setCropUploading] = useState(false);
   const [refining, setRefining] = useState(false);
+  const [resolution, setResolution] = useState<RefineResolution>(
+    DEFAULT_REFINE_PARAMS.resolution ?? 1536,
+  );
 
   const glbUrl = state.phase === "done" ? mediaUrlForRef(state.glbRef) : null;
   const status = describeStatus(state.phase);
@@ -64,7 +68,7 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
       await startRefine(
         state.glbRef,
         state.inputImageRef,
-        DEFAULT_REFINE_PARAMS,
+        { ...DEFAULT_REFINE_PARAMS, resolution },
         cropRef ?? undefined,
       );
     } catch (err) {
@@ -74,7 +78,7 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
     } finally {
       setRefining(false);
     }
-  }, [state.glbRef, state.inputImageRef, cropRef, startRefine]);
+  }, [state.glbRef, state.inputImageRef, cropRef, resolution, startRefine]);
 
   return (
     <section className={styles.stage} aria-label="Mesh preview">
@@ -148,6 +152,28 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
               Refine detail
             </button>
           </div>
+
+          {glbUrl ? (
+            <div className={styles.qualityRow}>
+              <span className={styles.qualityLabel}>
+                <span className={styles.qualityIcon} aria-hidden="true">
+                  tune
+                </span>
+                Refine detail level
+              </span>
+              <select
+                className={styles.qualitySelect}
+                value={resolution}
+                onChange={(e) => setResolution(Number(e.target.value) as RefineResolution)}
+                disabled={refining}
+                aria-label="Refine detail level"
+              >
+                <option value={1536}>Max · 1536</option>
+                <option value={1024}>Balanced · 1024</option>
+                <option value={512}>Fast · 512</option>
+              </select>
+            </div>
+          ) : null}
 
           {glbUrl ? (
             <div className={styles.cropSlot}>

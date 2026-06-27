@@ -276,6 +276,57 @@ export const refineIcon = style({
   lineHeight: 1,
 });
 
+export const qualityRow = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.sm,
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceInset,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+});
+
+export const qualityLabel = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.xs,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  letterSpacing: "0.04em",
+  color: vars.color.textMuted,
+});
+
+export const qualityIcon = style({
+  fontFamily: "'Material Symbols Outlined'",
+  fontSize: "16px",
+  lineHeight: 1,
+  color: vars.color.textFaint,
+  flexShrink: 0,
+});
+
+export const qualitySelect = style({
+  flexShrink: 0,
+  appearance: "none",
+  background: "transparent",
+  border: "none",
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  borderRadius: vars.radius.sm,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  fontWeight: vars.weight.medium,
+  color: vars.color.text,
+  cursor: "pointer",
+  transition: `background ${vars.motion.fast}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      background: `color-mix(in oklab, ${vars.color.accent} 8%, transparent)`,
+    },
+    "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
+    "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
+  },
+});
+
 export const cropSlot = style({
   display: "flex",
   alignItems: "center",

@@ -73,6 +73,10 @@ export interface RefineParams {
   seed?: number;
   /** Mesh/shape refinement flow steps. */
   shape_steps?: number;
+  /** Texture refinement flow steps. */
+  texture_steps?: number;
+  /** Voxel-token cap on the high-res shape stage; higher keeps more resolution. */
+  max_num_tokens?: number;
   /** Re-bake a texture after the geometry refine. */
   generate_texture_slat?: boolean;
 }

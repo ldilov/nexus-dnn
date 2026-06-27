@@ -22,7 +22,7 @@ inputs:
   - name: resolution
     type: integer
     required: false
-    default: 1024
+    default: 1536
   - name: max_views
     type: integer
     required: false
