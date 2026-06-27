@@ -346,6 +346,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             self.models['shape_slat_decoder'].cpu()
             self.models['shape_slat_decoder'].low_vram = False
         hr_resolution = resolution
+        # max_num_tokens <= 0 means "no cap" — keep the full requested resolution.
+        token_budget = max_num_tokens if max_num_tokens > 0 else float("inf")
         while True:
             quant_coords = torch.cat([
                 hr_coords[:, :1],
@@ -353,7 +355,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             ], dim=1)
             coords = quant_coords.unique(dim=0)
             num_tokens = coords.shape[0]
-            if num_tokens < max_num_tokens or hr_resolution == 1024:
+            if num_tokens < token_budget or hr_resolution == 1024:
                 if hr_resolution != resolution:
                     print(f"Due to the limited number of tokens, the resolution is reduced to {hr_resolution}.")
                 break
@@ -590,6 +592,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
 
         hr_resolution = resolution
         lr_resolution = resolution
+        # max_num_tokens <= 0 means "no cap" — keep the full requested resolution.
+        token_budget = max_num_tokens if max_num_tokens > 0 else float("inf")
         while True:
             quant_coords = torch.cat([
                 hr_coords[:, :1],
@@ -597,7 +601,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             ], dim=1)
             coords = quant_coords.unique(dim=0)
             num_tokens = coords.shape[0]
-            if num_tokens < max_num_tokens:
+            if num_tokens < token_budget:
                 break
             hr_resolution -= 128
             if hr_resolution < 1024 and resolution >= 1024:
