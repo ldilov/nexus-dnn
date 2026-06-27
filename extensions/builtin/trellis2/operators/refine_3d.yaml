@@ -1,0 +1,117 @@
+spec_version: "0.1"
+operator:
+  id: trellis2.refine_3d
+  version: 1.0.0
+  display_name: "TRELLIS 2 — Refine 3D"
+  description: "High-resolution geometry refine of an existing GLB mesh to recover face/detail. Re-encodes the mesh to SLAT and re-samples shape at 1024 (up to 1536), conditioned on the source image (+ optional face crop) for a far larger voxel budget on small features."
+  category: mesh.image_to_3d
+execution:
+  mode: job
+  cacheable: false
+  resumable: true
+inputs:
+  - name: mesh
+    type: string
+    required: true
+  - name: image
+    type: string
+    required: true
+  - name: face_image
+    type: string
+    required: false
+  - name: resolution
+    type: integer
+    required: false
+    default: 1536
+  - name: max_views
+    type: integer
+    required: false
+  - name: max_num_tokens
+    type: integer
+    required: false
+  - name: seed
+    type: integer
+    required: false
+  - name: pipeline_type
+    type: string
+    required: false
+  - name: sparse_steps
+    type: integer
+    required: false
+  - name: shape_steps
+    type: integer
+    required: false
+  - name: texture_steps
+    type: integer
+    required: false
+  - name: simplify_target
+    type: integer
+    required: false
+  - name: texture_size
+    type: integer
+    required: false
+  - name: texture
+    type: boolean
+    required: false
+  - name: remove_background
+    type: boolean
+    required: false
+  - name: metallic
+    type: number
+    required: false
+  - name: residency
+    type: string
+    required: false
+  - name: sparse_guidance_strength
+    type: number
+    required: false
+  - name: sparse_guidance_rescale
+    type: number
+    required: false
+  - name: sparse_rescale_t
+    type: number
+    required: false
+  - name: sparse_guidance_interval_start
+    type: number
+    required: false
+  - name: sparse_guidance_interval_end
+    type: number
+    required: false
+  - name: shape_guidance_strength
+    type: number
+    required: false
+  - name: shape_guidance_rescale
+    type: number
+    required: false
+  - name: shape_rescale_t
+    type: number
+    required: false
+  - name: shape_guidance_interval_start
+    type: number
+    required: false
+  - name: shape_guidance_interval_end
+    type: number
+    required: false
+  - name: texture_guidance_strength
+    type: number
+    required: false
+  - name: texture_guidance_rescale
+    type: number
+    required: false
+  - name: texture_rescale_t
+    type: number
+    required: false
+  - name: texture_guidance_interval_start
+    type: number
+    required: false
+  - name: texture_guidance_interval_end
+    type: number
+    required: false
+outputs:
+  - name: mesh_glb
+    type: string
+  - name: metadata_json
+    type: object
+resources:
+  gpu: true
+  min_vram_mb: 10240

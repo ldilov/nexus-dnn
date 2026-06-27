@@ -1,0 +1,58 @@
+spec_version: "0.1"
+recipe:
+  id: trellis2_generate_recipe
+  version: 1.0.0
+  display_name: "TRELLIS 2 — Image to 3D"
+  summary: "Drop an image, pick a seed, generate a downloadable GLB mesh."
+  category: mesh.image_to_3d
+workflow_template: "workflows/trellis2_generate.yaml"
+fields:
+  - id: image
+    type: image
+    label: Source image
+    required: true
+    bind: generate.image
+  - id: seed
+    type: integer
+    label: Seed
+    required: false
+    min: 0
+    bind: generate.seed
+  - id: sparse_steps
+    type: integer
+    label: Sparse structure steps
+    min: 1
+    max: 50
+    default: 12
+    bind: generate.sparse_steps
+  - id: shape_steps
+    type: integer
+    label: Shape decode steps
+    min: 1
+    max: 50
+    default: 12
+    bind: generate.shape_steps
+  - id: simplify_target
+    type: integer
+    label: Simplify target (faces)
+    min: 1000
+    max: 5000000
+    step: 1000
+    default: 1000000
+    bind: generate.simplify_target
+  - id: texture
+    type: boolean
+    label: Bake texture
+    default: false
+    bind: generate.texture
+  - id: residency
+    type: enum
+    label: VRAM residency
+    values: [low_vram, balanced]
+    default: balanced
+    bind: generate.residency
+actions:
+  - id: generate
+    label: Generate 3D
+    operator_invoke:
+      operator: trellis2.generate_3d

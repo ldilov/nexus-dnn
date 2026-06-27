@@ -89,3 +89,7 @@ t??.jpg
 # Transient commit-message files (heredoc passes used to dodge the
 # block-no-verify hook substring matcher when bodies span paragraphs).
 .commit_msg_*.txt
+
+# Local spike/scratch (GB10 build/render reference scripts, probe artefacts,
+# blobs). Recurring ops are recipes in the justfile; these stay local-only.
+/tools/

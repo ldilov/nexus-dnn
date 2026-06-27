@@ -1,0 +1,111 @@
+[project]
+name = "nexus-3d-trellis2-worker"
+version = "0.1.0"
+description = "TRELLIS.2 image-to-3D mesh worker for nexus.3d.trellis2. Stdio JSON-RPC. Microsoft TRELLIS.2-4B + O-Voxel sparse structure, native sm_121 (GB10/Blackwell) kernels. fake (no-GPU) mode for CI."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+# Base deps cover the torch-free `fake` backend (pure-stdlib GLB + JSON-RPC).
+# The real torch/kernel stack lives in the [trellis]/[flash] extras below.
+dependencies = [
+  "pillow>=10.0",
+  "numpy>=1.26,<3.0",
+  "huggingface_hub>=0.26",
+]
+
+[project.optional-dependencies]
+# Proven P0 stack: torch 2.12/cu132 + transformers PINNED 4.56.0 (dinov3 layout).
+# Native kernels (cumesh/flex_gemm/o_voxel/nvdiffrast) = vendored wheels (LANE D).
+trellis = [
+  "torch>=2.12",
+  "torchvision>=0.27",
+  "transformers==4.56.0",
+  "safetensors>=0.4",
+  "einops>=0.8",
+  "easydict>=1.13",
+  "scipy>=1.13",
+  "opencv-python-headless>=4.10",
+  "trimesh>=4.4",
+  "imageio>=2.37",
+  "imageio-ffmpeg>=0.6",
+  "tqdm>=4.66",
+  "kornia>=0.7",
+  "timm>=1.0",
+  # Build tools for nvdiffrast's no-isolation CUDA-ext compile.
+  "setuptools>=70",
+  "wheel>=0.43",
+  "ninja>=1.11",
+  # Native sm_121 kernels (vendored wheels) + pipeline support, GB10 only.
+  "utils3d ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "cumesh ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "flex_gemm ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "o_voxel ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "nvdiffrast ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+flash = [
+  "flash-attn>=2.8 ; sys_platform == 'linux'",
+]
+test = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+nexus-3d-trellis2-worker = "trellis2_worker.__main__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Vendored microsoft/TRELLIS.2 `trellis2` pipeline package (MIT; not pip-installable
+# upstream — no setup.py). Packaged so `import trellis2` resolves in the venv.
+[tool.hatch.build.targets.wheel]
+packages = ["src/trellis2_worker", "src/trellis2"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# Vendored aarch64/sm_121 kernel + flash_attn wheels (built on GB10, torch 2.12/
+# cu132). nvdiffrast/utils3d aren't on PyPI → pinned git (nvcc at runtime JITs).
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+# GB10-only real stack: resolve the lock for that env alone; override o_voxel's
+# git-URL cumesh/flex-gemm pins to the vendored wheels (sources below).
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'aarch64'"]
+override-dependencies = ["cumesh", "flex-gemm"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu132" }]
+torchvision = [{ index = "pytorch-cu132" }]
+flash-attn = [
+  { path = "../../../../binaries/linux-aarch64/flash_attn-2.8.3-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+cumesh = [
+  { path = "../../../../binaries/linux-aarch64/cumesh-0.0.1-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+flex_gemm = [
+  { path = "../../../../binaries/linux-aarch64/flex_gemm-1.0.0-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+o_voxel = [
+  { path = "../../../../binaries/linux-aarch64/o_voxel-0.0.1-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+nvdiffrast = [
+  { path = "../../../../binaries/linux-aarch64/nvdiffrast-0.4.0-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+utils3d = [
+  { git = "https://github.com/EasternJournalist/utils3d.git", rev = "9a4eb15e4021b67b12c460c7057d642626897ec8" },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+markers = [
+    "smoke: end-to-end smoke tests (require GPU + native kernels)",
+]

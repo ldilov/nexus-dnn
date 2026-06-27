@@ -1,0 +1,8 @@
+# Build/test caches — never commit
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+
+# web deps (committed web/dist is the local-dev + fallback copy, kept)
+web/node_modules/

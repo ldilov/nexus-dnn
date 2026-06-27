@@ -3447,6 +3447,7 @@ dependencies = [
  "sqlx",
  "svi2-pro-extension",
  "tracing",
+ "trellis2-extension",
 ]
 
 [[package]]
@@ -7350,6 +7351,34 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "trellis2-extension"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum 0.8.8",
+ "futures",
+ "http-body-util",
+ "nexus-backend-runtimes",
+ "nexus-events",
+ "nexus-extension",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower 0.5.3",
+ "tracing",
+ "ulid",
+ "urlencoding",
 ]
 
 [[package]]

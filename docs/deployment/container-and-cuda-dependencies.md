@@ -8,6 +8,69 @@ The canonical aarch64 image is built from
 [`dockerfiles/aarch64.dockerfile`](../../dockerfiles/aarch64.dockerfile) and
 published as `ldilov/nexusdnn:dgx`.
 
+## Installation by platform
+
+The host (Rust + embedded web UI) compiles the same way everywhere; what differs
+is how the **global system dependencies** below are provisioned. Pick by platform.
+
+### linux-aarch64 (DGX Spark / GB10) — use the container ✅ recommended
+
+On aarch64, **run the container — do not build bare-metal on the Spark.** The
+image pins the exact CUDA 13 base, the `clang → cc` shim, ffmpeg, uv, and the
+vendored `sd` binary — precisely the parts that are brittle to reproduce by hand.
+
+```bash
+# Deploy/refresh on the live DGX Spark (build-first, swap-on-success):
+just dgx-deploy                 # builds origin/main, swaps the nexusdnn container
+
+# Or run a published image directly (NVIDIA CDI GPU + persistent volume):
+docker run -d --name nexusdnn --restart unless-stopped \
+  --device nvidia.com/gpu=all -p 3000:3000 -v nexusdata:/data \
+  ldilov/nexusdnn:dgx
+```
+
+Why container over bare-metal here:
+- The GB10 needs a CUDA-13 toolchain + GL libs + the `clang → cc` shim that
+  python-build-standalone expects; the image bakes all of it.
+- GPU passthrough via the NVIDIA container runtime (`--device nvidia.com/gpu=all`)
+  is first-class on Linux aarch64.
+- `just dgx-deploy` keeps the name `nexusdnn` + port 3000 so the cloudflared
+  tunnel survives, and validates `HEAD == origin/<branch>`.
+
+Full recipe set: [`CLAUDE.md`](../../CLAUDE.md) → "DGX Spark deployment".
+
+### win-amd64 (Windows) — native build script
+
+**There is no Windows container path: CUDA does not run in Windows containers**
+(NVIDIA ships no Windows CUDA base image and the container runtime is Linux-only).
+Build and run **bare-metal** on the Windows host, where the GPU is reachable:
+
+```powershell
+pwsh -File dockerfiles/win64.build.ps1 -BuildId (git rev-parse --short HEAD) -Run -InstallPrereqs
+```
+
+[`dockerfiles/win64.build.ps1`](../../dockerfiles/win64.build.ps1) is the win64
+sibling of the aarch64 Dockerfile — it pins Node + ffmpeg into a cached toolchain,
+builds the web app + builtin-extension bundles + the Rust host, ensures uv, and
+launches with the right env. Host prereqs it checks (and guides you to install):
+
+| Prereq | Notes |
+|---|---|
+| Rust (MSVC) | the `x86_64-pc-windows-msvc` toolchain — `rustup default stable-msvc` |
+| VS C++ Build Tools (`cl.exe`) | replaces gcc/g++/make for source wheels; there is **no** `clang → cc` shim on Windows |
+| NVIDIA driver + CUDA Toolkit **13.0** | global `nvcc` for trellis2's nvdiffrast JIT only (see "nvcc / CUDA toolkit") |
+| ffmpeg | vendored (pinned Gyan build) by the script, or reused if already on `PATH` |
+| uv, git | installed by the script under `-InstallPrereqs`, or pre-present |
+
+Divergences from the Linux image: no CUDA base (host toolkit instead), no
+`clang → cc` shim (MSVC), and **no Windows `sd` binary** — svi2-pro's qwen-edit
+path is unavailable until an `sd.exe` is vendored under `binaries/win-amd64/`.
+
+### Bare-metal local dev (any platform)
+
+For a non-GPU or quick local run, the host alone needs only Rust + Node + pnpm +
+uv on `PATH` — see the [root README](../../README.md) "Run It Locally First".
+
 ## Global system dependencies
 
 These are provided by the container image (or must be on `PATH` for a bare-metal
@@ -78,6 +141,11 @@ Notes:
   disables the optional **BigVGAN custom CUDA kernel** (the vocoder falls back to
   torch, ~10–30% slower).
 - **svi2-pro** uses prebuilt flash-attn wheels, so no `nvcc` at install time.
+- **trellis2 is the exception** — its nvdiffrast plugin does a **runtime JIT** that
+  needs a **global** `nvcc`. The aarch64 image provides it via the CUDA 13 **devel**
+  base; on Windows install **CUDA Toolkit 13.0** on the host. This is the one
+  builtin that wants a system toolkit rather than an in-venv wheel; match the
+  image's CUDA 13.0 (minor-compatible with the workers' cu132 torch runtime).
 
 `nvcc` is only needed to **source-build** a CUDA Python extension that has no
 prebuilt wheel for the platform. The intended path is **prebuilt wheels per

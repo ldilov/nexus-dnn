@@ -1,0 +1,229 @@
+"""Stdio NDJSON JSON-RPC event loop for the trellis2 image-to-3D worker.
+
+Worker process talks to a Rust shim (trellis2-extension):
+- Reads one JSON request per stdin line.
+- Writes one JSON response per stdout line.
+- Emits notifications (progress, artifact, done) the same way — no `id` field.
+
+The shim's stdout was redirected to stderr in __main__._hijack_stdout(); the
+original handle is stashed at sys.__nexus_jsonrpc_stdout__ so this module writes
+to the wire instead of leaking model logs into the NDJSON protocol.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import gc
+import sys
+import threading
+from typing import Any, Awaitable, Callable
+
+from . import __version__
+from .rpc import (
+    ErrorCodes,
+    JsonRpcRequest,
+    Methods,
+    error_response,
+    notification,
+    ok_response,
+    parse_request,
+)
+from .telemetry import WorkerLogger
+
+Handler = Callable[[dict[str, Any] | list[Any] | None], Awaitable[Any]]
+
+PROTOCOL_VERSION = "1.0"
+
+# REQUIRED: every nexus worker implements runtime.release_memory.
+RELEASE_MEMORY = "runtime.release_memory"
+
+
+def _cuda_memory_mb() -> tuple[int, int]:
+    """Return (allocated_mb, total_mb). Zeros when torch/CUDA is absent."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            used = torch.cuda.memory_allocated() // (1024 * 1024)
+            total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
+            return int(used), int(total)
+    except (ImportError, RuntimeError):
+        pass
+    return 0, 0
+
+
+def base_release_memory() -> dict[str, int]:
+    """Generic VRAM reclaim: gc + empty_cache, measuring freed allocation.
+
+    Torch-absent-safe (returns zeros, never raises). The trellis2 pipeline
+    builds + drops its models inside a single run, so this generic sweep is
+    the full reclaim — there is no separate resident-pipeline unload path.
+    """
+    before, _ = _cuda_memory_mb()
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except (ImportError, RuntimeError):
+        pass
+    after, total = _cuda_memory_mb()
+    freed = before - after if before > after else 0
+    return {"vram_used_mb": after, "vram_total_mb": total, "freed_mb": freed}
+
+
+def _jsonrpc_stdout() -> Any:
+    return getattr(sys, "__nexus_jsonrpc_stdout__", sys.stdout)
+
+
+class Worker:
+    def __init__(self, profile: str) -> None:
+        self.profile = profile
+        self._handlers: dict[str, Handler] = {}
+        self._shutdown = asyncio.Event()
+        self._stdout_lock = asyncio.Lock()
+        self._stdout_sync_lock = threading.Lock()
+        self._inflight: set[asyncio.Task[None]] = set()
+        self.logger = WorkerLogger()
+        self.health_fn: Callable[[], dict[str, Any]] | None = None
+        self._register_intrinsic()
+
+    def register(self, method: str, handler: Handler, *, replace: bool = False) -> None:
+        if method in self._handlers and not replace:
+            raise ValueError(f"duplicate handler for {method}")
+        self._handlers[method] = handler
+
+    async def emit_notification(self, method: str, params: dict[str, Any]) -> None:
+        line = notification(method, params)
+        async with self._stdout_lock:
+            await asyncio.to_thread(self._write, line)
+
+    def notify_from_thread(self, method: str, params: dict[str, Any]) -> None:
+        """Emit a notification from a worker thread (e.g. a sampler loop running
+        under asyncio.to_thread). `_write` serializes via the sync stdout lock,
+        so this is safe alongside the async path."""
+        self._write(notification(method, params))
+
+    def _write(self, line: str) -> None:
+        with self._stdout_sync_lock:
+            out = _jsonrpc_stdout()
+            out.write(line)
+            out.flush()
+
+    def _register_intrinsic(self) -> None:
+        async def handshake(_params: Any) -> dict[str, Any]:
+            return {
+                "runtime_id": f"nexus.3d.trellis2.{self.profile}",
+                "profile": self.profile,
+                "protocol_version": PROTOCOL_VERSION,
+                "version": __version__,
+                "python_version": "{}.{}.{}".format(*sys.version_info[:3]),
+            }
+
+        async def health(_params: Any) -> dict[str, Any]:
+            base = {
+                "runtime_id": f"nexus.3d.trellis2.{self.profile}",
+                "profile": self.profile,
+                "status": "ready",
+                "version": __version__,
+                "protocol_version": PROTOCOL_VERSION,
+                "python_version": "{}.{}.{}".format(*sys.version_info[:3]),
+            }
+            if self.health_fn is not None:
+                detail = await asyncio.to_thread(self.health_fn)
+                base.update(detail)
+            return base
+
+        async def shutdown(_params: Any) -> dict[str, Any]:
+            self._shutdown.set()
+            return {"shutting_down": True}
+
+        async def release_memory(_params: Any) -> dict[str, int]:
+            return base_release_memory()
+
+        self.register("handshake", handshake)
+        self.register(Methods.HEALTH, health)
+        self.register("shutdown", shutdown)
+        self.register(RELEASE_MEMORY, release_memory)
+
+    async def run(self) -> int:
+        self.logger.info("worker.start", version=__version__, profile=self.profile)
+        loop = asyncio.get_running_loop()
+
+        reader_q: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def _stdin_pump():
+            for raw in sys.stdin:
+                loop.call_soon_threadsafe(reader_q.put_nowait, raw)
+            loop.call_soon_threadsafe(reader_q.put_nowait, None)
+
+        threading.Thread(target=_stdin_pump, name="stdin-pump", daemon=True).start()
+
+        while not self._shutdown.is_set():
+            line = await reader_q.get()
+            if line is None:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            task = asyncio.create_task(self._dispatch_line(line))
+            self._inflight.add(task)
+            task.add_done_callback(self._inflight.discard)
+
+        self.logger.info("worker.stop")
+        return 0
+
+    async def _dispatch_line(self, line: str) -> None:
+        try:
+            req = parse_request(line)
+        except Exception as exc:
+            self.logger.error("rpc.parse_error", err=str(exc))
+            self._write(error_response(None, ErrorCodes.PARSE_ERROR, f"parse error: {exc}"))
+            return
+
+        await self._dispatch_request(req)
+
+    async def _dispatch_request(self, req: JsonRpcRequest) -> None:
+        handler = self._handlers.get(req.method)
+        if handler is None:
+            if req.id is not None:
+                self._write(
+                    error_response(
+                        req.id,
+                        ErrorCodes.METHOD_NOT_FOUND,
+                        f"method not found: {req.method}",
+                    )
+                )
+            return
+
+        try:
+            result = await handler(req.params)
+        except ValueError as exc:
+            self.logger.error("rpc.invalid_params", method=req.method, err=str(exc))
+            if req.id is not None:
+                self._write(error_response(req.id, ErrorCodes.INVALID_PARAMS, str(exc)))
+            return
+        except WorkerError as exc:
+            self.logger.error("rpc.worker_error", method=req.method, code=exc.code, err=str(exc))
+            if req.id is not None:
+                self._write(error_response(req.id, exc.code, str(exc), exc.data))
+            return
+        except Exception as exc:
+            self.logger.error("rpc.internal_error", method=req.method, err=str(exc))
+            if req.id is not None:
+                self._write(error_response(req.id, ErrorCodes.INTERNAL_ERROR, str(exc)))
+            return
+
+        if req.id is not None:
+            self._write(ok_response(req.id, result))
+
+
+class WorkerError(Exception):
+    """Carries a frozen JSON-RPC error code (GPU_NOT_SUPPORTED, MODEL_MISSING,
+    GENERATION_FAILED, CANCELLED) to the wire as a structured error response."""
+
+    def __init__(self, code: int, message: str, data: Any = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.data = data

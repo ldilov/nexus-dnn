@@ -1,0 +1,23 @@
+spec_version: "0.1"
+backend:
+  runtime_id: "nexus.3d.trellis2.gb10-flash"
+  default_version: "0.1.0"
+versions:
+  - id: "0.1.0"
+    status: "experimental"
+    artifacts:
+      - id: "trellis-4b"
+        role: "trellis.flow"
+        source: { kind: "huggingface", repo: "microsoft/TRELLIS.2-4B", revision: "main" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "sparse-decoder"
+        role: "sparse.decoder"
+        source: { kind: "huggingface", repo: "microsoft/TRELLIS-image-large", revision: "main", file: "ckpts/ss_dec_conv3d_16l8_fp16.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "dinov3"
+        role: "image_encoder"
+        source: { kind: "huggingface", repo: "kiennt120/dinov3-vitl16-pretrain-lvd1689m", revision: "main" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
