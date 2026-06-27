@@ -29,6 +29,13 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
   const [resolution, setResolution] = useState<RefineResolution>(
     DEFAULT_REFINE_PARAMS.resolution ?? 1536,
   );
+  const [shapeSteps, setShapeSteps] = useState<number>(DEFAULT_REFINE_PARAMS.shape_steps ?? 25);
+  const [textureSteps, setTextureSteps] = useState<number>(
+    DEFAULT_REFINE_PARAMS.texture_steps ?? 25,
+  );
+  const [maxTokens, setMaxTokens] = useState<number>(
+    DEFAULT_REFINE_PARAMS.max_num_tokens ?? 98_304,
+  );
 
   const glbUrl = state.phase === "done" ? mediaUrlForRef(state.glbRef) : null;
   const status = describeStatus(state.phase);
@@ -68,7 +75,13 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
       await startRefine(
         state.glbRef,
         state.inputImageRef,
-        { ...DEFAULT_REFINE_PARAMS, resolution },
+        {
+          ...DEFAULT_REFINE_PARAMS,
+          resolution,
+          shape_steps: shapeSteps,
+          texture_steps: textureSteps,
+          max_num_tokens: maxTokens,
+        },
         cropRef ?? undefined,
       );
     } catch (err) {
@@ -78,7 +91,16 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
     } finally {
       setRefining(false);
     }
-  }, [state.glbRef, state.inputImageRef, cropRef, resolution, startRefine]);
+  }, [
+    state.glbRef,
+    state.inputImageRef,
+    cropRef,
+    resolution,
+    shapeSteps,
+    textureSteps,
+    maxTokens,
+    startRefine,
+  ]);
 
   return (
     <section className={styles.stage} aria-label="Mesh preview">
@@ -154,24 +176,64 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
           </div>
 
           {glbUrl ? (
-            <div className={styles.qualityRow}>
-              <span className={styles.qualityLabel}>
-                <span className={styles.qualityIcon} aria-hidden="true">
+            <div className={styles.controls}>
+              <span className={styles.controlsTitle}>
+                <span className={styles.controlsIcon} aria-hidden="true">
                   tune
                 </span>
-                Refine detail level
+                Refine settings
               </span>
-              <select
-                className={styles.qualitySelect}
-                value={resolution}
-                onChange={(e) => setResolution(Number(e.target.value) as RefineResolution)}
-                disabled={refining}
-                aria-label="Refine detail level"
-              >
-                <option value={1536}>Max · 1536</option>
-                <option value={1024}>Balanced · 1024</option>
-                <option value={512}>Fast · 512</option>
-              </select>
+              <div className={styles.controlsGrid}>
+                <label className={styles.ctl}>
+                  <span className={styles.ctlLabel}>Detail</span>
+                  <select
+                    className={styles.ctlInput}
+                    value={resolution}
+                    onChange={(e) => setResolution(Number(e.target.value) as RefineResolution)}
+                    disabled={refining}
+                  >
+                    <option value={1536}>Max · 1536</option>
+                    <option value={1024}>Balanced · 1024</option>
+                    <option value={512}>Fast · 512</option>
+                  </select>
+                </label>
+                <label className={styles.ctl}>
+                  <span className={styles.ctlLabel}>Max tokens</span>
+                  <input
+                    className={styles.ctlInput}
+                    type="number"
+                    min={0}
+                    step={4096}
+                    value={maxTokens}
+                    onChange={(e) => setMaxTokens(clampInt(e.target.value, 0))}
+                    disabled={refining}
+                  />
+                </label>
+                <label className={styles.ctl}>
+                  <span className={styles.ctlLabel}>Shape steps</span>
+                  <input
+                    className={styles.ctlInput}
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={shapeSteps}
+                    onChange={(e) => setShapeSteps(clampInt(e.target.value, 1))}
+                    disabled={refining}
+                  />
+                </label>
+                <label className={styles.ctl}>
+                  <span className={styles.ctlLabel}>Texture steps</span>
+                  <input
+                    className={styles.ctlInput}
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={textureSteps}
+                    onChange={(e) => setTextureSteps(clampInt(e.target.value, 1))}
+                    disabled={refining}
+                  />
+                </label>
+              </div>
             </div>
           ) : null}
 
@@ -205,6 +267,13 @@ export function PreviewStage({ state }: PreviewStageProps): ReactElement {
       </div>
     </section>
   );
+}
+
+/** Parse a number input, flooring at `min` and falling back to `min` on NaN so the
+ * refine controls never emit an empty or out-of-range value. */
+function clampInt(raw: string, min: number): number {
+  const n = Number.parseInt(raw, 10);
+  return Number.isNaN(n) || n < min ? min : n;
 }
 
 function MetaRow({ label, value }: { label: string; value: string }): ReactElement {

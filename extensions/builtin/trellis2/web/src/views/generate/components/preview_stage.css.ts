@@ -276,10 +276,9 @@ export const refineIcon = style({
   lineHeight: 1,
 });
 
-export const qualityRow = style({
+export const controls = style({
   display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
+  flexDirection: "column",
   gap: vars.space.sm,
   padding: `${vars.space.sm} ${vars.space.md}`,
   borderRadius: vars.radius.md,
@@ -287,17 +286,18 @@ export const qualityRow = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
 });
 
-export const qualityLabel = style({
+export const controlsTitle = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.xs,
   fontFamily: vars.font.mono,
   fontSize: vars.text.micro,
   letterSpacing: "0.04em",
+  textTransform: "uppercase",
   color: vars.color.textMuted,
 });
 
-export const qualityIcon = style({
+export const controlsIcon = style({
   fontFamily: "'Material Symbols Outlined'",
   fontSize: "16px",
   lineHeight: 1,
@@ -305,23 +305,43 @@ export const qualityIcon = style({
   flexShrink: 0,
 });
 
-export const qualitySelect = style({
-  flexShrink: 0,
+export const controlsGrid = style({
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: vars.space.sm,
+});
+
+export const ctl = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+  minWidth: 0,
+});
+
+export const ctlLabel = style({
+  fontFamily: vars.font.mono,
+  fontSize: "9.5px",
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  color: vars.color.textFaint,
+});
+
+export const ctlInput = style({
   appearance: "none",
-  background: "transparent",
-  border: "none",
-  padding: `${vars.space.xs} ${vars.space.sm}`,
+  width: "100%",
+  minWidth: 0,
+  height: "30px",
+  padding: `0 ${vars.space.sm}`,
   borderRadius: vars.radius.sm,
-  fontFamily: vars.font.body,
+  background: vars.color.canvas,
+  border: "none",
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
-  fontWeight: vars.weight.medium,
   color: vars.color.text,
   cursor: "pointer",
-  transition: `background ${vars.motion.fast}`,
+  transition: `box-shadow ${vars.motion.fast}`,
   selectors: {
-    "&:hover:not(:disabled)": {
-      background: `color-mix(in oklab, ${vars.color.accent} 8%, transparent)`,
-    },
     "&:focus-visible": { outline: "none", boxShadow: vars.shadow.focusRing },
     "&:disabled": { cursor: "not-allowed", opacity: 0.55 },
   },
