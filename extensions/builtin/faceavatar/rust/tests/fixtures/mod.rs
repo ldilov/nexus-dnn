@@ -11,7 +11,7 @@ pub async fn memory_pool() -> SqlitePool {
         .connect("sqlite::memory:")
         .await
         .expect("open in-memory sqlite");
-    for migration in trellis2_extension::MIGRATIONS {
+    for migration in faceavatar_extension::MIGRATIONS {
         sqlx::raw_sql(migration.sql)
             .execute(&pool)
             .await

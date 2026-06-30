@@ -7,7 +7,7 @@ use serde_json::Value as JsonValue;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::backend_client::{methods, LeaseFactory as ExtLeaseFactory};
-use crate::domain::{Result as ExtResult, Trellis2Error};
+use crate::domain::{Result as ExtResult, FaceAvatarError};
 use crate::host_contract::{
     BackendRuntimeLease as ExtLease, LeaseError as ExtLeaseError, LeaseState as ExtLeaseState,
     ModelArtifactLocator, NotificationEnvelope, NotificationStream, SharedLease,
@@ -24,8 +24,8 @@ const HANDSHAKE_TIMEOUT_SECS: u64 = 120;
 
 /// Spawns the trellis2 mesh worker over stdio. The runtime profile (`fake` for
 /// CI/offline, `gb10-flash` for GPU) is selected by the
-/// `NEXUS_3D_TRELLIS2_RUNTIME` env the worker reads at startup.
-pub struct Trellis2LeaseFactory {
+/// `NEXUS_3D_FACEAVATAR_RUNTIME` env the worker reads at startup.
+pub struct FaceAvatarLeaseFactory {
     extension_dir: PathBuf,
     extension_data_dir: PathBuf,
     profile: String,
@@ -41,7 +41,7 @@ const MODEL_FAMILIES: &[&str] = &[
     "huggingface:kiennt120/dinov3-vitl16-pretrain-lvd1689m",
 ];
 
-impl Trellis2LeaseFactory {
+impl FaceAvatarLeaseFactory {
     #[must_use]
     pub fn new(
         extension_dir: PathBuf,
@@ -74,7 +74,7 @@ impl Trellis2LeaseFactory {
         let locator = self.model_locator.as_ref()?;
         let merged = self.extension_data_dir.join("models");
         if let Err(e) = std::fs::create_dir_all(&merged) {
-            tracing::warn!(target: "trellis2_lease::models", error = %e, "models dir create failed");
+            tracing::warn!(target: "faceavatar_lease::models", error = %e, "models dir create failed");
             return None;
         }
         for family in MODEL_FAMILIES {
@@ -82,7 +82,7 @@ impl Trellis2LeaseFactory {
                 Some(root) => {
                     let (linked, failed) = merge_tree(&root, &merged);
                     tracing::info!(
-                        target: "trellis2_lease::models",
+                        target: "faceavatar_lease::models",
                         family,
                         root = %root.display(),
                         linked,
@@ -92,7 +92,7 @@ impl Trellis2LeaseFactory {
                 }
                 None => {
                     tracing::warn!(
-                        target: "trellis2_lease::models",
+                        target: "faceavatar_lease::models",
                         family,
                         "model family not installed — worker may fail on its artifacts"
                     );
@@ -138,7 +138,7 @@ fn merge_tree(src: &Path, dst: &Path) -> (u64, u64) {
             } else {
                 failed += 1;
                 tracing::warn!(
-                    target: "trellis2_lease::models",
+                    target: "faceavatar_lease::models",
                     src = %path.display(),
                     dst = %target.display(),
                     "failed to link model file"
@@ -150,7 +150,7 @@ fn merge_tree(src: &Path, dst: &Path) -> (u64, u64) {
 }
 
 #[async_trait]
-impl ExtLeaseFactory for Trellis2LeaseFactory {
+impl ExtLeaseFactory for FaceAvatarLeaseFactory {
     async fn acquire(&self) -> ExtResult<SharedLease> {
         let models_dir = self.ensure_models_dir().await;
         let launch = build_launch_spec(
@@ -159,12 +159,12 @@ impl ExtLeaseFactory for Trellis2LeaseFactory {
             &self.profile,
             models_dir.as_deref(),
         )
-        .map_err(|e| Trellis2Error::RuntimeUnavailable(format!("worker spawn setup failed: {e}")))?;
+        .map_err(|e| FaceAvatarError::RuntimeUnavailable(format!("worker spawn setup failed: {e}")))?;
 
         let lease_id = HostLeaseId::new();
         let inner = StdioLease::spawn(launch, lease_id)
             .await
-            .map_err(|e| Trellis2Error::RuntimeUnavailable(format!("worker spawn failed: {e}")))?;
+            .map_err(|e| FaceAvatarError::RuntimeUnavailable(format!("worker spawn failed: {e}")))?;
 
         let timeout = std::time::Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
         match inner
@@ -174,14 +174,14 @@ impl ExtLeaseFactory for Trellis2LeaseFactory {
             Ok(_) => inner.set_state(HostLeaseState::Ready),
             Err(e) => {
                 let _ = inner.release().await;
-                return Err(Trellis2Error::RuntimeUnavailable(format!(
+                return Err(FaceAvatarError::RuntimeUnavailable(format!(
                     "worker handshake failed: {}",
                     format_lease_error(&e)
                 )));
             }
         }
 
-        Ok(Arc::new(Trellis2LeaseAdapter::new(inner)) as SharedLease)
+        Ok(Arc::new(FaceAvatarLeaseAdapter::new(inner)) as SharedLease)
     }
 }
 
@@ -205,18 +205,18 @@ fn format_lease_error(e: &HostLeaseError) -> String {
     }
 }
 
-struct Trellis2LeaseAdapter {
+struct FaceAvatarLeaseAdapter {
     inner: Arc<StdioLease>,
 }
 
-impl Trellis2LeaseAdapter {
+impl FaceAvatarLeaseAdapter {
     const fn new(inner: Arc<StdioLease>) -> Self {
         Self { inner }
     }
 }
 
 #[async_trait]
-impl ExtLease for Trellis2LeaseAdapter {
+impl ExtLease for FaceAvatarLeaseAdapter {
     fn state(&self) -> ExtLeaseState {
         map_state_host_to_ext(self.inner.state())
     }
@@ -250,7 +250,7 @@ impl ExtLease for Trellis2LeaseAdapter {
                 }),
                 Err(err) => {
                     tracing::warn!(
-                        target: "trellis2_lease::adapter",
+                        target: "faceavatar_lease::adapter",
                         error = %err,
                         "notification subscriber lagged — frames dropped"
                     );
@@ -266,7 +266,7 @@ impl ExtLease for Trellis2LeaseAdapter {
     }
 }
 
-const MODULE_NAME: &str = "trellis2_worker";
+const MODULE_NAME: &str = "faceavatar_worker";
 
 fn build_launch_spec(
     extension_dir: &Path,
@@ -316,11 +316,11 @@ fn build_launch_spec(
         .with_arg(MODULE_NAME)
         .with_working_dir(worker_dir)
         .with_env("VIRTUAL_ENV", venv_dir.to_string_lossy().to_string())
-        .with_env("NEXUS_3D_TRELLIS2_RUNTIME", profile.to_string());
+        .with_env("NEXUS_3D_FACEAVATAR_RUNTIME", profile.to_string());
 
     if let Some(models_dir) = models_dir {
         let dir = models_dir.to_string_lossy().to_string();
-        spec = spec.with_env("TRELLIS2_MODELS_DIR", dir);
+        spec = spec.with_env("FACEAVATAR_MODELS_DIR", dir);
     }
 
     if let Ok(existing_path) = std::env::var("PATH") {

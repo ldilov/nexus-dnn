@@ -23,19 +23,19 @@ async fn body_json(resp: axum::response::Response) -> (StatusCode, Value) {
 /// ref under the workspace) has a real file to point at.
 fn app_with_image(
     pool: sqlx::SqlitePool,
-    factory: Arc<dyn trellis2_extension::backend_client::LeaseFactory>,
+    factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
 ) -> (axum::Router, PathBuf, String) {
     let workspace = std::env::temp_dir().join(format!("trellis2-test-{}", ulid::Ulid::new()));
     let uploads = workspace.join("uploads");
     std::fs::create_dir_all(&uploads).unwrap();
     std::fs::write(uploads.join("in.png"), b"PNGDATA").unwrap();
-    let router = trellis2_extension::build_router_with_factory(pool, factory, workspace.clone());
+    let router = faceavatar_extension::build_router_with_factory(pool, factory, workspace.clone());
     (router, workspace, "uploads/in.png".to_string())
 }
 
 fn app(
     pool: sqlx::SqlitePool,
-    factory: Arc<dyn trellis2_extension::backend_client::LeaseFactory>,
+    factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
 ) -> axum::Router {
     app_with_image(pool, factory).0
 }
@@ -200,7 +200,7 @@ async fn start_strips_client_path_aliases() {
     let pool = fixtures::memory_pool().await;
     let (router, _workspace, image_ref) =
         app_with_image(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = trellis2_extension::storage::Store::new(pool);
+    let store = faceavatar_extension::storage::Store::new(pool);
 
     let start_body = serde_json::json!({
         "image": image_ref,
@@ -251,7 +251,7 @@ async fn start_strips_client_path_aliases() {
 /// resolves both the image and mesh refs under the workspace) has real files.
 fn app_with_image_and_mesh(
     pool: sqlx::SqlitePool,
-    factory: Arc<dyn trellis2_extension::backend_client::LeaseFactory>,
+    factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
 ) -> (axum::Router, PathBuf, String, String) {
     let (router, workspace, image_ref) = app_with_image(pool, factory);
     let meshes = workspace.join("meshes");
@@ -313,7 +313,7 @@ async fn refine_strips_client_path_aliases_and_injects_host_paths() {
     let pool = fixtures::memory_pool().await;
     let (router, _ws, image_ref, mesh_ref) =
         app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = trellis2_extension::storage::Store::new(pool);
+    let store = faceavatar_extension::storage::Store::new(pool);
 
     let body = serde_json::json!({
         "image": image_ref,
@@ -387,7 +387,7 @@ async fn refine_without_face_image_omits_face_path() {
     let pool = fixtures::memory_pool().await;
     let (router, _ws, image_ref, mesh_ref) =
         app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = trellis2_extension::storage::Store::new(pool);
+    let store = faceavatar_extension::storage::Store::new(pool);
 
     let body = serde_json::json!({ "image": image_ref, "mesh": mesh_ref, "params": {} });
     let resp = router
@@ -468,7 +468,7 @@ async fn project_strips_client_path_aliases_and_injects_host_paths() {
     let pool = fixtures::memory_pool().await;
     let (router, _ws, image_ref, mesh_ref) =
         app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = trellis2_extension::storage::Store::new(pool);
+    let store = faceavatar_extension::storage::Store::new(pool);
 
     let body = serde_json::json!({
         "image": image_ref,
@@ -706,8 +706,8 @@ async fn worker_crash_salvages_completed_glb_as_relative_ref() {
 #[tokio::test]
 async fn cancel_marks_job_cancelled() {
     let pool = fixtures::memory_pool().await;
-    let store = trellis2_extension::storage::Store::new(pool.clone());
-    let job_id = trellis2_extension::domain::JobId::new();
+    let store = faceavatar_extension::storage::Store::new(pool.clone());
+    let job_id = faceavatar_extension::domain::JobId::new();
     store.create_job(&job_id, "img", "{}").await.unwrap();
     store.mark_running(&job_id).await.unwrap();
 
@@ -757,7 +757,7 @@ async fn upload_returns_relative_ref_servable_by_media() {
     let pool = fixtures::memory_pool().await;
     let workspace = std::env::temp_dir().join(format!("trellis2-up-{}", ulid::Ulid::new()));
     std::fs::create_dir_all(&workspace).unwrap();
-    let router = trellis2_extension::build_router_with_factory(
+    let router = faceavatar_extension::build_router_with_factory(
         pool,
         Arc::new(MockGenerationFactory),
         workspace,

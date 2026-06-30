@@ -1,7 +1,7 @@
 mod fixtures;
 
-use trellis2_extension::domain::JobId;
-use trellis2_extension::storage::Store;
+use faceavatar_extension::domain::JobId;
+use faceavatar_extension::storage::Store;
 
 #[tokio::test]
 async fn create_then_complete_job_persists_dto() {

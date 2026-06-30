@@ -318,7 +318,7 @@ pub fn spawn_generation(task: GenerationTask) {
             Err(err) => {
                 // Salvage a process-death crash whose GLB finished on disk (RPC
                 // reply lost). A real `Rpc` error is never salvaged.
-                let salvaged = if matches!(err, crate::domain::Trellis2Error::RuntimeUnavailable(_))
+                let salvaged = if matches!(err, crate::domain::FaceAvatarError::RuntimeUnavailable(_))
                 {
                     salvage_completed_output(&params).await
                 } else {
@@ -356,7 +356,7 @@ pub fn spawn_generation(task: GenerationTask) {
                         .await;
                 } else {
                     let (code, message) = match &err {
-                        crate::domain::Trellis2Error::Rpc { code, message } => {
+                        crate::domain::FaceAvatarError::Rpc { code, message } => {
                             (*code, message.clone())
                         }
                         other => (-32603, other.to_string()),

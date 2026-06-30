@@ -1,9 +1,9 @@
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, Trellis2Error>;
+pub type Result<T> = std::result::Result<T, FaceAvatarError>;
 
 #[derive(Debug, Error)]
-pub enum Trellis2Error {
+pub enum FaceAvatarError {
     #[error("validation failed: {0}")]
     Validation(String),
 
@@ -26,7 +26,7 @@ pub enum Trellis2Error {
     Internal(String),
 }
 
-impl Trellis2Error {
+impl FaceAvatarError {
     #[must_use]
     pub fn validation(msg: impl Into<String>) -> Self {
         Self::Validation(msg.into())
@@ -89,7 +89,7 @@ impl Trellis2Error {
     }
 }
 
-impl From<sqlx::Error> for Trellis2Error {
+impl From<sqlx::Error> for FaceAvatarError {
     fn from(err: sqlx::Error) -> Self {
         match err {
             sqlx::Error::RowNotFound => Self::NotFound("row not found".into()),
@@ -98,13 +98,13 @@ impl From<sqlx::Error> for Trellis2Error {
     }
 }
 
-impl From<serde_json::Error> for Trellis2Error {
+impl From<serde_json::Error> for FaceAvatarError {
     fn from(err: serde_json::Error) -> Self {
         Self::Internal(format!("json: {err}"))
     }
 }
 
-impl From<crate::domain::ids::IdError> for Trellis2Error {
+impl From<crate::domain::ids::IdError> for FaceAvatarError {
     fn from(err: crate::domain::ids::IdError) -> Self {
         Self::Validation(err.to_string())
     }
@@ -116,19 +116,19 @@ mod tests {
 
     #[test]
     fn status_code_matrix() {
-        assert_eq!(Trellis2Error::validation("x").status_code(), 400);
-        assert_eq!(Trellis2Error::not_found("x").status_code(), 404);
-        assert_eq!(Trellis2Error::Cancelled.status_code(), 499);
-        assert_eq!(Trellis2Error::internal("x").status_code(), 500);
+        assert_eq!(FaceAvatarError::validation("x").status_code(), 400);
+        assert_eq!(FaceAvatarError::not_found("x").status_code(), 404);
+        assert_eq!(FaceAvatarError::Cancelled.status_code(), 499);
+        assert_eq!(FaceAvatarError::internal("x").status_code(), 500);
         assert_eq!(
-            Trellis2Error::RuntimeUnavailable("x".into()).status_code(),
+            FaceAvatarError::RuntimeUnavailable("x".into()).status_code(),
             503
         );
     }
 
     #[test]
     fn sqlx_row_not_found_maps_to_not_found() {
-        let mapped: Trellis2Error = sqlx::Error::RowNotFound.into();
-        assert!(matches!(mapped, Trellis2Error::NotFound(_)));
+        let mapped: FaceAvatarError = sqlx::Error::RowNotFound.into();
+        assert!(matches!(mapped, FaceAvatarError::NotFound(_)));
     }
 }

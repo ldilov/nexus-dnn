@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use tokio::sync::Mutex;
 
-use crate::domain::{Result, Trellis2Error};
+use crate::domain::{Result, FaceAvatarError};
 use crate::host_contract::{LeaseError, LeaseState, SharedLease};
 
 pub mod methods {
@@ -56,13 +56,13 @@ pub const LONG_RUNNING_RPC_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(60 * 60);
 
 #[must_use]
-pub fn lease_error_to_domain(err: LeaseError) -> Trellis2Error {
+pub fn lease_error_to_domain(err: LeaseError) -> FaceAvatarError {
     match err {
-        LeaseError::Rpc { code, message } => Trellis2Error::Rpc { code, message },
-        LeaseError::Timeout => Trellis2Error::Internal("worker rpc timed out".into()),
-        LeaseError::WorkerCrashed => Trellis2Error::RuntimeUnavailable("worker crashed".into()),
-        LeaseError::Cancelled => Trellis2Error::Cancelled,
-        LeaseError::Transport(msg) => Trellis2Error::Internal(format!("transport: {msg}")),
+        LeaseError::Rpc { code, message } => FaceAvatarError::Rpc { code, message },
+        LeaseError::Timeout => FaceAvatarError::Internal("worker rpc timed out".into()),
+        LeaseError::WorkerCrashed => FaceAvatarError::RuntimeUnavailable("worker crashed".into()),
+        LeaseError::Cancelled => FaceAvatarError::Cancelled,
+        LeaseError::Transport(msg) => FaceAvatarError::Internal(format!("transport: {msg}")),
     }
 }
 

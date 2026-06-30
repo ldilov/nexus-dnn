@@ -5,7 +5,7 @@ use axum::Router;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::domain::{Result, Trellis2Error};
+use crate::domain::{Result, FaceAvatarError};
 use crate::router::AppState;
 
 /// Max accepted upload size. Input images for image-to-3D are small (a few MB);
@@ -33,12 +33,12 @@ async fn upload_impl(state: &AppState, mut multipart: Multipart) -> Result<Strin
     let uploads_dir = state.workspace_dir.join("uploads");
     tokio::fs::create_dir_all(&uploads_dir)
         .await
-        .map_err(|e| Trellis2Error::internal(format!("create uploads dir: {e}")))?;
+        .map_err(|e| FaceAvatarError::internal(format!("create uploads dir: {e}")))?;
 
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| Trellis2Error::validation(format!("malformed multipart: {e}")))?
+        .map_err(|e| FaceAvatarError::validation(format!("malformed multipart: {e}")))?
     {
         if field.name() != Some("file") {
             continue;
@@ -47,12 +47,12 @@ async fn upload_impl(state: &AppState, mut multipart: Multipart) -> Result<Strin
         let bytes = field
             .bytes()
             .await
-            .map_err(|e| Trellis2Error::validation(format!("read upload bytes: {e}")))?;
+            .map_err(|e| FaceAvatarError::validation(format!("read upload bytes: {e}")))?;
         if bytes.is_empty() {
-            return Err(Trellis2Error::validation("uploaded file is empty"));
+            return Err(FaceAvatarError::validation("uploaded file is empty"));
         }
         if bytes.len() > MAX_UPLOAD_BYTES {
-            return Err(Trellis2Error::validation("uploaded file too large"));
+            return Err(FaceAvatarError::validation("uploaded file too large"));
         }
 
         let mut hasher = Sha256::new();
@@ -67,9 +67,9 @@ async fn upload_impl(state: &AppState, mut multipart: Multipart) -> Result<Strin
         let target = uploads_dir.join(format!("{digest}.{ext}"));
         tokio::fs::write(&target, &bytes)
             .await
-            .map_err(|e| Trellis2Error::internal(format!("write upload: {e}")))?;
+            .map_err(|e| FaceAvatarError::internal(format!("write upload: {e}")))?;
         return Ok(rel);
     }
 
-    Err(Trellis2Error::validation("no `file` field in multipart upload"))
+    Err(FaceAvatarError::validation("no `file` field in multipart upload"))
 }

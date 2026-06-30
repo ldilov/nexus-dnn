@@ -9,18 +9,18 @@ use sqlx::SqlitePool;
 use crate::backend_client::{LeaseFactory, LeaseProvider};
 use crate::dispatcher::GenerationChannels;
 use crate::domain::Result as DomainResult;
-use crate::host_adapter::Trellis2LeaseFactory;
+use crate::host_adapter::FaceAvatarLeaseFactory;
 use crate::host_contract::{ModelArtifactLocator, SharedLease};
 use crate::router::{self, AppState};
 use crate::storage::Store;
 use crate::{EXTENSION_VERSION, MIGRATIONS};
 
-pub const EXTENSION_ID: &str = "nexus.3d.trellis2";
+pub const EXTENSION_ID: &str = "nexus.3d.faceavatar";
 
 const DEFAULT_PROFILE: &str = "gb10-flash";
 
 #[derive(Clone)]
-pub struct Trellis2ProviderResources {
+pub struct FaceAvatarProviderResources {
     pub pool: SqlitePool,
     pub extension_dir: Option<PathBuf>,
     pub host_data_dir: Option<PathBuf>,
@@ -32,7 +32,7 @@ pub struct Trellis2ProviderResources {
     pub event_bus: Option<Arc<dyn nexus_events::bus::EventBus>>,
 }
 
-impl Trellis2ProviderResources {
+impl FaceAvatarProviderResources {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
         Self {
@@ -78,13 +78,13 @@ impl Trellis2ProviderResources {
     }
 }
 
-pub struct Trellis2RouterProvider {
-    resources: Trellis2ProviderResources,
+pub struct FaceAvatarRouterProvider {
+    resources: FaceAvatarProviderResources,
 }
 
-impl Trellis2RouterProvider {
+impl FaceAvatarRouterProvider {
     #[must_use]
-    pub const fn new(resources: Trellis2ProviderResources) -> Self {
+    pub const fn new(resources: FaceAvatarProviderResources) -> Self {
         Self { resources }
     }
 
@@ -107,7 +107,7 @@ impl Trellis2RouterProvider {
             (Some(ext_dir), Some(host_data_dir)) => {
                 let factory_data_dir = host_data_dir.join("extensions").join(EXTENSION_ID);
                 Arc::new(
-                    Trellis2LeaseFactory::new(
+                    FaceAvatarLeaseFactory::new(
                         ext_dir,
                         factory_data_dir,
                         profile,
@@ -144,7 +144,7 @@ impl Trellis2RouterProvider {
 
 async fn apply_migrations(pool: &SqlitePool) -> Result<(), String> {
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS ext_trellis2__schema_versions (\
+        "CREATE TABLE IF NOT EXISTS ext_faceavatar__schema_versions (\
              version INTEGER PRIMARY KEY,\
              name TEXT NOT NULL,\
              applied_at TEXT NOT NULL\
@@ -156,7 +156,7 @@ async fn apply_migrations(pool: &SqlitePool) -> Result<(), String> {
 
     for migration in MIGRATIONS {
         let already: Option<i64> = sqlx::query_scalar(
-            "SELECT version FROM ext_trellis2__schema_versions WHERE version = ?",
+            "SELECT version FROM ext_faceavatar__schema_versions WHERE version = ?",
         )
         .bind(i64::from(migration.version))
         .fetch_optional(pool)
@@ -175,7 +175,7 @@ async fn apply_migrations(pool: &SqlitePool) -> Result<(), String> {
                 )
             })?;
         sqlx::query(
-            "INSERT INTO ext_trellis2__schema_versions (version, name, applied_at) \
+            "INSERT INTO ext_faceavatar__schema_versions (version, name, applied_at) \
              VALUES (?, ?, datetime('now'))",
         )
         .bind(i64::from(migration.version))
@@ -192,10 +192,10 @@ struct StubLeaseFactory;
 #[async_trait]
 impl LeaseFactory for StubLeaseFactory {
     async fn acquire(&self) -> DomainResult<SharedLease> {
-        Err(crate::domain::Trellis2Error::RuntimeUnavailable(
+        Err(crate::domain::FaceAvatarError::RuntimeUnavailable(
             "trellis2 runtime backend is not yet wired through the host. Install \
              dependencies, then ensure the host passes extension_dir + \
-             host_data_dir into Trellis2ProviderResources at load time."
+             host_data_dir into FaceAvatarProviderResources at load time."
                 .into(),
         ))
     }
@@ -209,7 +209,7 @@ where
     tokio::task::block_in_place(|| handle.block_on(fut))
 }
 
-impl ExtensionRouterProvider for Trellis2RouterProvider {
+impl ExtensionRouterProvider for FaceAvatarRouterProvider {
     fn extension_id(&self) -> &'static str {
         EXTENSION_ID
     }

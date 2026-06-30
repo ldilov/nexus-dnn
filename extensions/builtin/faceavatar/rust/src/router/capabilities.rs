@@ -5,7 +5,7 @@ use axum::Router;
 use serde_json::json;
 
 use crate::backend_client::methods;
-use crate::domain::{Result, Trellis2Error};
+use crate::domain::{Result, FaceAvatarError};
 use crate::router::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -27,6 +27,6 @@ async fn capabilities_impl(state: &AppState) -> Result<serde_json::Value> {
         .provider
         .current_if_ready()
         .await
-        .ok_or_else(|| Trellis2Error::RuntimeUnavailable("worker not running".into()))?;
+        .ok_or_else(|| FaceAvatarError::RuntimeUnavailable("worker not running".into()))?;
     client.call(methods::HEALTH, json!({})).await
 }

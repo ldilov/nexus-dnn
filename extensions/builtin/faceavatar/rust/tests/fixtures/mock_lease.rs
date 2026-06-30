@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use futures::stream::{self, BoxStream};
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
-use trellis2_extension::backend_client::LeaseFactory;
-use trellis2_extension::domain::Result as ExtResult;
-use trellis2_extension::host_contract::{
+use faceavatar_extension::backend_client::LeaseFactory;
+use faceavatar_extension::domain::Result as ExtResult;
+use faceavatar_extension::host_contract::{
     BackendRuntimeLease, LeaseError, LeaseState, NotificationEnvelope, NotificationStream,
     SharedLease,
 };

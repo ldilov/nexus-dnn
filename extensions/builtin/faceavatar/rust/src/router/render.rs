@@ -11,7 +11,7 @@ use nexus_events::emitter::RunNodeEmitter;
 
 use crate::backend_client::methods;
 use crate::dispatcher::{spawn_generation, GenerationTask, DONE_METHOD, ERROR_METHOD};
-use crate::domain::{JobId, Result, Trellis2Error};
+use crate::domain::{JobId, Result, FaceAvatarError};
 use crate::router::AppState;
 use crate::storage::GenerationJobRow;
 
@@ -43,14 +43,14 @@ async fn start(State(state): State<AppState>, Json(body): Json<StartRequest>) ->
 
 async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
     if body.image.trim().is_empty() {
-        return Err(Trellis2Error::validation("image artifact ref is required"));
+        return Err(FaceAvatarError::validation("image artifact ref is required"));
     }
 
     // Resolve the workspace-RELATIVE image ref to ABSOLUTE via the media guard;
     // the worker's contract is absolute paths.
     let image_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.image)
         .await
-        .map_err(|_| Trellis2Error::validation("image ref not found in workspace"))?;
+        .map_err(|_| FaceAvatarError::validation("image ref not found in workspace"))?;
     let image_abs = image_abs.to_string_lossy().to_string();
 
     let prepared = prepare_params(state, &image_abs, body.params);
@@ -182,29 +182,29 @@ async fn start_refine(State(state): State<AppState>, Json(body): Json<RefineRequ
 
 async fn start_refine_impl(state: &AppState, body: RefineRequest) -> Result<JobId> {
     if body.image.trim().is_empty() {
-        return Err(Trellis2Error::validation("image artifact ref is required"));
+        return Err(FaceAvatarError::validation("image artifact ref is required"));
     }
     if body.mesh.trim().is_empty() {
-        return Err(Trellis2Error::validation("mesh ref is required"));
+        return Err(FaceAvatarError::validation("mesh ref is required"));
     }
 
     // Resolve every client-supplied ref to ABSOLUTE through the media guard
     // (rejects `..`/absolute); the worker's contract is absolute paths.
     let image_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.image)
         .await
-        .map_err(|_| Trellis2Error::validation("image ref not found in workspace"))?;
+        .map_err(|_| FaceAvatarError::validation("image ref not found in workspace"))?;
     let image_abs = image_abs.to_string_lossy().to_string();
 
     let mesh_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.mesh)
         .await
-        .map_err(|_| Trellis2Error::validation("mesh ref not found in workspace"))?;
+        .map_err(|_| FaceAvatarError::validation("mesh ref not found in workspace"))?;
     let mesh_abs = mesh_abs.to_string_lossy().to_string();
 
     let face_abs = match body.face_image.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(face_ref) => {
             let abs = crate::router::media::resolve_under_root(&state.workspace_dir, face_ref)
                 .await
-                .map_err(|_| Trellis2Error::validation("face image ref not found in workspace"))?;
+                .map_err(|_| FaceAvatarError::validation("face image ref not found in workspace"))?;
             Some(abs.to_string_lossy().to_string())
         }
         None => None,
@@ -328,22 +328,22 @@ async fn start_project(State(state): State<AppState>, Json(body): Json<ProjectRe
 
 async fn start_project_impl(state: &AppState, body: ProjectRequest) -> Result<JobId> {
     if body.image.trim().is_empty() {
-        return Err(Trellis2Error::validation("image ref is required"));
+        return Err(FaceAvatarError::validation("image ref is required"));
     }
     if body.mesh.trim().is_empty() {
-        return Err(Trellis2Error::validation("mesh ref is required"));
+        return Err(FaceAvatarError::validation("mesh ref is required"));
     }
 
     // Resolve every client-supplied ref to ABSOLUTE through the media guard
     // (rejects `..`/absolute); the worker's contract is absolute paths.
     let image_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.image)
         .await
-        .map_err(|_| Trellis2Error::validation("image ref not found in workspace"))?;
+        .map_err(|_| FaceAvatarError::validation("image ref not found in workspace"))?;
     let image_abs = image_abs.to_string_lossy().to_string();
 
     let mesh_abs = crate::router::media::resolve_under_root(&state.workspace_dir, &body.mesh)
         .await
-        .map_err(|_| Trellis2Error::validation("mesh ref not found in workspace"))?;
+        .map_err(|_| FaceAvatarError::validation("mesh ref not found in workspace"))?;
     let mesh_abs = mesh_abs.to_string_lossy().to_string();
 
     let prepared = prepare_project_params(state, &image_abs, &mesh_abs, body.params);
@@ -452,7 +452,7 @@ async fn list_jobs(State(state): State<AppState>, Query(q): Query<ListQuery>) ->
 }
 
 async fn get_job(State(state): State<AppState>, Path(job_id): Path<String>) -> Response {
-    if let Err(err) = JobId::try_from(job_id.as_str()).map_err(Trellis2Error::from) {
+    if let Err(err) = JobId::try_from(job_id.as_str()).map_err(FaceAvatarError::from) {
         return err.into_response();
     }
     match state.store.get_job(&job_id).await {
@@ -462,7 +462,7 @@ async fn get_job(State(state): State<AppState>, Path(job_id): Path<String>) -> R
 }
 
 async fn delete_job(State(state): State<AppState>, Path(job_id): Path<String>) -> Response {
-    if let Err(err) = JobId::try_from(job_id.as_str()).map_err(Trellis2Error::from) {
+    if let Err(err) = JobId::try_from(job_id.as_str()).map_err(FaceAvatarError::from) {
         return err.into_response();
     }
     match state.store.delete_job(&job_id).await {

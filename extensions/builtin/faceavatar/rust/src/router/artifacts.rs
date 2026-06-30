@@ -21,7 +21,7 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 use tokio_util::io::ReaderStream;
 
-use crate::domain::Trellis2Error;
+use crate::domain::FaceAvatarError;
 use crate::router::media::resolve_under_root;
 use crate::router::AppState;
 use crate::storage::GenerationJobRow;
@@ -141,7 +141,7 @@ fn duration_ms(row: &GenerationJobRow) -> Option<i64> {
 
 /// Succeeded jobs that still carry a GLB ref, newest-first (the store already
 /// orders by `created_at DESC`).
-async fn completed_with_output(state: &AppState) -> Result<Vec<GenerationJobRow>, Trellis2Error> {
+async fn completed_with_output(state: &AppState) -> Result<Vec<GenerationJobRow>, FaceAvatarError> {
     let rows = state.store.list_jobs(LIST_LIMIT).await?;
     Ok(rows
         .into_iter()
@@ -189,7 +189,7 @@ async fn download_artifact(
         Err(err) => return err.into_response(),
     };
     let Some(glb_ref) = row.output_glb_ref.as_deref() else {
-        return Trellis2Error::not_found(format!("job {job_id} has no artifact")).into_response();
+        return FaceAvatarError::not_found(format!("job {job_id} has no artifact")).into_response();
     };
     let resolved = match resolve_under_root(&state.workspace_dir, glb_ref).await {
         Ok(path) => path,
@@ -198,7 +198,7 @@ async fn download_artifact(
     let file = match tokio::fs::File::open(&resolved).await {
         Ok(file) => file,
         Err(_) => {
-            return Trellis2Error::not_found(format!("artifact file missing for {job_id}"))
+            return FaceAvatarError::not_found(format!("artifact file missing for {job_id}"))
                 .into_response()
         }
     };
@@ -224,7 +224,7 @@ async fn delete_artifact(
     match remove_artifact(&state, &job_id).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => {
-            Trellis2Error::not_found(format!("job {job_id} has no artifact")).into_response()
+            FaceAvatarError::not_found(format!("job {job_id} has no artifact")).into_response()
         }
         Err(err) => err.into_response(),
     }
@@ -259,7 +259,7 @@ async fn delete_artifacts(
 /// Detach a job's GLB: delete the file on disk (best-effort, traversal-safe) and
 /// null its `output_glb_ref` so it leaves the artifacts listing. The history row
 /// stays so the run still appears under Runs.
-async fn remove_artifact(state: &AppState, job_id: &str) -> Result<bool, Trellis2Error> {
+async fn remove_artifact(state: &AppState, job_id: &str) -> Result<bool, FaceAvatarError> {
     let row = state.store.get_job(job_id).await?;
     if let Some(glb_ref) = row.output_glb_ref.as_deref() {
         if let Ok(path) = resolve_under_root(&state.workspace_dir, glb_ref).await {
@@ -298,7 +298,7 @@ async fn download_zip(
         entries.push((format!("{}_{}", row.job_id, ref_filename(glb_ref)), bytes));
     }
     if entries.is_empty() {
-        return Trellis2Error::not_found("no artifacts to download").into_response();
+        return FaceAvatarError::not_found("no artifacts to download").into_response();
     }
     let zip = build_stored_zip(&entries);
     (
@@ -307,7 +307,7 @@ async fn download_zip(
             (header::CONTENT_TYPE, "application/zip".to_owned()),
             (
                 header::CONTENT_DISPOSITION,
-                "attachment; filename=\"trellis2-meshes.zip\"".to_owned(),
+                "attachment; filename=\"faceavatar-meshes.zip\"".to_owned(),
             ),
         ],
         Body::from(zip),

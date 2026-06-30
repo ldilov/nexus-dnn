@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use sqlx::{Row, SqlitePool};
 
-use crate::domain::{JobId, Result, Trellis2Error};
+use crate::domain::{JobId, Result, FaceAvatarError};
 
 #[derive(Clone)]
 pub struct Store {
@@ -135,7 +135,7 @@ impl Store {
         params_json: &str,
     ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO ext_trellis2__generation_jobs \
+            "INSERT INTO ext_faceavatar__jobs \
              (job_id, input_image_ref, params_json, status, created_at) \
              VALUES (?, ?, ?, 'queued', ?)",
         )
@@ -150,7 +150,7 @@ impl Store {
 
     pub async fn mark_running(&self, job_id: &JobId) -> Result<()> {
         sqlx::query(
-            "UPDATE ext_trellis2__generation_jobs SET status = 'running', started_at = ? \
+            "UPDATE ext_faceavatar__jobs SET status = 'running', started_at = ? \
              WHERE job_id = ? AND status = 'queued'",
         )
         .bind(now_secs())
@@ -167,7 +167,7 @@ impl Store {
         metadata_json: Option<&str>,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE ext_trellis2__generation_jobs \
+            "UPDATE ext_faceavatar__jobs \
              SET status = 'completed', output_glb_ref = ?, metadata_json = ?, finished_at = ? \
              WHERE job_id = ?",
         )
@@ -182,7 +182,7 @@ impl Store {
 
     pub async fn mark_failed(&self, job_id: &JobId, error_detail: &str) -> Result<()> {
         sqlx::query(
-            "UPDATE ext_trellis2__generation_jobs \
+            "UPDATE ext_faceavatar__jobs \
              SET status = 'failed', error_detail = ?, finished_at = ? \
              WHERE job_id = ?",
         )
@@ -196,7 +196,7 @@ impl Store {
 
     pub async fn mark_cancelled(&self, job_id: &JobId) -> Result<()> {
         sqlx::query(
-            "UPDATE ext_trellis2__generation_jobs SET status = 'cancelled', finished_at = ? \
+            "UPDATE ext_faceavatar__jobs SET status = 'cancelled', finished_at = ? \
              WHERE job_id = ? AND status IN ('queued', 'running')",
         )
         .bind(now_secs())
@@ -209,14 +209,14 @@ impl Store {
     pub async fn get_job(&self, job_id: &str) -> Result<GenerationJobRow> {
         self.get_job_opt(job_id)
             .await?
-            .ok_or_else(|| Trellis2Error::not_found(format!("generation job {job_id} not found")))
+            .ok_or_else(|| FaceAvatarError::not_found(format!("generation job {job_id} not found")))
     }
 
     pub async fn get_job_opt(&self, job_id: &str) -> Result<Option<GenerationJobRow>> {
         let row = sqlx::query(
             "SELECT job_id, input_image_ref, params_json, status, output_glb_ref, \
              metadata_json, error_detail, created_at, started_at, finished_at \
-             FROM ext_trellis2__generation_jobs WHERE job_id = ?",
+             FROM ext_faceavatar__jobs WHERE job_id = ?",
         )
         .bind(job_id)
         .fetch_optional(&self.pool)
@@ -228,7 +228,7 @@ impl Store {
         let rows = sqlx::query(
             "SELECT job_id, input_image_ref, params_json, status, output_glb_ref, \
              metadata_json, error_detail, created_at, started_at, finished_at \
-             FROM ext_trellis2__generation_jobs ORDER BY created_at DESC LIMIT ?",
+             FROM ext_faceavatar__jobs ORDER BY created_at DESC LIMIT ?",
         )
         .bind(limit.clamp(1, 500))
         .fetch_all(&self.pool)
@@ -241,7 +241,7 @@ impl Store {
     /// (and its status/timestamps) is kept so the run still shows in Runs.
     pub async fn clear_output(&self, job_id: &str) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE ext_trellis2__generation_jobs SET output_glb_ref = NULL \
+            "UPDATE ext_faceavatar__jobs SET output_glb_ref = NULL \
              WHERE job_id = ? AND output_glb_ref IS NOT NULL",
         )
         .bind(job_id)
@@ -254,7 +254,7 @@ impl Store {
     /// deleted. The produced GLB (if any) is left on disk — this only drops the
     /// history entry.
     pub async fn delete_job(&self, job_id: &str) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM ext_trellis2__generation_jobs WHERE job_id = ?")
+        let result = sqlx::query("DELETE FROM ext_faceavatar__jobs WHERE job_id = ?")
             .bind(job_id)
             .execute(&self.pool)
             .await?;

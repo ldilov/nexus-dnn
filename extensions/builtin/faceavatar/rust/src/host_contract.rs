@@ -78,7 +78,7 @@ pub enum HostContractError {
     Lease(String),
 }
 
-impl From<HostContractError> for crate::domain::Trellis2Error {
+impl From<HostContractError> for crate::domain::FaceAvatarError {
     fn from(err: HostContractError) -> Self {
         Self::internal(err.to_string())
     }

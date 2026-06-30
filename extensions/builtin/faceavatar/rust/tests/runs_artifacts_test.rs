@@ -16,8 +16,8 @@ use serde_json::Value;
 use tower::ServiceExt;
 
 use fixtures::mock_lease::MockGenerationFactory;
-use trellis2_extension::domain::JobId;
-use trellis2_extension::storage::Store;
+use faceavatar_extension::domain::JobId;
+use faceavatar_extension::storage::Store;
 
 const DEP: &str = "dep-1";
 
@@ -28,7 +28,7 @@ fn harness(pool: sqlx::SqlitePool) -> (axum::Router, Store, PathBuf) {
     let workspace = std::env::temp_dir().join(format!("trellis2-ra-{}", ulid::Ulid::new()));
     std::fs::create_dir_all(&workspace).unwrap();
     let store = Store::new(pool.clone());
-    let router = trellis2_extension::build_router_with_factory(
+    let router = faceavatar_extension::build_router_with_factory(
         pool,
         Arc::new(MockGenerationFactory),
         workspace.clone(),

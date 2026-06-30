@@ -9,7 +9,7 @@ use axum::Router;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 
-use crate::domain::{Result, Trellis2Error};
+use crate::domain::{Result, FaceAvatarError};
 use crate::router::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -47,7 +47,7 @@ async fn job_output(
     Path(job_id): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    let id = match crate::domain::JobId::try_from(job_id.as_str()).map_err(Trellis2Error::from) {
+    let id = match crate::domain::JobId::try_from(job_id.as_str()).map_err(FaceAvatarError::from) {
         Ok(id) => id,
         Err(err) => return err.into_response(),
     };
@@ -56,7 +56,7 @@ async fn job_output(
         Err(err) => return err.into_response(),
     };
     let Some(output) = row.output_glb_ref else {
-        return Trellis2Error::not_found("output not found").into_response();
+        return FaceAvatarError::not_found("output not found").into_response();
     };
     match serve_file(&state, &output, &headers).await {
         Ok(resp) => resp,
@@ -94,19 +94,19 @@ async fn resolve_in_workspace(state: &AppState, requested: &str) -> Result<PathB
 /// refs before any I/O. Kept independent of `AppState` so it's unit-testable.
 pub async fn resolve_under_root(workspace_dir: &FsPath, requested: &str) -> Result<PathBuf> {
     if !is_safe_relative(requested) {
-        return Err(Trellis2Error::not_found("media not found"));
+        return Err(FaceAvatarError::not_found("media not found"));
     }
     let canonical_root = tokio::fs::canonicalize(workspace_dir)
         .await
-        .map_err(|e| Trellis2Error::internal(format!("workspace dir unresolved: {e}")))?;
+        .map_err(|e| FaceAvatarError::internal(format!("workspace dir unresolved: {e}")))?;
 
     let candidate = canonical_root.join(requested);
     let resolved = tokio::fs::canonicalize(&candidate)
         .await
-        .map_err(|_| Trellis2Error::not_found("media not found"))?;
+        .map_err(|_| FaceAvatarError::not_found("media not found"))?;
 
     if !resolved.starts_with(&canonical_root) {
-        return Err(Trellis2Error::not_found("media not found"));
+        return Err(FaceAvatarError::not_found("media not found"));
     }
 
     Ok(resolved)
@@ -133,11 +133,11 @@ async fn serve_file(state: &AppState, requested: &str, headers: &HeaderMap) -> R
 
     let mut file = tokio::fs::File::open(&resolved)
         .await
-        .map_err(|_| Trellis2Error::not_found("media not found"))?;
+        .map_err(|_| FaceAvatarError::not_found("media not found"))?;
     let total = file
         .metadata()
         .await
-        .map_err(|e| Trellis2Error::internal(format!("stat failed: {e}")))?
+        .map_err(|e| FaceAvatarError::internal(format!("stat failed: {e}")))?
         .len();
 
     let content_type = guess_content_type(&resolved);
@@ -153,7 +153,7 @@ async fn serve_file(state: &AppState, requested: &str, headers: &HeaderMap) -> R
         let len = end - start + 1;
         file.seek(std::io::SeekFrom::Start(start))
             .await
-            .map_err(|e| Trellis2Error::internal(format!("seek failed: {e}")))?;
+            .map_err(|e| FaceAvatarError::internal(format!("seek failed: {e}")))?;
         let stream = ReaderStream::new(file.take(len));
         return Ok((
             StatusCode::PARTIAL_CONTENT,

@@ -8,7 +8,7 @@ pub mod register;
 pub mod router;
 pub mod storage;
 
-pub use register::{Trellis2ProviderResources, Trellis2RouterProvider, EXTENSION_ID};
+pub use register::{FaceAvatarProviderResources, FaceAvatarRouterProvider, EXTENSION_ID};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ use crate::storage::Store;
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const FALLBACK_WORKSPACE_DIR: &str = "nexus-trellis2-workspace";
+pub const FALLBACK_WORKSPACE_DIR: &str = "nexus-faceavatar-workspace";
 
 pub struct Migration {
     pub version: u32,
@@ -39,7 +39,7 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
 
 /// Test/embed entrypoint: build the full router over a ready pool and a
 /// pluggable lease factory. Production callers use
-/// [`register::Trellis2RouterProvider`] instead.
+/// [`register::FaceAvatarRouterProvider`] instead.
 pub fn build_router_with_factory(
     pool: SqlitePool,
     factory: Arc<dyn LeaseFactory>,

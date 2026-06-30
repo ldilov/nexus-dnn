@@ -24,7 +24,7 @@ fn manifest_passes_discovery_json_schema_gate() {
 fn manifest_deserializes_against_host_schema() {
     let m = load();
     assert_eq!(m.spec_version, "0.1");
-    assert_eq!(m.extension.id, "nexus.3d.trellis2");
+    assert_eq!(m.extension.id, "nexus.3d.faceavatar");
 }
 
 #[test]
@@ -68,8 +68,8 @@ fn manifest_has_frozen_backend_runtimes() {
         .iter()
         .map(|r| r.runtime_id.as_str())
         .collect();
-    assert!(ids.contains(&"nexus.3d.trellis2.gb10-flash"));
-    assert!(ids.contains(&"nexus.3d.trellis2.fake"));
+    assert!(ids.contains(&"nexus.3d.faceavatar.gb10-flash"));
+    assert!(ids.contains(&"nexus.3d.faceavatar.fake"));
     for rt in &m.backend_runtimes {
         assert_eq!(rt.family, "python");
         assert_eq!(rt.transport, "stdio");

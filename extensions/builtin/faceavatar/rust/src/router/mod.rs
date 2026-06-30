@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use crate::backend_client::LeaseProvider;
 use crate::dispatcher::GenerationChannels;
-use crate::domain::Trellis2Error;
+use crate::domain::FaceAvatarError;
 use crate::storage::Store;
 
 #[derive(Clone)]
@@ -37,12 +37,12 @@ pub struct ErrorEnvelope {
     pub message: String,
 }
 
-impl IntoResponse for Trellis2Error {
+impl IntoResponse for FaceAvatarError {
     fn into_response(self) -> Response {
         let status =
             StatusCode::from_u16(self.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         if self.is_internal_detail() {
-            tracing::error!(target: "trellis2::api", category = self.category(), detail = %self, "request failed");
+            tracing::error!(target: "faceavatar::api", category = self.category(), detail = %self, "request failed");
         }
         let body = ErrorEnvelope {
             status: "error",
