@@ -22,9 +22,9 @@ use nexus_backend_runtimes::generic::leases::BackendRuntimeLease as HostLease;
 
 const HANDSHAKE_TIMEOUT_SECS: u64 = 120;
 
-/// Spawns the trellis2 mesh worker over stdio. The runtime profile (`fake` for
-/// CI/offline, `gb10-flash` for GPU) is selected by the
-/// `NEXUS_3D_FACEAVATAR_RUNTIME` env the worker reads at startup.
+/// Spawns the faceavatar worker over stdio. The runtime profile (`fake` for
+/// CI/offline, `gb10` for GPU) is selected by the `NEXUS_3D_FACEAVATAR_RUNTIME`
+/// env the worker reads at startup.
 pub struct FaceAvatarLeaseFactory {
     extension_dir: PathBuf,
     extension_data_dir: PathBuf,
@@ -35,10 +35,13 @@ pub struct FaceAvatarLeaseFactory {
 
 /// Model-store families the worker resolves at load. Each family's blob dir is
 /// merged (hardlink, copy fallback) into one models directory the worker reads.
+/// TODO(gpu-spike): finalize exact non-gated mirror ids during the Arc2Avatar
+/// CUDA bring-up (FLAME + insightface/ArcFace + Arc2Avatar ckpts). Mirror the
+/// non-gated swap playbook for any gated source.
 const MODEL_FAMILIES: &[&str] = &[
-    "huggingface:microsoft/TRELLIS.2-4B",
-    "huggingface:microsoft/TRELLIS-image-large",
-    "huggingface:kiennt120/dinov3-vitl16-pretrain-lvd1689m",
+    "huggingface:Arc2Avatar/arc2avatar",
+    "huggingface:DICTA/flame-2020",
+    "huggingface:deepinsight/insightface-antelopev2",
 ];
 
 impl FaceAvatarLeaseFactory {
