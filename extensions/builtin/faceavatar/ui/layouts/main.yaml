@@ -1,0 +1,7 @@
+id: "faceavatar.layout.main"
+displayName: "FaceAvatar — Identity Head"
+description: "Single photo to identity-preserving 3D head (GLB), or graft a real face onto a base mesh. Recipe view + DAG view."
+icon: "cube"
+
+root:
+  type: faceavatar-app
