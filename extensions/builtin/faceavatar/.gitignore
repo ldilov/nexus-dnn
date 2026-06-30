@@ -11,7 +11,7 @@ web/node_modules/
 worker/.uv/
 worker/uv-cache/
 
-# Vendored Arc2Avatar method code lands during the GPU spike (spec §2/§8); keep the
-# dir present but its contents out of git until then.
-worker/src/arc2avatar/*
-!worker/src/arc2avatar/.gitkeep
+# Vendored Arc2Avatar method code is committed (GPU spike, 2026-06-30); only its
+# run artifacts stay out of git (subjects/models are populated at runtime).
+worker/src/arc2avatar/subjects/
+worker/src/arc2avatar/models/

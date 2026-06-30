@@ -1,54 +1,122 @@
-"""Real Arc2Avatar identity-head pipeline (gb10 backend) — STUB.
+"""Real Arc2Avatar identity-head pipeline (gb10 backend).
 
-TODO(gpu-spike): real Arc2Avatar per-image fit + FLAME head export (spec §4 step
-1) and the graft weld (graft.graft_real). NOT wired in the scaffold pass.
+Drives the vendored Arc2Avatar optimization via :mod:`arc2avatar_runner` (subprocess
++ splat→mesh GLB) and emits the same faceavatar.generate.* notification shapes as the
+fake backend, so the rust shim + web are backend-agnostic.
 
-Real generate_head algorithm (design intent — implement during the GPU spike):
-  preprocess (face crop per `crop`) → ArcFace identity embedding (insightface) →
-  FLAME shape/expression fit (`expression`=neutral|source) → Arc2Avatar per-image
-  optimisation for `arc_iters` steps (gaussian-splat / rasteriser) → mesh
-  extraction → optional photo back-projection texture (`texture`) →
-  export identity head/bust GLB + metadata.
-
-Honest ceiling (spec §1): recognizable frontal-to-three-quarter bust; unseen
-geometry is hallucinated. Per-image optimisation is minutes/photo — `arc_iters`
-is the latency knob.
-
-ALL torch/pytorch3d/nvdiffrast/insightface/flame imports MUST stay lazy (inside
-the run functions) so this module imports cleanly on a torch-free box for handler
-wiring + health probing.
+Heavy deps (numpy/trimesh/scipy via the runner, and torch inside the subprocess) stay
+lazy — imported inside the run functions — so this module imports cleanly on a
+torch-free box for handler wiring + health probing.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
+import time
+from pathlib import Path
 from typing import Any, Callable
 
 from .cancel import GenerationCancelled
-from .graft import GPU_SPIKE_MESSAGE, graft_real
+from .graft import graft_real
 from .main import WorkerError
-from .params import GenerateHeadParams, validate_generate_head_params
+from .params import DEFAULT_ARC_ITERS, validate_generate_head_params
 from .rpc import ErrorCodes, Methods, Notifications
+
+EmitSync = Callable[[str, dict[str, Any]], None]
+
+
+def data_dirs() -> tuple[Path, Path]:
+    """(models_dir, hf_home) — persistent, SHARED across jobs so the ~GB weight set
+    and SD cache download once. Honors FACEAVATAR_MODELS_DIR (set by the host lease
+    factory), else derives from FACEAVATAR_DATA_DIR / NEXUS_DATA_DIR."""
+    models_env = os.environ.get("FACEAVATAR_MODELS_DIR")
+    if models_env:
+        models_dir = Path(models_env)
+        return models_dir, models_dir.parent / "hf_cache"
+    root = Path(
+        os.environ.get("FACEAVATAR_DATA_DIR")
+        or os.environ.get("NEXUS_DATA_DIR", "/data")
+    ) / "extensions" / "nexus.3d.faceavatar"
+    return root / "models", root / "hf_cache"
+
+
+def _progress_cb(emit_sync: EmitSync, cancel_event: threading.Event) -> Callable[[str, float], None]:
+    def _cb(stage: str, frac: float) -> None:
+        if cancel_event.is_set():
+            raise GenerationCancelled()
+        emit_sync(
+            Notifications.PROGRESS,
+            {"stage": stage, "step": 0, "total": 0, "overall": round(float(frac), 4)},
+        )
+    return _cb
+
+
+def finish_sync(
+    emit_sync: EmitSync, glb_path: Path, operator: str, vertices: int, faces: int,
+    metadata: dict[str, Any], done_extra: dict[str, Any],
+) -> dict[str, Any]:
+    """Emit ARTIFACT_CREATED + MEMORY_STATS + DONE and return the RPC result — the
+    same shapes the fake backend emits (the rust dispatcher keys off these)."""
+    glb_bytes = glb_path.stat().st_size
+    emit_sync(Notifications.ARTIFACT_CREATED, {
+        "role": "mesh.glb", "output_path": str(glb_path), "bytes": glb_bytes,
+        "mime_type": "model/gltf-binary",
+    })
+    emit_sync(Notifications.MEMORY_STATS, {"device": "cuda"})
+    done_payload = {"output_path": str(glb_path), "bytes": glb_bytes, "profile": "gb10"}
+    done_payload.update(done_extra)
+    emit_sync(Notifications.DONE, done_payload)
+    return {
+        "status": "ok", "profile": "gb10", "output_path": str(glb_path),
+        "mesh_glb": str(glb_path), "bytes": glb_bytes,
+        "mesh": {"vertices": vertices, "faces": faces}, "metadata_json": metadata,
+    }
 
 
 def generate_head_real(
-    params: dict[str, Any],
-    emit_sync: Callable[[str, dict[str, Any]], None],
-    cancel_event: threading.Event,
+    params: dict[str, Any], emit_sync: EmitSync, cancel_event: threading.Event,
 ) -> dict[str, Any]:
-    """Synchronous (would run under asyncio.to_thread). Validates the inputs so
-    the contract surface is exercised, then raises until the GPU spike wires the
-    real Arc2Avatar fit (see module docstring, spec §4 step 1)."""
-    validated: GenerateHeadParams = validate_generate_head_params(params or {})
-    _ = validated  # contract validated; real fit is deferred
-    raise WorkerError(ErrorCodes.GENERATION_FAILED, GPU_SPIKE_MESSAGE)
+    """One photo → identity head GLB via the vendored Arc2Avatar optimization."""
+    validated = validate_generate_head_params(params or {})
+    from .arc2avatar_runner import run_generate
+    from .metadata import build_metadata
+
+    models_dir, hf_home = data_dirs()
+    os.environ.setdefault("HF_HOME", str(hf_home))
+    out_glb = Path(validated.output_path)
+    iters = validated.arc_iters or DEFAULT_ARC_ITERS
+
+    emit_sync(Notifications.PROGRESS,
+              {"stage": "start", "step": 0, "total": iters, "profile": "gb10"})
+    t0 = time.time()
+    try:
+        meta = run_generate(
+            validated.image_path, str(out_glb), iters=iters,
+            workdir=str(out_glb.parent / "_run"), models_dir=str(models_dir),
+            progress=_progress_cb(emit_sync, cancel_event),
+        )
+    except GenerationCancelled:
+        raise
+    except Exception as exc:
+        raise WorkerError(ErrorCodes.GENERATION_FAILED, f"arc2avatar generate failed: {exc}")
+
+    metadata = build_metadata(
+        profile="gb10", operator="generate_head", attention_backend="sdpa",
+        compute_cap="12.1", native_sm121=True, load_s=0.0, run_s=round(time.time() - t0, 2),
+        vertices=meta["vertices"], faces=meta["faces"], fallbacks=[],
+        residency=validated.residency, tf32=True,
+        extra={"expression": validated.expression, "crop": validated.crop,
+               "texture": validated.texture, "arc_iters": iters,
+               "gaussians": meta.get("gaussians")},
+    )
+    return finish_sync(emit_sync, out_glb, "generate_head", meta["vertices"], meta["faces"],
+                       metadata, done_extra={})
 
 
 def register_arc2avatar_handlers(worker: Any) -> None:
-    """Wire the SAME .start/.cancel surface as the fake backend so the wire
-    contract is identical — but every .start raises the GPU-spike error until the
-    real pipeline lands. health_fn reports per-dep status (NotSatisfied on a
-    torch-free box)."""
+    """Wire the .start/.cancel surface to the real pipeline (identical to the fake's
+    method names + notification shapes)."""
     generate_cancel_event = threading.Event()
     graft_cancel_event = threading.Event()
 
@@ -95,8 +163,4 @@ def register_arc2avatar_handlers(worker: Any) -> None:
     worker.register(Methods.GRAFT_HEAD_CANCEL, _graft_cancel)
 
 
-__all__ = [
-    "generate_head_real",
-    "register_arc2avatar_handlers",
-    "GPU_SPIKE_MESSAGE",
-]
+__all__ = ["generate_head_real", "register_arc2avatar_handlers"]

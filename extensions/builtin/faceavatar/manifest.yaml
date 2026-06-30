@@ -37,29 +37,29 @@ dependencies:
         # Base deps alone cover the `fake` backend (torch-free); the arc2avatar +
         # rasterizer extras add the GPU stack (torch 2.12/cu132 + sm_121 wheels).
         extras: [arc2avatar, rasterizer]
-    - id: model_flame
+    - id: model_arc2face
       type: model_artifact
       requires: [python]
       spec:
-        # PROVISIONAL family_id (TODO(gpu-spike): pin real gated id / SHA-verified
-        # mirror). Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
-        family_id: "huggingface:DICTA/flame-2020"
+        # Arc2Face SD pipeline weights (diffusion + encoder + arcface.onnx). Non-gated.
+        # Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
+        family_id: "huggingface:FoivosPar/Arc2Face"
         acceleration_match: "matches_runtime_step:python"
-    - id: model_arcface
+    - id: model_insightface
       type: model_artifact
       requires: [python]
       spec:
-        # PROVISIONAL family_id (TODO(gpu-spike): pin real ArcFace/insightface id +
-        # files). Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
-        family_id: "huggingface:deepinsight/insightface-antelopev2"
+        # insightface antelopev2 ONNX (SCRFD + ArcFace embedder). Non-gated mirror.
+        # Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
+        family_id: "huggingface:lithiumice/insightface"
         acceleration_match: "matches_runtime_step:python"
-    - id: model_arc2avatar
+    - id: model_sd
       type: model_artifact
       requires: [python]
       spec:
-        # PROVISIONAL family_id (TODO(gpu-spike): pin real Arc2Avatar checkpoint id +
-        # files filter). Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
-        family_id: "huggingface:Arc2Avatar/arc2avatar"
+        # Stable Diffusion v1.5 base (Arc2Face is an SD pipeline). Community mirror
+        # (runwayml repo removed). Kept identical to host_adapter MODEL_FAMILIES.
+        family_id: "huggingface:stable-diffusion-v1-5/stable-diffusion-v1-5"
         acceleration_match: "matches_runtime_step:python"
     - id: validate
       type: validation
@@ -67,9 +67,9 @@ dependencies:
         [
           python,
           pkgs,
-          model_flame,
-          model_arcface,
-          model_arc2avatar,
+          model_arc2face,
+          model_insightface,
+          model_sd,
         ]
       spec:
         kind: worker_handshake

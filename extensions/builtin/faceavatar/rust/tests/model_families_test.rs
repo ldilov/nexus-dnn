@@ -49,7 +49,7 @@ fn there_are_three_model_artifact_families() {
     assert_eq!(
         MODEL_FAMILIES.len(),
         3,
-        "expected FLAME + ArcFace + Arc2Avatar"
+        "expected Arc2Face + insightface + SD1.5"
     );
     assert_eq!(manifest_model_artifact_family_ids().len(), 3);
 }

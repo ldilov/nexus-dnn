@@ -16,29 +16,40 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Identity stack: torch 2.12/cu132 + insightface (ArcFace) + FLAME. GPU-deferred.
+# Proven GB10 Arc2Avatar stack (validated 2026-06-30): Arc2Face SD pipeline +
+# insightface (ArcFace) + the splat->mesh path. xformers dropped (SDPA default).
 arc2avatar = [
-  "torch>=2.12",
-  "torchvision>=0.27",
+  "diffusers==0.31.0",
+  "transformers==4.46.3",
+  "peft>=0.13",
+  "accelerate>=0.34",
   "safetensors>=0.4",
-  "einops>=0.8",
-  "scipy>=1.13",
-  "opencv-python-headless>=4.10",
-  "trimesh>=4.4",
-  "imageio>=2.37",
-  "tqdm>=4.66",
+  "huggingface_hub>=0.26,<1.0",
   "insightface>=0.7",
   "onnxruntime>=1.18",
-  "chumpy>=0.70",
-  # Build tools for the no-isolation CUDA-ext compiles (rasterizer extra).
+  "matplotlib>=3.8",
+  "opencv-python-headless>=4.10",
+  "scipy>=1.13",
+  "einops>=0.8",
+  "kornia>=0.7",
+  "trimesh>=4.4",
+  "plyfile>=1.0",
+  "imageio>=2.37",
+  "tqdm>=4.66",
+  "yacs>=0.1.8",
+  "fire>=0.5",
+  "dacite>=1.8",
+  "pyyaml>=6.0",
   "setuptools>=70",
   "wheel>=0.43",
   "ninja>=1.11",
 ]
-# Differentiable rasteriser stack (vendored sm_121 wheels, GB10 only). GPU-deferred.
+# Differentiable Gaussian rasteriser + KNN (vendored sm_121 wheels, GB10 only).
 rasterizer = [
-  "pytorch3d ; sys_platform == 'linux' and platform_machine == 'aarch64'",
-  "nvdiffrast ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "torch>=2.12",
+  "torchvision>=0.27",
+  "diff_gaussian_rasterization ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "simple_knn ; sys_platform == 'linux' and platform_machine == 'aarch64'",
 ]
 test = [
   "pytest>=8.0",
@@ -61,8 +72,8 @@ packages = ["src/faceavatar_worker", "src/arc2avatar"]
 [tool.hatch.metadata]
 allow-direct-references = true
 
-# Vendored aarch64/sm_121 rasteriser wheels (built on GB10, torch 2.12/cu132).
-# pytorch3d/nvdiffrast aren't reliably on PyPI for this arch → vendored.
+# Vendored aarch64/sm_121 CUDA-ext wheels (built on GB10, torch 2.12/cu132 — the
+# YixunLiang diff-gaussian-rasterization fork + simple-knn, patched for GCC14/CUDA13).
 [[tool.uv.index]]
 name = "pytorch-cu132"
 url = "https://download.pytorch.org/whl/cu132"
@@ -75,11 +86,11 @@ environments = ["sys_platform == 'linux' and platform_machine == 'aarch64'"]
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu132" }]
 torchvision = [{ index = "pytorch-cu132" }]
-pytorch3d = [
-  { path = "../../../../binaries/linux-aarch64/pytorch3d-0.7.8-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+diff_gaussian_rasterization = [
+  { path = "../../../../binaries/linux-aarch64/diff_gaussian_rasterization-0.0.0-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
 ]
-nvdiffrast = [
-  { path = "../../../../binaries/linux-aarch64/nvdiffrast-0.4.0-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+simple_knn = [
+  { path = "../../../../binaries/linux-aarch64/simple_knn-0.0.0-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
 ]
 
 [tool.pytest.ini_options]

@@ -44,9 +44,9 @@ pub struct FaceAvatarLeaseFactory {
 /// CUDA bring-up (FLAME + `insightface`/`ArcFace` + `Arc2Avatar` ckpts). Mirror
 /// the non-gated swap playbook for any gated source.
 pub const MODEL_FAMILIES: &[&str] = &[
-    "huggingface:Arc2Avatar/arc2avatar",
-    "huggingface:DICTA/flame-2020",
-    "huggingface:deepinsight/insightface-antelopev2",
+    "huggingface:FoivosPar/Arc2Face",
+    "huggingface:lithiumice/insightface",
+    "huggingface:stable-diffusion-v1-5/stable-diffusion-v1-5",
 ];
 
 impl FaceAvatarLeaseFactory {
