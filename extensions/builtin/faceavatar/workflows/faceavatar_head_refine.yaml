@@ -1,0 +1,36 @@
+specVersion: "0.1"
+workflow:
+  id: "faceavatar_head_refine"
+  version: "1.0.0"
+  title: "FaceAvatar — Refine Head Identity"
+
+  inputs:
+    - name: "base_mesh"
+      type: "string"
+    - name: "image"
+      type: "string"
+    - name: "params"
+      type: "object"
+
+  stages:
+    - id: "graft"
+      label: "Refine head"
+
+  nodes:
+    - id: "graft_head"
+      operator: "faceavatar.graft_head@1.0.0"
+      stage: "graft"
+      inputs:
+        base_mesh:
+          from: "input:base_mesh"
+        image:
+          from: "input:image"
+        params:
+          from: "input:params"
+      config: {}
+
+  outputs:
+    - name: "mesh_glb"
+      from: "graft_head:mesh_glb"
+    - name: "metadata_json"
+      from: "graft_head:metadata_json"
