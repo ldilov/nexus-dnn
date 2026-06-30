@@ -3,7 +3,7 @@ operator:
   id: faceavatar.graft_head
   version: 1.0.0
   display_name: "FaceAvatar — Graft Identity Head"
-  description: "Welds an Arc2Avatar identity face-shell onto a base GLB (e.g. a TRELLIS head): the base mesh supplies hair/back/body, the identity face supplies the likeness. Landmark-aligned seam weld + Laplacian texture blend. base_mesh is an opaque input artifact; faceavatar never imports the generator that produced it. NON-COMMERCIAL weights."
+  description: "Welds an Arc2Avatar identity face-shell onto a base GLB (e.g. an existing image-to-3D head): the base mesh supplies hair/back/body, the identity face supplies the likeness. Landmark-aligned seam weld + Laplacian texture blend. base_mesh is an opaque input artifact; faceavatar never imports the generator that produced it. NON-COMMERCIAL weights."
   category: mesh.refine
 execution:
   mode: job

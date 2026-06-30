@@ -1,4 +1,17 @@
-# Vendored Arc2Avatar method code lands during the GPU spike (spec §8); keep the
+# Build/test caches — never commit
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+
+# web deps (committed web/dist is the local-dev + fallback copy, kept)
+web/node_modules/
+
+# uv build artifacts
+worker/.uv/
+worker/uv-cache/
+
+# Vendored Arc2Avatar method code lands during the GPU spike (spec §2/§8); keep the
 # dir present but its contents out of git until then.
 worker/src/arc2avatar/*
 !worker/src/arc2avatar/.gitkeep
