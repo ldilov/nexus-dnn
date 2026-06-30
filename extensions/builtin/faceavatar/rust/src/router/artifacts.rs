@@ -51,7 +51,7 @@ pub fn router() -> Router<AppState> {
 
 /// Generic artifact row consumed by `apps/web/.../artifacts/artifacts.ui.tsx`.
 /// `finishedAt` is epoch SECONDS (the view multiplies by 1000); `durationMs` is
-/// the running-to-terminal span. trellis2 has no per-utterance concept, so
+/// the running-to-terminal span. faceavatar has no per-utterance concept, so
 /// `utteranceId`/`runId` both carry the job id and `globalIndex` is the
 /// list position.
 #[derive(Debug, Serialize)]
@@ -166,7 +166,7 @@ async fn list_artifacts(
                 utterance_id: row.job_id.clone(),
                 run_id: row.job_id.clone(),
                 global_index: idx as u64,
-                character_display: "Image → 3D".to_string(),
+                character_display: "Face avatar".to_string(),
                 text: row.input_image_ref.clone(),
                 output_format: "glb".to_string(),
                 duration_ms: duration_ms(row),
@@ -390,6 +390,7 @@ mod tests {
     fn completed_row(job_id: &str, glb_ref: Option<&str>) -> GenerationJobRow {
         GenerationJobRow {
             job_id: job_id.into(),
+            operation: "generate".into(),
             input_image_ref: "uploads/a.png".into(),
             params_json: "{}".into(),
             status: "completed".into(),

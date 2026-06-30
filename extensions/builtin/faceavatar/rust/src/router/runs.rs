@@ -1,7 +1,7 @@
 //! Host-shell "Runs & Traces" surface for the deployment detail tab.
 //!
 //! The host fetches `/api/v1/extensions/{ext-id}/deployments/{dep}/runs`
-//! through the generic extension mount — this handler maps trellis2's
+//! through the generic extension mount — this handler maps faceavatar's
 //! generation-job history into the shell's generic `RunRow` shape. Generation
 //! jobs are not deployment-scoped in v1, so the `{deployment_id}` segment is
 //! accepted and ignored (mirrors svi2-pro).
@@ -74,7 +74,7 @@ async fn list_runs(
 fn map_run(row: &GenerationJobRow) -> RunRow {
     RunRow {
         id: row.job_id.clone(),
-        label: "Image → 3D".to_string(),
+        label: run_label(&row.operation).to_string(),
         status: run_status(&row.status).to_string(),
         started_at: row.started_at.or(Some(row.created_at)).map(|s| s * 1000),
         finished_at: row.finished_at.map(|s| s * 1000),
@@ -83,7 +83,16 @@ fn map_run(row: &GenerationJobRow) -> RunRow {
     }
 }
 
-/// trellis2 persists `completed`; the shell vocabulary calls it `succeeded`.
+/// Human label per operation. Unknown ops fall back to a generic label.
+fn run_label(operation: &str) -> &str {
+    match operation {
+        "graft" => "Identity graft",
+        "generate" => "Identity head",
+        _ => "Face avatar",
+    }
+}
+
+/// faceavatar persists `completed`; the shell vocabulary calls it `succeeded`.
 /// Every other state (`queued`/`running`/`failed`/`cancelled`) passes through.
 fn run_status(status: &str) -> &str {
     match status {
@@ -168,6 +177,7 @@ mod tests {
     fn row(status: &str) -> GenerationJobRow {
         GenerationJobRow {
             job_id: "job-1".into(),
+            operation: "generate".into(),
             input_image_ref: "uploads/a.png".into(),
             params_json: "{}".into(),
             status: status.into(),
@@ -237,8 +247,12 @@ mod tests {
     }
 
     #[test]
-    fn label_is_image_to_3d() {
-        assert_eq!(map_run(&row("queued")).label, "Image → 3D");
+    fn label_reflects_operation() {
+        let mut r = row("queued");
+        r.operation = "generate".into();
+        assert_eq!(map_run(&r).label, "Identity head");
+        r.operation = "graft".into();
+        assert_eq!(map_run(&r).label, "Identity graft");
     }
 
     #[test]

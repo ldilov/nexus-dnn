@@ -28,6 +28,9 @@ pub struct GenerationJobRow {
 #[serde(rename_all = "camelCase")]
 pub struct GenerationJobDto {
     pub id: String,
+    /// Stored in the `operation` column (`'generate'` | `'graft'`); the wire
+    /// DTO exposes it as JSON key `kind` (frozen contract — web reads `job.kind`).
+    #[serde(rename = "kind")]
     pub operation: String,
     pub input_image_ref: String,
     pub params: JsonValue,

@@ -8,10 +8,11 @@ use crate::domain::{Result, FaceAvatarError};
 use crate::host_contract::{LeaseError, LeaseState, SharedLease};
 
 pub mod methods {
-    pub const HEALTH: &str = "health";
-    pub const GENERATE_HEAD: &str = "generate_head";
-    pub const GRAFT_HEAD: &str = "graft_head";
-    pub const CANCEL: &str = "cancel";
+    pub const HEALTH: &str = "faceavatar.runtime.health";
+    pub const GENERATE_START: &str = "faceavatar.generate.start";
+    pub const GENERATE_CANCEL: &str = "faceavatar.generate.cancel";
+    pub const GRAFT_START: &str = "faceavatar.graft.start";
+    pub const GRAFT_CANCEL: &str = "faceavatar.graft.cancel";
     pub const RELEASE_MEMORY: &str = "runtime.release_memory";
 }
 
