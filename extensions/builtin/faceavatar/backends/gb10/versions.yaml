@@ -1,0 +1,23 @@
+spec_version: "0.1"
+backend:
+  runtime_id: "nexus.3d.faceavatar.gb10"
+  default_version: "0.1.0"
+versions:
+  - id: "0.1.0"
+    status: "experimental"
+    artifacts:
+      - id: "flame-2020"
+        role: "flame.model"
+        source: { kind: "huggingface", repo: "public-data/FLAME2020", revision: "main" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "arcface-insightface"
+        role: "face_recognition"
+        source: { kind: "huggingface", repo: "public-data/insightface", revision: "main", file: "models/buffalo_l.zip" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "arc2avatar-ckpt"
+        role: "arc2avatar.weights"
+        source: { kind: "huggingface", repo: "kiennt120/arc2avatar", revision: "main" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
