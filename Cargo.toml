@@ -7,6 +7,7 @@ members = [
     "extensions/builtin/nexus-video-ltx23/rust",
     "extensions/builtin/svi2-pro/rust",
     "extensions/builtin/trellis2/rust",
+    "extensions/builtin/faceavatar/rust",
     "apps/web/src-tauri",
     "xtask",
 ]

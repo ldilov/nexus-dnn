@@ -1,0 +1,47 @@
+[package]
+name = "faceavatar-extension"
+version = "0.1.0"
+edition = "2021"
+description = "Rust shim for the Arc2Avatar face-to-3D (faceavatar) extension. Mounts the HTTP router under the host's generic extension prefix, bridges REST to the Python faceavatar worker over a host-issued BackendRuntimeLease, persists generation jobs (generate_head + graft_head), streams progress as SSE, and serves output GLB media."
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["json", "macros", "tokio", "http1", "query", "multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "process", "io-util", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+thiserror = "1"
+ulid = { version = "1", features = ["serde"] }
+sha2 = "0.10"
+async-trait = "0.1"
+futures = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-stream = "0.3"
+urlencoding = "2"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+nexus-extension = { path = "../../../../crates/nexus-extension" }
+nexus-backend-runtimes = { path = "../../../../crates/nexus-backend-runtimes" }
+nexus-events = { path = "../../../../crates/nexus-events" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+serde_yaml = "0.9"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
