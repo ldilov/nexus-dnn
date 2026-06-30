@@ -1,0 +1,91 @@
+[project]
+name = "nexus-3d-faceavatar-worker"
+version = "0.1.0"
+description = "Arc2Avatar identity-head + FLAME face-graft worker for nexus.3d.faceavatar. Stdio JSON-RPC. FLAME + ArcFace single-photo identity head, FLAME→base-mesh graft. fake (no-GPU) mode for CI; gb10 (GB10/Blackwell sm_121) real path is GPU-deferred. Non-commercial model license (FLAME/Arc2Avatar)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+# Base deps cover the torch-free `fake` backend (pure-stdlib GLB + JSON-RPC).
+# The real torch/identity/rasteriser stack lives in the [arc2avatar]/[rasterizer]
+# extras below (GPU-deferred — see spec §8).
+dependencies = [
+  "pillow>=10.0",
+  "numpy>=1.26,<3.0",
+  "huggingface_hub>=0.26",
+]
+
+[project.optional-dependencies]
+# Identity stack: torch 2.12/cu132 + insightface (ArcFace) + FLAME. GPU-deferred.
+arc2avatar = [
+  "torch>=2.12",
+  "torchvision>=0.27",
+  "safetensors>=0.4",
+  "einops>=0.8",
+  "scipy>=1.13",
+  "opencv-python-headless>=4.10",
+  "trimesh>=4.4",
+  "imageio>=2.37",
+  "tqdm>=4.66",
+  "insightface>=0.7",
+  "onnxruntime>=1.18",
+  "chumpy>=0.70",
+  # Build tools for the no-isolation CUDA-ext compiles (rasterizer extra).
+  "setuptools>=70",
+  "wheel>=0.43",
+  "ninja>=1.11",
+]
+# Differentiable rasteriser stack (vendored sm_121 wheels, GB10 only). GPU-deferred.
+rasterizer = [
+  "pytorch3d ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "nvdiffrast ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+test = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+nexus-3d-faceavatar-worker = "faceavatar_worker.__main__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Vendored Arc2Avatar method code (`src/arc2avatar/`) is packaged so `import
+# arc2avatar` resolves in the venv. Populated during the GPU spike (gitignored now).
+[tool.hatch.build.targets.wheel]
+packages = ["src/faceavatar_worker", "src/arc2avatar"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# Vendored aarch64/sm_121 rasteriser wheels (built on GB10, torch 2.12/cu132).
+# pytorch3d/nvdiffrast aren't reliably on PyPI for this arch → vendored.
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+# GB10-only real stack: resolve the lock for that env alone.
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'aarch64'"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu132" }]
+torchvision = [{ index = "pytorch-cu132" }]
+pytorch3d = [
+  { path = "../../../../binaries/linux-aarch64/pytorch3d-0.7.8-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+nvdiffrast = [
+  { path = "../../../../binaries/linux-aarch64/nvdiffrast-0.4.0-cp312-cp312-linux_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'" },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+markers = [
+    "smoke: end-to-end smoke tests (require GPU + native kernels)",
+]
