@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use sqlx::{Row, SqlitePool};
 
-use crate::domain::{JobId, Result, FaceAvatarError};
+use crate::domain::{FaceAvatarError, JobId, Result};
 
 #[derive(Clone)]
 pub struct Store {
@@ -12,6 +12,7 @@ pub struct Store {
 #[derive(Debug, Clone)]
 pub struct GenerationJobRow {
     pub job_id: String,
+    pub operation: String,
     pub input_image_ref: String,
     pub params_json: String,
     pub status: String,
@@ -27,6 +28,7 @@ pub struct GenerationJobRow {
 #[serde(rename_all = "camelCase")]
 pub struct GenerationJobDto {
     pub id: String,
+    pub operation: String,
     pub input_image_ref: String,
     pub params: JsonValue,
     pub status: String,
@@ -82,6 +84,7 @@ impl GenerationJobRow {
         let (error_code, error_message) = split_error(self.error_detail.as_deref());
         GenerationJobDto {
             id: self.job_id,
+            operation: self.operation,
             input_image_ref: self.input_image_ref,
             params,
             status: status_to_wire(&self.status).to_string(),
@@ -131,15 +134,17 @@ impl Store {
     pub async fn create_job(
         &self,
         job_id: &JobId,
+        operation: &str,
         input_image_ref: &str,
         params_json: &str,
     ) -> Result<()> {
         sqlx::query(
             "INSERT INTO ext_faceavatar__jobs \
-             (job_id, input_image_ref, params_json, status, created_at) \
-             VALUES (?, ?, ?, 'queued', ?)",
+             (job_id, operation, input_image_ref, params_json, status, created_at) \
+             VALUES (?, ?, ?, ?, 'queued', ?)",
         )
         .bind(job_id.as_str())
+        .bind(operation)
         .bind(input_image_ref)
         .bind(params_json)
         .bind(now_secs())
@@ -214,7 +219,7 @@ impl Store {
 
     pub async fn get_job_opt(&self, job_id: &str) -> Result<Option<GenerationJobRow>> {
         let row = sqlx::query(
-            "SELECT job_id, input_image_ref, params_json, status, output_glb_ref, \
+            "SELECT job_id, operation, input_image_ref, params_json, status, output_glb_ref, \
              metadata_json, error_detail, created_at, started_at, finished_at \
              FROM ext_faceavatar__jobs WHERE job_id = ?",
         )
@@ -226,7 +231,7 @@ impl Store {
 
     pub async fn list_jobs(&self, limit: i64) -> Result<Vec<GenerationJobRow>> {
         let rows = sqlx::query(
-            "SELECT job_id, input_image_ref, params_json, status, output_glb_ref, \
+            "SELECT job_id, operation, input_image_ref, params_json, status, output_glb_ref, \
              metadata_json, error_detail, created_at, started_at, finished_at \
              FROM ext_faceavatar__jobs ORDER BY created_at DESC LIMIT ?",
         )
@@ -265,6 +270,7 @@ impl Store {
 fn map_job_row(row: &sqlx::sqlite::SqliteRow) -> GenerationJobRow {
     GenerationJobRow {
         job_id: row.get("job_id"),
+        operation: row.get("operation"),
         input_image_ref: row.get("input_image_ref"),
         params_json: row.get("params_json"),
         status: row.get("status"),
