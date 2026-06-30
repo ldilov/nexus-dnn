@@ -33,12 +33,17 @@ pub struct FaceAvatarLeaseFactory {
     model_locator: Option<Arc<dyn ModelArtifactLocator>>,
 }
 
-/// Model-store families the worker resolves at load. Each family's blob dir is
-/// merged (hardlink, copy fallback) into one models directory the worker reads.
+/// Model-store families the worker resolves at load.
+///
+/// Each family's blob dir is merged (hardlink, copy fallback) into one models
+/// directory the worker reads. These MUST stay identical to the manifest's
+/// `model_artifact` `family_id`s — the host installs by manifest id, the worker
+/// resolves by these. A drift means installed dirs are never found;
+/// `model_families_test` enforces the equality.
 /// TODO(gpu-spike): finalize exact non-gated mirror ids during the `Arc2Avatar`
 /// CUDA bring-up (FLAME + `insightface`/`ArcFace` + `Arc2Avatar` ckpts). Mirror
 /// the non-gated swap playbook for any gated source.
-const MODEL_FAMILIES: &[&str] = &[
+pub const MODEL_FAMILIES: &[&str] = &[
     "huggingface:Arc2Avatar/arc2avatar",
     "huggingface:DICTA/flame-2020",
     "huggingface:deepinsight/insightface-antelopev2",

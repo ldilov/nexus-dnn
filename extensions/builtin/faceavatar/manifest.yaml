@@ -41,25 +41,25 @@ dependencies:
       type: model_artifact
       requires: [python]
       spec:
-        # PLACEHOLDER family_id; FLAME is gated (MPI-IS, non-commercial).
-        # TODO(gpu-spike): pin real FLAME family_id (gated id or SHA-verified mirror).
-        family_id: "huggingface:PLACEHOLDER/FLAME-2020"
+        # PROVISIONAL family_id (TODO(gpu-spike): pin real gated id / SHA-verified
+        # mirror). Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
+        family_id: "huggingface:DICTA/flame-2020"
         acceleration_match: "matches_runtime_step:python"
     - id: model_arcface
       type: model_artifact
       requires: [python]
       spec:
-        # PLACEHOLDER family_id; ArcFace/insightface backbone for the identity loss.
-        # TODO(gpu-spike): pin real ArcFace/insightface family_id + files.
-        family_id: "huggingface:PLACEHOLDER/insightface-arcface"
+        # PROVISIONAL family_id (TODO(gpu-spike): pin real ArcFace/insightface id +
+        # files). Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
+        family_id: "huggingface:deepinsight/insightface-antelopev2"
         acceleration_match: "matches_runtime_step:python"
     - id: model_arc2avatar
       type: model_artifact
       requires: [python]
       spec:
-        # PLACEHOLDER family_id; Arc2Avatar method checkpoints (non-commercial).
-        # TODO(gpu-spike): pin real Arc2Avatar checkpoint family_id (+ files filter).
-        family_id: "huggingface:PLACEHOLDER/arc2avatar-ckpts"
+        # PROVISIONAL family_id (TODO(gpu-spike): pin real Arc2Avatar checkpoint id +
+        # files filter). Kept identical to host_adapter MODEL_FAMILIES — see model_families_test.
+        family_id: "huggingface:Arc2Avatar/arc2avatar"
         acceleration_match: "matches_runtime_step:python"
     - id: validate
       type: validation
