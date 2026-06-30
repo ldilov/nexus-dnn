@@ -17,7 +17,7 @@ use crate::{EXTENSION_VERSION, MIGRATIONS};
 
 pub const EXTENSION_ID: &str = "nexus.3d.faceavatar";
 
-const DEFAULT_PROFILE: &str = "gb10-flash";
+const DEFAULT_PROFILE: &str = "gb10";
 
 #[derive(Clone)]
 pub struct FaceAvatarProviderResources {
@@ -170,7 +170,7 @@ async fn apply_migrations(pool: &SqlitePool) -> Result<(), String> {
             .await
             .map_err(|e| {
                 format!(
-                    "trellis2 migration v{} ({}) failed: {e}",
+                    "faceavatar migration v{} ({}) failed: {e}",
                     migration.version, migration.name
                 )
             })?;
@@ -193,7 +193,7 @@ struct StubLeaseFactory;
 impl LeaseFactory for StubLeaseFactory {
     async fn acquire(&self) -> DomainResult<SharedLease> {
         Err(crate::domain::FaceAvatarError::RuntimeUnavailable(
-            "trellis2 runtime backend is not yet wired through the host. Install \
+            "faceavatar runtime backend is not yet wired through the host. Install \
              dependencies, then ensure the host passes extension_dir + \
              host_data_dir into FaceAvatarProviderResources at load time."
                 .into(),

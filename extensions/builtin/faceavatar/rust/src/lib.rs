@@ -33,8 +33,8 @@ pub struct Migration {
 
 pub const MIGRATIONS: &[Migration] = &[Migration {
     version: 1,
-    name: "generation_jobs",
-    sql: include_str!("../../storage/migrations/001_generation_jobs.sql"),
+    name: "jobs",
+    sql: include_str!("../../storage/migrations/001_jobs.sql"),
 }];
 
 /// Test/embed entrypoint: build the full router over a ready pool and a
