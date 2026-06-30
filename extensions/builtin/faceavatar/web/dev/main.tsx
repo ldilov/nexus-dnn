@@ -8,7 +8,7 @@ await import("../src/main.tsx");
 
 const app = document.createElement("faceavatar-app");
 app.setAttribute("deployment-id", "preview");
-app.setAttribute("route", "/preview/generate");
+app.setAttribute("recipe", "faceavatar_generate");
 (app as unknown as { hostContext: unknown }).hostContext = {
   apiBase: "/api/v1/extensions/nexus.3d.faceavatar",
   themeTokens: {},
@@ -16,4 +16,4 @@ app.setAttribute("route", "/preview/generate");
 
 document.getElementById("root")?.appendChild(app);
 
-mountDevControls();
+mountDevControls(app);

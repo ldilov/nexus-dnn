@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { attachActionBridge, INTERNAL_NAVIGATE } from "./host_action_bridge";
-import { buildRoutes } from "./routes";
+import { buildRoutes, defaultViewForRecipe } from "./routes";
 import "./theme/tokens.css";
 
 type MemoryRouter = ReturnType<typeof createMemoryRouter>;
@@ -48,7 +48,7 @@ class FaceAvatarAppElement extends HTMLElement {
   private paintedEntry: string | null = null;
 
   static get observedAttributes(): string[] {
-    return ["route", "deployment-id"];
+    return ["route", "deployment-id", "recipe"];
   }
 
   connectedCallback(): void {
@@ -154,7 +154,8 @@ class FaceAvatarAppElement extends HTMLElement {
     const explicit = this.getAttribute("route");
     if (explicit && explicit.length > 0) return explicit;
     const deployment = this.getAttribute("deployment-id");
-    if (deployment && deployment.length > 0) return `/${deployment}/generate`;
+    const view = defaultViewForRecipe(this.getAttribute("recipe"));
+    if (deployment && deployment.length > 0) return `/${deployment}/${view}`;
     return "/";
   }
 

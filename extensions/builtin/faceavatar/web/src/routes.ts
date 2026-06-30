@@ -1,7 +1,12 @@
 import { type LoaderFunctionArgs, redirect, type RouteObject } from "react-router";
-import { DagView } from "./views/dag/dag.view";
 import { GenerateView } from "./views/generate/generate.view";
+import { HeadRefineView } from "./views/head-refine/head_refine.view";
 import { WorkspaceLayout } from "./views/workspace/workspace.layout";
+
+/** Map a deploy-time recipe id to its default in-app view path segment. */
+export function defaultViewForRecipe(recipe: string | null): "generate" | "head-refine" {
+  return recipe === "faceavatar_head_refine" ? "head-refine" : "generate";
+}
 
 export function buildRoutes(): RouteObject[] {
   return [
@@ -19,7 +24,7 @@ export function buildRoutes(): RouteObject[] {
             redirect(`/${requireParam(params, "deploymentId")}/generate`),
         },
         { path: "generate", Component: GenerateView },
-        { path: "dag", Component: DagView },
+        { path: "head-refine", Component: HeadRefineView },
       ],
     },
   ];
