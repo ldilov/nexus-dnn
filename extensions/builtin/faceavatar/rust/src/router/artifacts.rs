@@ -28,7 +28,6 @@ use crate::storage::GenerationJobRow;
 
 const LIST_LIMIT: i64 = 500;
 
-#[must_use]
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
@@ -132,7 +131,7 @@ fn sanitize_filename(name: &str) -> String {
     }
 }
 
-fn duration_ms(row: &GenerationJobRow) -> Option<i64> {
+const fn duration_ms(row: &GenerationJobRow) -> Option<i64> {
     match (row.started_at, row.finished_at) {
         (Some(start), Some(end)) if end >= start => Some((end - start) * 1000),
         _ => None,
@@ -195,12 +194,9 @@ async fn download_artifact(
         Ok(path) => path,
         Err(err) => return err.into_response(),
     };
-    let file = match tokio::fs::File::open(&resolved).await {
-        Ok(file) => file,
-        Err(_) => {
-            return FaceAvatarError::not_found(format!("artifact file missing for {job_id}"))
-                .into_response()
-        }
+    let Ok(file) = tokio::fs::File::open(&resolved).await else {
+        return FaceAvatarError::not_found(format!("artifact file missing for {job_id}"))
+            .into_response();
     };
     let filename = ref_filename(glb_ref);
     (
@@ -316,7 +312,9 @@ async fn download_zip(
 }
 
 /// Minimal STORE-method ZIP writer (GLB is already binary, so deflate would only
-/// burn CPU). Local headers + central directory per APPNOTE.
+/// burn CPU). Local headers + central directory per APPNOTE. The `usize`→`u32`/
+/// `u16` casts are the ZIP32 field widths; mesh bundles never approach those caps.
+#[allow(clippy::cast_possible_truncation)]
 fn build_stored_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
     let mut central: Vec<u8> = Vec::new();

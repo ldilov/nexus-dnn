@@ -5,7 +5,7 @@ use axum::Router;
 use serde_json::json;
 
 use crate::backend_client::methods;
-use crate::domain::{Result, FaceAvatarError};
+use crate::domain::{FaceAvatarError, Result};
 use crate::router::AppState;
 
 pub fn router() -> Router<AppState> {

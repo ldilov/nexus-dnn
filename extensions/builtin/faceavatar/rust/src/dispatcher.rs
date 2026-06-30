@@ -89,6 +89,7 @@ impl GenerationChannels {
     /// Atomically snapshot the backlog and subscribe to live frames. When the
     /// job already reached a terminal frame, `live` is `None` and the backlog
     /// alone is complete.
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn subscribe(&self, job_id: &str) -> Option<JobSubscription> {
         let map = self.inner.lock().await;
         let sink = map.get(job_id)?;
@@ -214,10 +215,12 @@ pub struct GenerationTask {
     pub workspace_dir: std::path::PathBuf,
 }
 
-/// Drives one generation to completion in the background. Subscribes to the
-/// worker's notification stream, relays every frame into the per-job sink
-/// (buffered + live), fires the long-running `generate.start` RPC, and persists
-/// the terminal state.
+/// Drives one generation to completion in the background.
+///
+/// Subscribes to the worker's notification stream, relays every frame into the
+/// per-job sink (buffered + live), fires the long-running `generate`/`graft`
+/// start RPC, and persists the terminal state.
+#[allow(clippy::too_many_lines)]
 pub fn spawn_generation(task: GenerationTask) {
     tokio::spawn(async move {
         let GenerationTask {
@@ -290,7 +293,9 @@ pub fn spawn_generation(task: GenerationTask) {
                     .and_then(JsonValue::as_str)
                     .map(|abs| crate::router::media::to_relative_ref(&workspace_dir, abs));
                 let metadata = result.get("metadata").cloned();
-                let metadata_json = metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
+                let metadata_json = metadata
+                    .as_ref()
+                    .and_then(|m| serde_json::to_string(m).ok());
                 let _ = store
                     .mark_completed(&job_id, glb_ref.as_deref(), metadata_json.as_deref())
                     .await;
@@ -317,12 +322,12 @@ pub fn spawn_generation(task: GenerationTask) {
             Err(err) => {
                 // Salvage a process-death crash whose GLB finished on disk (RPC
                 // reply lost). A real `Rpc` error is never salvaged.
-                let salvaged = if matches!(err, crate::domain::FaceAvatarError::RuntimeUnavailable(_))
-                {
-                    salvage_completed_output(&params).await
-                } else {
-                    None
-                };
+                let salvaged =
+                    if matches!(err, crate::domain::FaceAvatarError::RuntimeUnavailable(_)) {
+                        salvage_completed_output(&params).await
+                    } else {
+                        None
+                    };
                 if let Some(salvage) = salvaged {
                     tracing::warn!(
                         job_id = %job_id.as_str(),
@@ -360,7 +365,9 @@ pub fn spawn_generation(task: GenerationTask) {
                         }
                         other => (-32603, other.to_string()),
                     };
-                    let _ = store.mark_failed(&job_id, &format!("{code}|{message}")).await;
+                    let _ = store
+                        .mark_failed(&job_id, &format!("{code}|{message}"))
+                        .await;
                     if let Some(em) = &emitter {
                         let transitions = { tracker.lock().await.on_failure() };
                         for transition in &transitions {

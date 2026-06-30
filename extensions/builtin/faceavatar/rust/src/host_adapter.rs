@@ -7,7 +7,7 @@ use serde_json::Value as JsonValue;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::backend_client::{methods, LeaseFactory as ExtLeaseFactory};
-use crate::domain::{Result as ExtResult, FaceAvatarError};
+use crate::domain::{FaceAvatarError, Result as ExtResult};
 use crate::host_contract::{
     BackendRuntimeLease as ExtLease, LeaseError as ExtLeaseError, LeaseState as ExtLeaseState,
     ModelArtifactLocator, NotificationEnvelope, NotificationStream, SharedLease,
@@ -35,9 +35,9 @@ pub struct FaceAvatarLeaseFactory {
 
 /// Model-store families the worker resolves at load. Each family's blob dir is
 /// merged (hardlink, copy fallback) into one models directory the worker reads.
-/// TODO(gpu-spike): finalize exact non-gated mirror ids during the Arc2Avatar
-/// CUDA bring-up (FLAME + insightface/ArcFace + Arc2Avatar ckpts). Mirror the
-/// non-gated swap playbook for any gated source.
+/// TODO(gpu-spike): finalize exact non-gated mirror ids during the `Arc2Avatar`
+/// CUDA bring-up (FLAME + `insightface`/`ArcFace` + `Arc2Avatar` ckpts). Mirror
+/// the non-gated swap playbook for any gated source.
 const MODEL_FAMILIES: &[&str] = &[
     "huggingface:Arc2Avatar/arc2avatar",
     "huggingface:DICTA/flame-2020",
@@ -134,8 +134,8 @@ fn merge_tree(src: &Path, dst: &Path) -> (u64, u64) {
             if let Some(parent) = target.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let ok = std::fs::hard_link(&path, &target).is_ok()
-                || std::fs::copy(&path, &target).is_ok();
+            let ok =
+                std::fs::hard_link(&path, &target).is_ok() || std::fs::copy(&path, &target).is_ok();
             if ok {
                 linked += 1;
             } else {
@@ -162,12 +162,14 @@ impl ExtLeaseFactory for FaceAvatarLeaseFactory {
             &self.profile,
             models_dir.as_deref(),
         )
-        .map_err(|e| FaceAvatarError::RuntimeUnavailable(format!("worker spawn setup failed: {e}")))?;
+        .map_err(|e| {
+            FaceAvatarError::RuntimeUnavailable(format!("worker spawn setup failed: {e}"))
+        })?;
 
         let lease_id = HostLeaseId::new();
-        let inner = StdioLease::spawn(launch, lease_id)
-            .await
-            .map_err(|e| FaceAvatarError::RuntimeUnavailable(format!("worker spawn failed: {e}")))?;
+        let inner = StdioLease::spawn(launch, lease_id).await.map_err(|e| {
+            FaceAvatarError::RuntimeUnavailable(format!("worker spawn failed: {e}"))
+        })?;
 
         let timeout = std::time::Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
         match inner

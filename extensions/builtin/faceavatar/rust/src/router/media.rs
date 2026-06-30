@@ -9,7 +9,7 @@ use axum::Router;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 
-use crate::domain::{Result, FaceAvatarError};
+use crate::domain::{FaceAvatarError, Result};
 use crate::router::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -89,9 +89,11 @@ async fn resolve_in_workspace(state: &AppState, requested: &str) -> Result<PathB
     resolve_under_root(&state.workspace_dir, requested).await
 }
 
-/// Resolve `requested` (workspace-RELATIVE) under `workspace_dir`: join, then
-/// canonicalize both and enforce `starts_with(root)`. Rejects absolute/`..`
-/// refs before any I/O. Kept independent of `AppState` so it's unit-testable.
+/// Resolve `requested` (workspace-RELATIVE) under `workspace_dir`.
+///
+/// Joins, canonicalizes both, and enforces `starts_with(root)`. Rejects
+/// absolute/`..` refs before any I/O. Kept independent of `AppState` so it's
+/// unit-testable.
 pub async fn resolve_under_root(workspace_dir: &FsPath, requested: &str) -> Result<PathBuf> {
     if !is_safe_relative(requested) {
         return Err(FaceAvatarError::not_found("media not found"));
@@ -112,17 +114,18 @@ pub async fn resolve_under_root(workspace_dir: &FsPath, requested: &str) -> Resu
     Ok(resolved)
 }
 
-/// Convert a worker-produced ABSOLUTE path into the workspace-RELATIVE wire ref
-/// the client sees. Falls back to the input when it is not under the workspace
-/// (defensive — the worker's `output_path` is always host-chosen under it).
+/// Convert a worker-produced ABSOLUTE path into the workspace-RELATIVE wire ref.
+///
+/// Falls back to the input when it is not under the workspace (defensive — the
+/// worker's `output_path` is always host-chosen under it).
 #[must_use]
 pub fn to_relative_ref(workspace_dir: &FsPath, abs_path: &str) -> String {
     let root = std::fs::canonicalize(workspace_dir).unwrap_or_else(|_| workspace_dir.to_path_buf());
     let abs = std::fs::canonicalize(abs_path).unwrap_or_else(|_| PathBuf::from(abs_path));
-    match abs.strip_prefix(&root) {
-        Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
-        Err(_) => abs_path.to_string(),
-    }
+    abs.strip_prefix(&root).map_or_else(
+        |_| abs_path.to_string(),
+        |rel| rel.to_string_lossy().replace('\\', "/"),
+    )
 }
 
 /// Serve a file from the extension workspace, honouring a single-range
@@ -311,7 +314,9 @@ mod tests {
         // CR/LF/quote/slash, so it can't inject a header or a path.
         let cleaned = sanitize_filename(Some("../../etc/passwd"));
         assert!(!cleaned.contains('/') && !cleaned.contains('\\'));
-        assert!(cleaned.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')));
+        assert!(cleaned
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')));
         assert_eq!(sanitize_filename(None), "model.glb");
         assert_eq!(sanitize_filename(Some("")), "model.glb");
     }

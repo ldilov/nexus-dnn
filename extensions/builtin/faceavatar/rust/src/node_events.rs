@@ -113,7 +113,10 @@ impl StageTracker {
                 self.active_index = Some(0);
                 out.push(Transition::Started(PIPELINE[0]));
             }
-            out.push(Transition::Progress(PIPELINE[active], Self::percent(step, total)));
+            out.push(Transition::Progress(
+                PIPELINE[active],
+                Self::percent(step, total),
+            ));
             return out;
         };
 

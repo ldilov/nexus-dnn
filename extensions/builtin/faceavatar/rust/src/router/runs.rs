@@ -18,7 +18,6 @@ use crate::storage::GenerationJobRow;
 
 const DEFAULT_LIMIT: i64 = 50;
 
-#[must_use]
 pub fn router() -> Router<AppState> {
     Router::new().route("/deployments/{deployment_id}/runs", get(list_runs))
 }
@@ -101,7 +100,7 @@ fn run_status(status: &str) -> &str {
     }
 }
 
-fn duration_ms(started_at: Option<i64>, finished_at: Option<i64>) -> Option<i64> {
+const fn duration_ms(started_at: Option<i64>, finished_at: Option<i64>) -> Option<i64> {
     match (started_at, finished_at) {
         (Some(start), Some(end)) if end >= start => Some((end - start) * 1000),
         _ => None,
@@ -131,7 +130,10 @@ fn error_message(detail: Option<&str>) -> String {
 fn mesh_summary(metadata_json: &str) -> Option<String> {
     let metadata: JsonValue = serde_json::from_str(metadata_json).ok()?;
     let verts = count_field(&metadata, &["vertices", "num_vertices", "vertex_count"]);
-    let faces = count_field(&metadata, &["faces", "num_faces", "triangles", "face_count"]);
+    let faces = count_field(
+        &metadata,
+        &["faces", "num_faces", "triangles", "face_count"],
+    );
     let mut parts: Vec<String> = Vec::new();
     if let Some(v) = verts {
         parts.push(format!("{} verts", thousands(v)));
@@ -158,7 +160,7 @@ fn thousands(n: i64) -> String {
     let mut out = String::with_capacity(digits.len() + digits.len() / 3 + 1);
     let bytes = digits.as_bytes();
     for (idx, byte) in bytes.iter().enumerate() {
-        if idx > 0 && (bytes.len() - idx) % 3 == 0 {
+        if idx > 0 && (bytes.len() - idx).is_multiple_of(3) {
             out.push(',');
         }
         out.push(*byte as char);
@@ -234,7 +236,10 @@ mod tests {
     fn completed_detail_is_mesh_summary() {
         let mut r = row("completed");
         r.metadata_json = Some(r#"{"vertices":12000,"faces":24000}"#.into());
-        assert_eq!(run_detail(&r).as_deref(), Some("12,000 verts · 24,000 faces"));
+        assert_eq!(
+            run_detail(&r).as_deref(),
+            Some("12,000 verts · 24,000 faces")
+        );
     }
 
     #[test]

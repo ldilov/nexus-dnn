@@ -5,7 +5,7 @@ use axum::Router;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::domain::{Result, FaceAvatarError};
+use crate::domain::{FaceAvatarError, Result};
 use crate::router::AppState;
 
 /// Max accepted upload size. Input images for image-to-3D are small (a few MB);
@@ -71,5 +71,7 @@ async fn upload_impl(state: &AppState, mut multipart: Multipart) -> Result<Strin
         return Ok(rel);
     }
 
-    Err(FaceAvatarError::validation("no `file` field in multipart upload"))
+    Err(FaceAvatarError::validation(
+        "no `file` field in multipart upload",
+    ))
 }

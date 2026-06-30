@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use tokio::sync::Mutex;
 
-use crate::domain::{Result, FaceAvatarError};
+use crate::domain::{FaceAvatarError, Result};
 use crate::host_contract::{LeaseError, LeaseState, SharedLease};
 
 pub mod methods {
@@ -50,8 +50,7 @@ impl BackendClient {
     }
 }
 
-pub const LONG_RUNNING_RPC_TIMEOUT: std::time::Duration =
-    std::time::Duration::from_secs(60 * 60);
+pub const LONG_RUNNING_RPC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
 #[must_use]
 pub fn lease_error_to_domain(err: LeaseError) -> FaceAvatarError {
@@ -94,6 +93,7 @@ impl LeaseProvider {
         }
     }
 
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn spawn_if_needed(&self) -> Result<BackendClient> {
         let mut st = self.state.lock().await;
         if let Some(existing) = st
@@ -119,6 +119,7 @@ impl LeaseProvider {
     /// under one lock — so a concurrent [`Self::end_generation`] cannot release
     /// the worker between acquiring it and registering the job. Pair every
     /// successful call with exactly one `end_generation`.
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn acquire_for_generation(&self) -> Result<BackendClient> {
         let mut st = self.state.lock().await;
         if let Some(existing) = st

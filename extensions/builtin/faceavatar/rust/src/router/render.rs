@@ -53,7 +53,9 @@ async fn start_generate_head(
 
 async fn start_generate_head_impl(state: &AppState, body: GenerateHeadRequest) -> Result<JobId> {
     if body.image.trim().is_empty() {
-        return Err(FaceAvatarError::validation("image artifact ref is required"));
+        return Err(FaceAvatarError::validation(
+            "image artifact ref is required",
+        ));
     }
 
     // Resolve the workspace-RELATIVE image ref to ABSOLUTE via the media guard;
@@ -86,7 +88,10 @@ async fn start_generate_head_impl(state: &AppState, body: GenerateHeadRequest) -
 fn prepare_generate_params(state: &AppState, image_abs: &str, params: JsonValue) -> JsonValue {
     let mut obj = as_object(params);
     strip_path_aliases(&mut obj);
-    obj.insert("image".to_string(), JsonValue::String(image_abs.to_string()));
+    obj.insert(
+        "image".to_string(),
+        JsonValue::String(image_abs.to_string()),
+    );
     inject_output_path(state, &mut obj);
     JsonValue::Object(obj)
 }
@@ -117,7 +122,9 @@ async fn start_graft_head(
 
 async fn start_graft_head_impl(state: &AppState, body: GraftHeadRequest) -> Result<JobId> {
     if body.image.trim().is_empty() {
-        return Err(FaceAvatarError::validation("image artifact ref is required"));
+        return Err(FaceAvatarError::validation(
+            "image artifact ref is required",
+        ));
     }
     if body.base_mesh.trim().is_empty() {
         return Err(FaceAvatarError::validation("base_mesh ref is required"));
@@ -164,7 +171,10 @@ fn prepare_graft_params(
     strip_path_aliases(&mut obj);
     obj.remove("base_mesh");
     obj.remove("base_mesh_path");
-    obj.insert("image".to_string(), JsonValue::String(image_abs.to_string()));
+    obj.insert(
+        "image".to_string(),
+        JsonValue::String(image_abs.to_string()),
+    );
     obj.insert(
         "base_mesh".to_string(),
         JsonValue::String(mesh_abs.to_string()),
@@ -397,7 +407,7 @@ async fn events(
                                     break;
                                 }
                             }
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         }
                     }
