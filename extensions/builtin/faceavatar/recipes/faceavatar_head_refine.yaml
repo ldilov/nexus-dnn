@@ -1,0 +1,68 @@
+spec_version: "0.1"
+recipe:
+  id: faceavatar_head_refine_recipe
+  version: 1.0.0
+  display_name: "FaceAvatar — Refine Head Identity"
+  summary: "Weld a real-photo identity face onto a base 3D head/GLB. Pick or upload the base mesh, add a photo, graft. NON-COMMERCIAL."
+  category: mesh.refine
+workflow_template: "workflows/faceavatar_head_refine.yaml"
+fields:
+  - id: base_mesh
+    type: mesh
+    label: Base mesh (GLB)
+    required: true
+    bind: graft.base_mesh
+  - id: image
+    type: image
+    label: Identity photo
+    required: true
+    bind: graft.image
+  - id: seam
+    type: enum
+    label: Seam
+    values: [neck, hairline]
+    default: neck
+    bind: graft.seam
+  - id: keep_hair
+    type: boolean
+    label: Keep base hair / back of head
+    default: true
+    bind: graft.keep_hair
+  - id: blend_ring
+    type: number
+    label: Seam blend width
+    min: 0
+    max: 1
+    step: 0.05
+    default: 0.25
+    bind: graft.blend_ring
+  - id: align
+    type: enum
+    label: Alignment
+    values: [landmark, manual]
+    default: landmark
+    bind: graft.align
+  - id: texture_blend
+    type: boolean
+    label: Blend textures across seam
+    default: true
+    bind: graft.texture_blend
+  - id: arc_iters
+    type: integer
+    label: Identity-fit iterations
+    min: 50
+    max: 2000
+    step: 50
+    default: 500
+    bind: graft.arc_iters
+  - id: residency
+    type: enum
+    label: VRAM residency
+    values: [low_vram, balanced]
+    default: balanced
+    bind: graft.residency
+actions:
+  - id: graft
+    label: Refine head
+    operator_invoke:
+      operator: faceavatar.graft_head

@@ -1,0 +1,56 @@
+spec_version: "0.1"
+recipe:
+  id: faceavatar_generate_recipe
+  version: 1.0.0
+  display_name: "FaceAvatar — Photo to Identity Head"
+  summary: "Drop one photo, generate a downloadable identity head/bust GLB. NON-COMMERCIAL."
+  category: mesh.image_to_3d
+workflow_template: "workflows/faceavatar_generate.yaml"
+fields:
+  - id: image
+    type: image
+    label: Source photo
+    required: true
+    bind: generate.image
+  - id: seed
+    type: integer
+    label: Seed
+    required: false
+    min: 0
+    bind: generate.seed
+  - id: expression
+    type: enum
+    label: Expression
+    values: [neutral, source]
+    default: neutral
+    bind: generate.expression
+  - id: crop
+    type: enum
+    label: Crop
+    values: [bust, head]
+    default: bust
+    bind: generate.crop
+  - id: arc_iters
+    type: integer
+    label: Identity-fit iterations
+    min: 50
+    max: 2000
+    step: 50
+    default: 500
+    bind: generate.arc_iters
+  - id: texture
+    type: boolean
+    label: Back-project photo as texture
+    default: true
+    bind: generate.texture
+  - id: residency
+    type: enum
+    label: VRAM residency
+    values: [low_vram, balanced]
+    default: balanced
+    bind: generate.residency
+actions:
+  - id: generate
+    label: Generate head
+    operator_invoke:
+      operator: faceavatar.generate_head
