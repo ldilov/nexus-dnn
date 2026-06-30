@@ -1,0 +1,54 @@
+spec_version: "0.1"
+operator:
+  id: faceavatar.graft_head
+  version: 1.0.0
+  display_name: "FaceAvatar — Graft Identity Head"
+  description: "Welds an Arc2Avatar identity face-shell onto a base GLB (e.g. a TRELLIS head): the base mesh supplies hair/back/body, the identity face supplies the likeness. Landmark-aligned seam weld + Laplacian texture blend. base_mesh is an opaque input artifact; faceavatar never imports the generator that produced it. NON-COMMERCIAL weights."
+  category: mesh.refine
+execution:
+  mode: job
+  cacheable: false
+  resumable: true
+inputs:
+  - name: base_mesh
+    type: string
+    required: true
+  - name: image
+    type: string
+    required: true
+  - name: seed
+    type: integer
+    required: false
+  - name: seam
+    type: string
+    required: false
+    default: neck
+  - name: keep_hair
+    type: boolean
+    required: false
+    default: true
+  - name: blend_ring
+    type: number
+    required: false
+  - name: align
+    type: string
+    required: false
+    default: landmark
+  - name: texture_blend
+    type: boolean
+    required: false
+    default: true
+  - name: arc_iters
+    type: integer
+    required: false
+  - name: residency
+    type: string
+    required: false
+outputs:
+  - name: mesh_glb
+    type: string
+  - name: metadata_json
+    type: object
+resources:
+  gpu: true
+  min_vram_mb: 10240

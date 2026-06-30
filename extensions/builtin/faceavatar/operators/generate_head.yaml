@@ -1,0 +1,44 @@
+spec_version: "0.1"
+operator:
+  id: faceavatar.generate_head
+  version: 1.0.0
+  display_name: "FaceAvatar — Generate Head"
+  description: "Single photo -> identity-preserving 3D head/bust (GLB) via Arc2Avatar (FLAME + ArcFace). Recognizable frontal-to-three-quarter bust; unseen geometry is hallucinated. NON-COMMERCIAL weights."
+  category: mesh.image_to_3d
+execution:
+  mode: job
+  cacheable: false
+  resumable: true
+inputs:
+  - name: image
+    type: string
+    required: true
+  - name: seed
+    type: integer
+    required: false
+  - name: expression
+    type: string
+    required: false
+    default: neutral
+  - name: texture
+    type: boolean
+    required: false
+    default: true
+  - name: crop
+    type: string
+    required: false
+    default: bust
+  - name: arc_iters
+    type: integer
+    required: false
+  - name: residency
+    type: string
+    required: false
+outputs:
+  - name: mesh_glb
+    type: string
+  - name: metadata_json
+    type: object
+resources:
+  gpu: true
+  min_vram_mb: 10240
