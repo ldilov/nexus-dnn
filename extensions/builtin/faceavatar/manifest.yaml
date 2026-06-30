@@ -1,0 +1,131 @@
+spec_version: "0.1"
+extension:
+  id: "nexus.3d.faceavatar"
+  version: "0.1.0"
+  name: "FaceAvatar — Identity Head"
+  # NON-COMMERCIAL: FLAME + Arc2Avatar weights are research/non-commercial only.
+  # This blocks commercial use of generated heads. See README license banner.
+  description: "Single-photo identity-preserving 3D head (Arc2Avatar: FLAME + ArcFace), plus an identity face-graft that welds the likeness face onto an existing base GLB. Outputs GLB. NON-COMMERCIAL license (FLAME/Arc2Avatar)."
+  publisher: "nexus"
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+runtime:
+  family: "native"
+  entrypoint: "bin/nexus-3d-faceavatar-worker${exe_suffix}"
+  environment:
+    cuda_version: null
+    env_vars: {}
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        # 3.12 to match the vendored cp312 aarch64 rasterizer / pytorch3d wheels
+        # resolved during the GPU spike (binaries/linux-aarch64/), no source build.
+        version: ">=3.12,<3.13"
+        accelerator_profiles: [cpu, cuda13]
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "worker/pyproject.toml"
+        lock_path: "worker/uv.lock"
+        target: extension_local
+        # Base deps alone cover the `fake` backend (torch-free); the arc2avatar +
+        # rasterizer extras add the GPU stack (torch 2.12/cu132 + sm_121 wheels).
+        extras: [arc2avatar, rasterizer]
+    - id: model_flame
+      type: model_artifact
+      requires: [python]
+      spec:
+        # PLACEHOLDER family_id; FLAME is gated (MPI-IS, non-commercial).
+        # TODO(gpu-spike): pin real FLAME family_id (gated id or SHA-verified mirror).
+        family_id: "huggingface:PLACEHOLDER/FLAME-2020"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_arcface
+      type: model_artifact
+      requires: [python]
+      spec:
+        # PLACEHOLDER family_id; ArcFace/insightface backbone for the identity loss.
+        # TODO(gpu-spike): pin real ArcFace/insightface family_id + files.
+        family_id: "huggingface:PLACEHOLDER/insightface-arcface"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_arc2avatar
+      type: model_artifact
+      requires: [python]
+      spec:
+        # PLACEHOLDER family_id; Arc2Avatar method checkpoints (non-commercial).
+        # TODO(gpu-spike): pin real Arc2Avatar checkpoint family_id (+ files filter).
+        family_id: "huggingface:PLACEHOLDER/arc2avatar-ckpts"
+        acceleration_match: "matches_runtime_step:python"
+    - id: validate
+      type: validation
+      requires:
+        [
+          python,
+          pkgs,
+          model_flame,
+          model_arcface,
+          model_arc2avatar,
+        ]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 120
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+  - "process.spawn"
+  - "gpu.compute"
+  - "huggingface.search"
+  - "huggingface.install"
+  - "model.registry.read"
+  - "storage.schema_contribute"
+backend_runtimes:
+  - runtime_id: "nexus.3d.faceavatar.gb10"
+    display_name: "FaceAvatar (GB10 / Blackwell sm_121, Arc2Avatar)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/faceavatar_worker/__main__.py"
+    version_manifest: "backends/gb10/versions.yaml"
+    capability_tags: ["3d-generation", "image-to-3d", "mesh", "face", "identity", "blackwell"]
+    supported_roles: ["mesh.generate"]
+  - runtime_id: "nexus.3d.faceavatar.fake"
+    display_name: "FaceAvatar Fake (CI / development)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/faceavatar_worker/__main__.py"
+    version_manifest: "backends/fake/versions.yaml"
+    capability_tags: ["3d-generation", "image-to-3d", "fake"]
+    supported_roles: ["mesh.generate"]
+operators:
+  - file: "operators/generate_head.yaml"
+  - file: "operators/graft_head.yaml"
+recipes:
+  - file: "recipes/faceavatar_generate.yaml"
+  - file: "recipes/faceavatar_head_refine.yaml"
+ui:
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
+  assets:
+    root: "web/dist"
+  custom_elements:
+    - tag: "faceavatar-app"
+      module: "faceavatar.js"
+      entry: "register"
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "faceavatar"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_jobs"
+        path: "storage/migrations/001_jobs.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"
