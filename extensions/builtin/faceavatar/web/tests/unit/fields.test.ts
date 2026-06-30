@@ -9,18 +9,15 @@ import {
 
 describe("operator fields", () => {
   test("default params match the frozen contract", () => {
-    expect(DEFAULT_PARAMS.sparse_steps).toBe(12);
-    expect(DEFAULT_PARAMS.simplify_target).toBe(1_000_000);
-    expect(DEFAULT_PARAMS.texture).toBe(false);
+    expect(DEFAULT_PARAMS.expression).toBe("neutral");
+    expect(DEFAULT_PARAMS.crop).toBe("bust");
+    expect(DEFAULT_PARAMS.texture).toBe(true);
     expect(DEFAULT_PARAMS.residency).toBe("balanced");
   });
 
-  test("new quality defaults match the worker contract", () => {
-    expect(DEFAULT_PARAMS.pipeline_type).toBe("1024_cascade");
-    expect(DEFAULT_PARAMS.texture_steps).toBe(12);
-    expect(DEFAULT_PARAMS.max_num_tokens).toBe(49_152);
-    expect(DEFAULT_PARAMS.texture_size).toBe(2048);
-    expect(DEFAULT_PARAMS.metallic).toBe(0);
+  test("identity defaults match the worker contract", () => {
+    expect(DEFAULT_PARAMS.seed).toBe(0);
+    expect(DEFAULT_PARAMS.arc_iters).toBe(600);
   });
 
   test("every field spec carries help text and a control", () => {
@@ -42,54 +39,23 @@ describe("operator fields", () => {
     expect(residency?.options?.map((o) => o.value)).toEqual(["balanced", "low_vram"]);
   });
 
-  test("pipeline_type select exposes all four presets", () => {
-    const pipeline = FIELD_SPECS.find((f) => f.key === "pipeline_type");
-    expect(pipeline?.control).toBe("select");
-    expect(pipeline?.options?.map((o) => o.value)).toEqual([
-      "512",
-      "1024",
-      "1024_cascade",
-      "1536_cascade",
-    ]);
+  test("expression select exposes neutral + source", () => {
+    const expression = FIELD_SPECS.find((f) => f.key === "expression");
+    expect(expression?.control).toBe("select");
+    expect(expression?.options?.map((o) => o.value)).toEqual(["neutral", "source"]);
   });
 
-  test("texture_size is a numeric select with the four resolutions", () => {
-    const tex = FIELD_SPECS.find((f) => f.key === "texture_size");
-    expect(tex?.control).toBe("select");
-    expect(tex?.numeric).toBe(true);
-    expect(tex?.options?.map((o) => o.value)).toEqual(["1024", "2048", "4096", "8192"]);
+  test("crop select exposes bust + head", () => {
+    const crop = FIELD_SPECS.find((f) => f.key === "crop");
+    expect(crop?.control).toBe("select");
+    expect(crop?.options?.map((o) => o.value)).toEqual(["bust", "head"]);
   });
 
-  test("metallic is a 0..1 slider", () => {
-    const metallic = FIELD_SPECS.find((f) => f.key === "metallic");
-    expect(metallic?.control).toBe("slider");
-    expect(metallic?.min).toBe(0);
-    expect(metallic?.max).toBe(1);
-    expect(metallic?.step).toBeLessThan(1);
-  });
-
-  test("texture_steps respects the 1..100 bounds", () => {
-    const spec = FIELD_SPECS.find((f) => f.key === "texture_steps");
-    expect(spec?.min).toBe(1);
-    expect(spec?.max).toBe(100);
-  });
-
-  test("max_num_tokens has a floor of zero and a tightened ceiling", () => {
-    const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
-    expect(spec?.min).toBe(0);
-    expect(spec?.max).toBe(131_072);
-  });
-
-  test("max_num_tokens is ungated", () => {
-    const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
-    expect(spec?.gate).toBeUndefined();
-  });
-
-  test("isFieldActive keeps max_num_tokens active in every pipeline type", () => {
-    const spec = FIELD_SPECS.find((f) => f.key === "max_num_tokens");
-    if (!spec) throw new Error("max_num_tokens spec missing");
-    expect(isFieldActive(spec, { pipeline_type: "1024_cascade" })).toBe(true);
-    expect(isFieldActive(spec, { pipeline_type: "1536_cascade" })).toBe(true);
+  test("arc_iters is a slider with sane bounds", () => {
+    const spec = FIELD_SPECS.find((f) => f.key === "arc_iters");
+    expect(spec?.control).toBe("slider");
+    expect(spec?.min).toBe(100);
+    expect(spec?.max).toBe(1_500);
   });
 
   test("isFieldActive leaves ungated fields always active", () => {
@@ -98,16 +64,10 @@ describe("operator fields", () => {
     expect(isFieldActive(seed, {})).toBe(true);
   });
 
-  test("primary keeps seed + sparse_steps; advanced holds the rest", () => {
-    expect(PRIMARY_FIELDS.map((f) => f.key)).toEqual(["seed", "sparse_steps"]);
+  test("primary keeps seed + expression + crop; advanced holds the rest", () => {
+    expect(PRIMARY_FIELDS.map((f) => f.key)).toEqual(["seed", "expression", "crop"]);
     const advancedKeys = ADVANCED_FIELDS.map((f) => f.key);
-    expect(advancedKeys).toContain("pipeline_type");
-    expect(advancedKeys).toContain("texture_steps");
-    expect(advancedKeys).toContain("max_num_tokens");
-    expect(advancedKeys).toContain("texture_size");
-    expect(advancedKeys).toContain("metallic");
-    expect(advancedKeys).toContain("shape_steps");
-    expect(advancedKeys).toContain("simplify_target");
+    expect(advancedKeys).toContain("arc_iters");
     expect(advancedKeys).toContain("residency");
   });
 

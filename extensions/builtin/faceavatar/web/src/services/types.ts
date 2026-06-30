@@ -7,90 +7,50 @@ export interface ErrorEnvelope {
 /** Memory residency profile for the worker — controls block-swap / offload. */
 export type ResidencyProfile = "low_vram" | "balanced";
 
-/** TRELLIS 2 pipeline preset — trades detail for speed/VRAM. */
-export type PipelineType = "512" | "1024" | "1024_cascade" | "1536_cascade";
+/** FLAME expression applied to the fitted identity head. */
+export type ExpressionMode = "neutral" | "source";
 
-/** Tunable inputs for the single `trellis2.generate_3d` operator. The input
- * image ref is carried TOP-LEVEL in the start body, not inside params. */
+/** Crop framing of the produced bust. */
+export type CropMode = "bust" | "head";
+
+/** Tunable inputs for the `faceavatar.generate_head` operator. The input photo
+ * ref is carried TOP-LEVEL in the start body, not inside params. */
 export interface GenerateParams {
   seed?: number;
-  /** Detail/quality pipeline preset. Higher = more detail, more VRAM. */
-  pipeline_type?: PipelineType;
-  /** O-Voxel sparse-structure flow steps. */
-  sparse_steps?: number;
-  /** Mesh/shape refinement flow steps. */
-  shape_steps?: number;
-  /** Texture-bake refinement flow steps. */
-  texture_steps?: number;
-  /** Advanced VRAM/quality cap on the token budget. */
-  max_num_tokens?: number;
-  /** Baked texture resolution in pixels (square). */
-  texture_size?: number;
-  /** Metallic factor 0..1 baked into the material (0 = matte/dielectric). */
-  metallic?: number;
-  /** Target triangle budget for decimation. */
-  simplify_target?: number;
-  /** Bake a texture onto the mesh. MVP-0 default OFF (MeshOnly). */
+  /** FLAME expression: neutral or copy the photo's expression. */
+  expression?: ExpressionMode;
+  /** Back-project the real photo as texture (default true). */
   texture?: boolean;
-  /** Auto-remove the input background before generation (default ON). Stops
-   * TRELLIS reconstructing the photo's ground/shadow as a flat platform under
-   * the model. Turn OFF only when uploading a pre-cut RGBA subject. */
-  remove_background?: boolean;
+  /** Bust vs head crop (default bust). */
+  crop?: CropMode;
+  /** Arc2Avatar per-image optimization steps — latency/quality knob. */
+  arc_iters?: number;
   residency?: ResidencyProfile;
-
-  /** Per-stage classifier-free guidance levers. All OPTIONAL and opt-in: when a
-   * field is omitted the worker inherits the model's baked default for that
-   * stage. Sending a value overrides that tuned default, so the form must only
-   * include a key when the user actually fills it. */
-  sparse_guidance_strength?: number;
-  sparse_guidance_rescale?: number;
-  sparse_rescale_t?: number;
-  sparse_guidance_interval_start?: number;
-  sparse_guidance_interval_end?: number;
-  shape_guidance_strength?: number;
-  shape_guidance_rescale?: number;
-  shape_rescale_t?: number;
-  shape_guidance_interval_start?: number;
-  shape_guidance_interval_end?: number;
-  texture_guidance_strength?: number;
-  texture_guidance_rescale?: number;
-  texture_rescale_t?: number;
-  texture_guidance_interval_start?: number;
-  texture_guidance_interval_end?: number;
 }
 
-/** Geometry-refine voxel resolution. Higher recovers more face detail at a
- * heavier VRAM/time cost. */
-export type RefineResolution = 512 | 1024 | 1536;
+/** Where the FLAME face-shell is cut into the base mesh. */
+export type SeamMode = "neck" | "hairline";
 
-/** Tunable inputs for the `trellis2.refine_3d` operator. The mesh + source
- * image refs are carried TOP-LEVEL in the start body, not inside params. */
-export interface RefineParams {
-  /** Voxel resolution for the high-res shape SLAT pass. */
-  resolution?: RefineResolution;
-  /** Conditioning views fed to the refine pass (source image + face crop). */
-  max_views?: number;
+/** Landmark auto-align vs a manual fallback transform. */
+export type AlignMode = "landmark" | "manual";
+
+/** Tunable inputs for the `faceavatar.graft_head` operator. The base_mesh +
+ * photo refs are carried TOP-LEVEL in the start body, not inside params. */
+export interface GraftParams {
   seed?: number;
-  /** Mesh/shape refinement flow steps. */
-  shape_steps?: number;
-  /** Texture refinement flow steps. */
-  texture_steps?: number;
-  /** Voxel-token cap on the high-res shape stage; higher keeps more resolution. */
-  max_num_tokens?: number;
-  /** Re-bake a texture after the geometry refine. */
-  generate_texture_slat?: boolean;
-}
-
-/** Tunable inputs for the `trellis2.project_3d` operator — re-textures a finished
- * mesh by projecting the real source photo onto it. The mesh + source image refs
- * are carried TOP-LEVEL in the start body, not inside params. */
-export interface ProjectParams {
-  /** Camera azimuth (degrees) the source photo is projected from. 0 = front. */
-  azimuth?: number;
-  /** Camera elevation (degrees) the source photo is projected from. */
-  elevation?: number;
-  /** Baked texture resolution in pixels (square). */
-  texture_size?: number;
+  /** Cut/weld boundary: neck ring or hairline. */
+  seam?: SeamMode;
+  /** Keep the base mesh's hair/back (default true). */
+  keep_hair?: boolean;
+  /** Laplacian blend width at the seam, 0..1. */
+  blend_ring?: number;
+  /** Landmark auto-align or manual transform. */
+  align?: AlignMode;
+  /** Blend textures across the seam (default true). */
+  texture_blend?: boolean;
+  /** Arc2Avatar per-image optimization steps — latency/quality knob. */
+  arc_iters?: number;
+  residency?: ResidencyProfile;
 }
 
 export type GenerationJobStatus =
@@ -100,6 +60,9 @@ export type GenerationJobStatus =
   | "failed"
   | "cancelled";
 
+/** Which operator produced a job — drives history badges + base-mesh sourcing. */
+export type JobKind = "generate" | "graft";
+
 /** The metadata_json object the worker attaches to a finished mesh. Shape is
  * open — only the fields the UI surfaces are typed; the rest pass through. */
 export interface GenerationMetadata {
@@ -108,15 +71,22 @@ export interface GenerationMetadata {
   stage_timings?: Record<string, number>;
   mesh?: { vertices?: number; faces?: number };
   textured?: boolean;
+  identity_score?: number;
+  seam?: string;
   sha256?: string;
   [key: string]: unknown;
 }
 
 export interface GenerationJob {
   id: string;
-  /** Host artifact ref of the input image (soft FK). */
+  /** Which operator produced this job. */
+  kind: JobKind;
+  /** Host artifact ref of the input photo (soft FK). */
   inputImageRef: string;
-  params: GenerateParams;
+  /** Host artifact ref of the base mesh for graft jobs; null for generate. */
+  baseMeshRef: string | null;
+  /** Params union — generate or graft, by `kind`. */
+  params: GenerateParams | GraftParams;
   status: GenerationJobStatus;
   /** Media ref of the produced GLB (mime model/gltf-binary) → GET /media/{glbRef}. */
   glbRef: string | null;

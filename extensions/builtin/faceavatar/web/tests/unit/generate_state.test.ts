@@ -10,44 +10,44 @@ import type { GenerateFrame } from "../../src/services/generate_events";
 describe("generate_state reducer", () => {
   test("progress marks the stage active and prior known stages done", () => {
     const frame: GenerateFrame = {
-      method: "trellis2.generate.progress",
-      params: { stage: "shape", step: 1, total: 10 },
+      method: "faceavatar.generate.progress",
+      params: { stage: "weld", step: 1, total: 10 },
     };
     const next = reduceFrame(startedState(), frame);
     expect(next.phase).toBe("running");
-    expect(next.stage).toBe("shape");
-    expect(next.stageStates.load).toBe("done");
-    expect(next.stageStates.encode).toBe("done");
-    expect(next.stageStates.sparse).toBe("done");
-    expect(next.stageStates.shape).toBe("active");
+    expect(next.stage).toBe("weld");
+    expect(next.stageStates.fit).toBe("done");
+    expect(next.stageStates.align).toBe("done");
+    expect(next.stageStates.weld).toBe("active");
+    expect(next.stageStates.texture).toBe("idle");
     expect(next.stageStates.glb).toBe("idle");
   });
 
   test("overall fraction is monotonic and derives from stage + step", () => {
     let state = startedState();
     state = reduceFrame(state, {
-      method: "trellis2.generate.progress",
-      params: { stage: "sparse", step: 6, total: 12 },
+      method: "faceavatar.generate.progress",
+      params: { stage: "align", step: 6, total: 12 },
     });
-    expect(state.overallFraction).toBeCloseTo(2.5 / 7);
+    expect(state.overallFraction).toBeCloseTo(1.5 / 5);
     expect(state.step).toBe(6);
     expect(state.totalSteps).toBe(12);
 
     state = reduceFrame(state, {
-      method: "trellis2.generate.progress",
-      params: { stage: "sparse", step: 5, total: 12 },
+      method: "faceavatar.generate.progress",
+      params: { stage: "align", step: 5, total: 12 },
     });
-    expect(state.overallFraction).toBeCloseTo(2.5 / 7);
+    expect(state.overallFraction).toBeCloseTo(1.5 / 5);
   });
 
   test("tolerates unknown stage strings without touching the graph", () => {
     const next = reduceFrame(startedState(), {
-      method: "trellis2.generate.progress",
+      method: "faceavatar.generate.progress",
       params: { stage: "future_stage", step: 2, total: 4 },
     });
     expect(next.stage).toBe("future_stage");
     expect(next.step).toBe(2);
-    expect(next.stageStates.load).toBe("idle");
+    expect(next.stageStates.fit).toBe("idle");
   });
 
   test("ignores unknown methods like runtime.memory_stats", () => {
@@ -61,7 +61,7 @@ describe("generate_state reducer", () => {
 
   test("done frame captures glbRef and metadata, no thumbnail", () => {
     const next = reduceFrame(startedState(), {
-      method: "trellis2.generate.done",
+      method: "faceavatar.generate.done",
       params: {
         glbRef: "glb-123",
         metadata: { mesh: { vertices: 1000, faces: 2000 }, textured: false },
@@ -77,16 +77,16 @@ describe("generate_state reducer", () => {
 
   test("error frame marks the active known stage errored", () => {
     let state = reduceFrame(startedState(), {
-      method: "trellis2.generate.progress",
-      params: { stage: "decode", step: 1, total: 4 },
+      method: "faceavatar.generate.progress",
+      params: { stage: "texture", step: 1, total: 4 },
     });
     state = reduceFrame(state, {
-      method: "trellis2.generate.error",
+      method: "faceavatar.generate.error",
       params: { code: 73, message: "OOM" },
     });
     expect(state.phase).toBe("error");
     expect(state.errorCode).toBe(73);
-    expect(state.stageStates.decode).toBe("error");
+    expect(state.stageStates.texture).toBe("error");
   });
 
   test("cancelledState flips phase without losing prior data", () => {

@@ -1,5 +1,5 @@
 import { WORKFLOW_STAGES } from "../src/services/generate_events";
-import type { GenerateParams, GenerationJob } from "../src/services/types";
+import type { GenerateParams, GenerationJob, GraftParams } from "../src/services/types";
 
 const PREFIX = "/api/v1/extensions/nexus.3d.faceavatar";
 
@@ -9,16 +9,19 @@ let jobCounter = 0;
 let sampleJobs: GenerationJob[] = [
   {
     id: "job-demo-0001",
+    kind: "generate",
     inputImageRef: "art-input-01",
-    params: { seed: 7, sparse_steps: 12, texture: false },
+    baseMeshRef: null,
+    params: { seed: 7, expression: "neutral", texture: true },
     status: "succeeded",
     glbRef: "art-glb-0001",
     metadata: {
       attention_backend: "flash",
       compute_cap: "sm_121",
       mesh: { vertices: 491_220, faces: 982_104 },
-      textured: false,
-      stage_timings: { sparse: 12_400, shape: 18_900, glb: 6_900 },
+      textured: true,
+      identity_score: 0.84,
+      stage_timings: { fit: 12_400, texture: 18_900, glb: 6_900 },
     },
     errorCode: null,
     errorMessage: null,
@@ -27,13 +30,15 @@ let sampleJobs: GenerationJob[] = [
   },
   {
     id: "job-demo-0002",
+    kind: "graft",
     inputImageRef: "art-input-02",
-    params: { seed: 0, sparse_steps: 20, texture: true },
+    baseMeshRef: "art-glb-0001",
+    params: { seed: 0, seam: "neck", keep_hair: true },
     status: "failed",
     glbRef: null,
     metadata: null,
     errorCode: 73,
-    errorMessage: "CUDA out of memory in shape decode",
+    errorMessage: "CUDA out of memory in seam weld",
     createdAt: new Date(Date.now() - 7200_000).toISOString(),
     updatedAt: new Date(Date.now() - 7000_000).toISOString(),
   },
@@ -48,9 +53,8 @@ function jrpc(method: string, params: unknown): string {
   return JSON.stringify({ method, params });
 }
 
-function buildTimeline(params: GenerateParams): MockFrame[] {
-  const stages = WORKFLOW_STAGES.filter((s) => s !== "texture" || params.texture);
-  const total = params.sparse_steps ?? 12;
+function buildTimeline(stages: readonly string[], textured: boolean): MockFrame[] {
+  const total = 10;
   const frames: MockFrame[] = [];
   let elapsed = 0;
   const push = (data: string, gap: number) => {
@@ -59,9 +63,9 @@ function buildTimeline(params: GenerateParams): MockFrame[] {
   };
 
   stages.forEach((stage) => {
-    const steps = stage === "sparse" || stage === "shape" ? total : 4;
+    const steps = stage === "fit" ? total : 4;
     for (let step = 1; step <= steps; step += 1) {
-      push(jrpc("trellis2.generate.progress", { stage, step, total: steps }), 120);
+      push(jrpc("faceavatar.generate.progress", { stage, step, total: steps }), 120);
     }
   });
 
@@ -69,20 +73,33 @@ function buildTimeline(params: GenerateParams): MockFrame[] {
   push(jrpc("runtime.memory_stats", { vram_peak_gib: 9.2 }), 60);
 
   push(
-    jrpc("trellis2.generate.done", {
+    jrpc("faceavatar.generate.done", {
       glbRef: "art-glb-mock",
       metadata: {
         attention_backend: "flash",
         compute_cap: "sm_121",
-        mesh: { vertices: 512_000, faces: params.simplify_target ?? 1_000_000 },
-        textured: Boolean(params.texture),
-        stage_timings: { sparse: 13_100, shape: 19_500, glb: 7_300 },
+        mesh: { vertices: 512_000, faces: 1_000_000 },
+        textured,
+        identity_score: 0.88,
+        stage_timings: { fit: 13_100, texture: 19_500, glb: 7_300 },
         sha256: "ab12cd34ef56aa00",
       },
     }),
     300,
   );
   return frames;
+}
+
+function generateTimeline(params: GenerateParams): MockFrame[] {
+  const stages = WORKFLOW_STAGES.filter(
+    (s) => (s !== "texture" || params.texture) && s !== "align" && s !== "weld",
+  );
+  return buildTimeline(stages, Boolean(params.texture));
+}
+
+function graftTimeline(params: GraftParams): MockFrame[] {
+  const stages = WORKFLOW_STAGES.filter((s) => s !== "texture" || params.texture_blend);
+  return buildTimeline(stages, params.texture_blend ?? true);
 }
 
 class MockEventSource {
@@ -142,7 +159,18 @@ async function handle(url: string, init: RequestInit | undefined): Promise<Respo
     };
     jobCounter += 1;
     const jobId = `mock-job-${jobCounter}`;
-    pendingTimelines.set(`${PREFIX}/generate/jobs/${jobId}/events`, buildTimeline(body.params));
+    pendingTimelines.set(`${PREFIX}/generate/jobs/${jobId}/events`, generateTimeline(body.params));
+    return json({ jobId });
+  }
+  if (path === "/graft/start" && method === "POST") {
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      base_mesh?: string;
+      image?: string;
+      params: GraftParams;
+    };
+    jobCounter += 1;
+    const jobId = `mock-graft-${jobCounter}`;
+    pendingTimelines.set(`${PREFIX}/generate/jobs/${jobId}/events`, graftTimeline(body.params));
     return json({ jobId });
   }
   if (path === "/uploads" && method === "POST") {

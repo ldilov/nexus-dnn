@@ -1,41 +1,39 @@
 import type { GenerationMetadata } from "./types";
 
 /** Canonical JSON-RPC-shaped notification methods on the progress SSE stream.
- * The rust shim is the wire authority; these names are FROZEN. */
+ * The rust shim is the wire authority; these names are FROZEN. Both operators
+ * reuse the same `generate.*` frame vocabulary. */
 export const GENERATE_METHODS = {
-  progress: "trellis2.generate.progress",
-  done: "trellis2.generate.done",
-  error: "trellis2.generate.error",
+  progress: "faceavatar.generate.progress",
+  done: "faceavatar.generate.done",
+  error: "faceavatar.generate.error",
 } as const;
 
-/** Worker stage vocabulary, in emission order. `texture` only fires for the
- * default `1024_cascade` pipeline_type; other presets leave it idle. The UI
- * tolerates unknown stages — this list only drives the workflow DAG and default
- * ordering, never frame parsing. */
+/** Worker stage vocabulary, in emission order. `align`/`weld` only fire for the
+ * graft operator; generate leaves them idle. The UI tolerates unknown stages —
+ * this list only drives ordering, never frame parsing. */
 export const WORKFLOW_STAGES = [
-  "load",
-  "encode",
-  "sparse",
-  "shape",
+  "fit",
+  "align",
+  "weld",
   "texture",
-  "decode",
   "glb",
 ] as const;
 
 export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 
 export interface ProgressFrame {
-  method: "trellis2.generate.progress";
+  method: "faceavatar.generate.progress";
   params: { stage: string; step: number; total: number };
 }
 
 export interface DoneFrame {
-  method: "trellis2.generate.done";
+  method: "faceavatar.generate.done";
   params: { glbRef: string; metadata?: GenerationMetadata | null };
 }
 
 export interface ErrorFrame {
-  method: "trellis2.generate.error";
+  method: "faceavatar.generate.error";
   params: { code: number; message: string };
 }
 

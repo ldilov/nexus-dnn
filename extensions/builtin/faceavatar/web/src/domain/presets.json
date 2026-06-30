@@ -3,44 +3,20 @@
     {
       "id": "fast",
       "label": "Fast",
-      "hint": "512 · quick draft",
-      "params": {
-        "pipeline_type": "512",
-        "sparse_steps": 8,
-        "shape_steps": 8,
-        "texture_steps": 8,
-        "texture_size": 1024,
-        "max_num_tokens": 49152,
-        "simplify_target": 100000
-      }
+      "hint": "Quick identity pass",
+      "params": { "arc_iters": 250, "crop": "bust", "expression": "neutral" }
     },
     {
       "id": "balanced",
       "label": "Balanced",
-      "hint": "1024 cascade · default",
-      "params": {
-        "pipeline_type": "1024_cascade",
-        "sparse_steps": 12,
-        "shape_steps": 12,
-        "texture_steps": 12,
-        "texture_size": 2048,
-        "max_num_tokens": 49152,
-        "simplify_target": 1000000
-      }
+      "hint": "Default quality",
+      "params": { "arc_iters": 600, "crop": "bust", "expression": "neutral" }
     },
     {
       "id": "max",
-      "label": "Max detail",
-      "hint": "1536 cascade · slow",
-      "params": {
-        "pipeline_type": "1536_cascade",
-        "sparse_steps": 20,
-        "shape_steps": 25,
-        "texture_steps": 25,
-        "texture_size": 4096,
-        "max_num_tokens": 98304,
-        "simplify_target": 1000000
-      }
+      "label": "Max identity",
+      "hint": "Sharpest likeness",
+      "params": { "arc_iters": 1200, "crop": "bust", "expression": "source" }
     }
   ]
 }

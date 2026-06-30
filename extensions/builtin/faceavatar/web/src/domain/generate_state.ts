@@ -96,7 +96,7 @@ function fractionFor(stage: string, step: number, total: number): number {
 
 export function reduceFrame(state: GenerateState, frame: GenerateFrame): GenerateState {
   switch (frame.method) {
-    case "trellis2.generate.progress": {
+    case "faceavatar.generate.progress": {
       const { stage, step, total } = frame.params;
       const overall = fractionFor(stage, step, total);
       return {
@@ -109,7 +109,7 @@ export function reduceFrame(state: GenerateState, frame: GenerateFrame): Generat
         stageStates: advanceStages(state.stageStates, stage),
       };
     }
-    case "trellis2.generate.done": {
+    case "faceavatar.generate.done": {
       const completed = freshStageStates();
       for (const stage of WORKFLOW_STAGES) completed[stage] = "done";
       return {
@@ -122,7 +122,7 @@ export function reduceFrame(state: GenerateState, frame: GenerateFrame): Generat
         metadata: frame.params.metadata ?? null,
       };
     }
-    case "trellis2.generate.error": {
+    case "faceavatar.generate.error": {
       const errored = { ...state.stageStates };
       if (state.stage && isWorkflowStage(state.stage)) errored[state.stage] = "error";
       return {

@@ -8,15 +8,15 @@ export interface PresentedError {
 const ERROR_COPY: Record<number, PresentedError> = {
   1: {
     title: "Worker failed to start",
-    hint: "The TRELLIS 2 worker could not launch. Check that the backend is installed and the GPU is available.",
+    hint: "The Face Avatar worker could not launch. Check that the backend is installed and the GPU is available.",
   },
   2: {
     title: "Input image rejected",
-    hint: "The uploaded image could not be decoded. Use a PNG or JPEG with a clear subject.",
+    hint: "The uploaded photo could not be decoded. Use a PNG or JPEG with a clear, front-facing face.",
   },
   73: {
     title: "Out of GPU memory",
-    hint: "Generation ran out of VRAM. Switch residency to Low VRAM or lower the triangle budget.",
+    hint: "The Face Avatar worker ran out of VRAM. Lower the identity iters or switch residency to Low VRAM.",
   },
 };
 

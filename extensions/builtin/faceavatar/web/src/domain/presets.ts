@@ -3,19 +3,10 @@ import presetData from "./presets.json";
 
 export type PresetId = "fast" | "balanced" | "max";
 
-/** The quality knobs a preset pins. Seed, texture (bake), residency, and
- * metallic stay user-controlled — presets only move the speed/detail dial. */
+/** The identity knobs a preset pins. Seed, texture, and residency stay
+ * user-controlled — presets only move the identity-quality dial. */
 export type PresetParams = Readonly<
-  Pick<
-    GenerateParams,
-    | "pipeline_type"
-    | "sparse_steps"
-    | "shape_steps"
-    | "texture_steps"
-    | "texture_size"
-    | "max_num_tokens"
-    | "simplify_target"
-  >
+  Pick<GenerateParams, "arc_iters" | "crop" | "expression">
 >;
 
 export interface GeneratePreset {
@@ -26,15 +17,7 @@ export interface GeneratePreset {
 }
 
 /** The keys a preset owns. matchPreset compares exactly these against params. */
-export const PRESET_KEYS = [
-  "pipeline_type",
-  "sparse_steps",
-  "shape_steps",
-  "texture_steps",
-  "texture_size",
-  "max_num_tokens",
-  "simplify_target",
-] as const;
+export const PRESET_KEYS = ["arc_iters", "crop", "expression"] as const;
 
 /** Raw shape of a preset entry in presets.json (untyped JSON before mapping). */
 interface RawPreset {
@@ -44,7 +27,7 @@ interface RawPreset {
   params: Record<string, unknown>;
 }
 
-/** Fast → Balanced (== operator defaults) → Max detail. Definitions ship as
+/** Fast → Balanced (== operator defaults) → Max identity. Definitions ship as
  * declarative data in presets.json, installed with the extension; this module
  * adds types + the active-preset matcher. Balanced mirrors DEFAULT_PARAMS so a
  * fresh form selects it. */

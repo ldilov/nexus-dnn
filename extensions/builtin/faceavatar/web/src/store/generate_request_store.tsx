@@ -18,24 +18,13 @@ import {
   startedState,
 } from "../domain/generate_state";
 import {
-  buildGuidancePatch,
-  type GuidanceDraft,
-  type GuidanceKey,
-} from "../domain/guidance";
-import {
   cancelGenerate,
   startGenerate,
   subscribeGenerateStream,
 } from "../services/generate_client";
-import { startRefine } from "../services/refine_client";
-import { startProject } from "../services/project_client";
+import { startGraft } from "../services/graft_client";
 import { getGenerationJob } from "../services/history_client";
-import type {
-  GenerateParams,
-  GenerationJob,
-  ProjectParams,
-  RefineParams,
-} from "../services/types";
+import type { GenerateParams, GenerationJob, GraftParams } from "../services/types";
 
 export const ACTIVE_JOB_KEY = "nexus.3d.faceavatar.active-job";
 
@@ -96,8 +85,6 @@ type GenerateParamsState = GenerateParams;
 
 interface GenerateRequestState {
   params: GenerateParamsState;
-  /** Raw per-stage guidance entries; empty string = unset (omitted from payload). */
-  guidanceDraft: GuidanceDraft;
   imageRef: string | null;
   imageName: string | null;
   generate: GenerateState;
@@ -109,20 +96,13 @@ interface GenerateRequestActions {
     value: GenerateParamsState[K],
   ) => void;
   applyParams: (patch: Partial<GenerateParamsState>) => void;
-  setGuidance: (key: GuidanceKey, raw: string) => void;
   setImage: (ref: string, name: string) => void;
   clearImage: () => void;
   startJob: () => Promise<void>;
-  startRefine: (
-    meshRef: string,
+  startGraft: (
+    baseMeshRef: string,
     imageRef: string,
-    params: RefineParams,
-    faceImageRef?: string,
-  ) => Promise<void>;
-  startProject: (
-    meshRef: string,
-    imageRef: string,
-    params: ProjectParams,
+    params: GraftParams,
   ) => Promise<void>;
   cancelJob: () => Promise<void>;
   resetGenerate: () => void;
@@ -139,7 +119,6 @@ interface ProviderProps {
 
 export function GenerateRequestProvider({ children }: ProviderProps): ReactElement {
   const [params, setParams] = useState<GenerateParamsState>(() => ({ ...DEFAULT_PARAMS }));
-  const [guidanceDraft, setGuidanceDraft] = useState<GuidanceDraft>({});
   const [imageRef, setImageRef] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
   const [generate, setGenerate] = useState<GenerateState>(INITIAL_STATE);
@@ -166,10 +145,6 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
     setParams((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const setGuidance = useCallback((key: GuidanceKey, raw: string) => {
-    setGuidanceDraft((prev) => ({ ...prev, [key]: raw }));
-  }, []);
-
   const setImage = useCallback((ref: string, name: string) => {
     setImageRef(ref);
     setImageName(name);
@@ -190,41 +165,18 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
   const startJob = useCallback(async () => {
     if (!imageRef) return;
     streamCleanup.current?.();
-    const guidance = buildGuidancePatch(guidanceDraft);
-    const body = { image: imageRef, params: { ...params, ...guidance } };
+    const body = { image: imageRef, params };
     const { jobId } = await startGenerate(body);
     setGenerate(startedState(imageRef));
     persistActiveJob(jobId);
     subscribeToJob(jobId);
-  }, [imageRef, params, guidanceDraft, subscribeToJob]);
+  }, [imageRef, params, subscribeToJob]);
 
-  const startRefineJob = useCallback(
-    async (
-      meshRef: string,
-      sourceImageRef: string,
-      refineParams: RefineParams,
-      faceImageRef?: string,
-    ) => {
+  const startGraftJob = useCallback(
+    async (baseMeshRef: string, sourceImageRef: string, graftParams: GraftParams) => {
       streamCleanup.current?.();
-      const body = {
-        mesh: meshRef,
-        image: sourceImageRef,
-        params: refineParams,
-        ...(faceImageRef ? { face_image: faceImageRef } : {}),
-      };
-      const { jobId } = await startRefine(body);
-      setGenerate(startedState(sourceImageRef));
-      persistActiveJob(jobId);
-      subscribeToJob(jobId);
-    },
-    [subscribeToJob],
-  );
-
-  const startProjectJob = useCallback(
-    async (meshRef: string, sourceImageRef: string, projectParams: ProjectParams) => {
-      streamCleanup.current?.();
-      const body = { mesh: meshRef, image: sourceImageRef, params: projectParams };
-      const { jobId } = await startProject(body);
+      const body = { base_mesh: baseMeshRef, image: sourceImageRef, params: graftParams };
+      const { jobId } = await startGraft(body);
       setGenerate(startedState(sourceImageRef));
       persistActiveJob(jobId);
       subscribeToJob(jobId);
@@ -315,36 +267,30 @@ export function GenerateRequestProvider({ children }: ProviderProps): ReactEleme
   const value = useMemo<GenerateRequestContextValue>(
     () => ({
       params,
-      guidanceDraft,
       imageRef,
       imageName,
       generate,
       updateParam,
       applyParams,
-      setGuidance,
       setImage,
       clearImage,
       startJob,
-      startRefine: startRefineJob,
-      startProject: startProjectJob,
+      startGraft: startGraftJob,
       cancelJob,
       resetGenerate,
       showJobResult,
     }),
     [
       params,
-      guidanceDraft,
       imageRef,
       imageName,
       generate,
       updateParam,
       applyParams,
-      setGuidance,
       setImage,
       clearImage,
       startJob,
-      startRefineJob,
-      startProjectJob,
+      startGraftJob,
       cancelJob,
       resetGenerate,
       showJobResult,
