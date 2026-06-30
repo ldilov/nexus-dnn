@@ -122,6 +122,21 @@ pub fn build_registry(ctx: BuiltinContext) -> SharedRegistry {
             res = res.with_event_bus(ctx.event_bus.clone());
             res
         })),
+        Arc::new(faceavatar_extension::FaceAvatarRouterProvider::new({
+            let mut res = faceavatar_extension::FaceAvatarProviderResources::new(ctx.pool.clone());
+            let id = faceavatar_extension::EXTENSION_ID;
+            if let Some(ext) = ctx.extension_registry.get_extension(id) {
+                res = res.with_directories(ext.directory.clone(), ctx.host_data_dir.clone());
+            }
+            if let Ok(profile) = std::env::var("NEXUS_3D_FACEAVATAR_RUNTIME") {
+                res = res.with_profile(profile);
+            }
+            res = res.with_model_locator(Arc::new(ModelStoreLocatorAdapter {
+                inner: ctx.model_store_client.clone(),
+            }));
+            res = res.with_event_bus(ctx.event_bus.clone());
+            res
+        })),
     ];
 
     for provider in &providers {
@@ -232,6 +247,36 @@ impl svi2_pro_extension::host_contract::ModelArtifactLocator for ModelStoreLocat
 impl trellis2_extension::host_contract::ModelArtifactLocator for ModelStoreLocatorAdapter {
     /// Resolves a family to its snapshot ROOT (the direct child of the
     /// `model-store-downloads` marker dir) because trellis2's worker addresses
+    /// artifacts by relative path under one merged models directory.
+    async fn locate_family(&self, family_id: &str) -> Option<std::path::PathBuf> {
+        let raw = self
+            .inner
+            .is_family_installed(family_id, None)
+            .await
+            .ok()
+            .flatten()?;
+        let mut cursor = raw.as_path();
+        while let (Some(parent), candidate) = (cursor.parent(), cursor) {
+            if parent
+                .file_name()
+                .is_some_and(|n| n == "model-store-downloads")
+            {
+                return Some(candidate.to_path_buf());
+            }
+            cursor = parent;
+        }
+        if raw.is_file() {
+            raw.parent().map(std::path::Path::to_path_buf)
+        } else {
+            Some(raw)
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl faceavatar_extension::host_contract::ModelArtifactLocator for ModelStoreLocatorAdapter {
+    /// Resolves a family to its snapshot ROOT (the direct child of the
+    /// `model-store-downloads` marker dir) because faceavatar's worker addresses
     /// artifacts by relative path under one merged models directory.
     async fn locate_family(&self, family_id: &str) -> Option<std::path::PathBuf> {
         let raw = self
