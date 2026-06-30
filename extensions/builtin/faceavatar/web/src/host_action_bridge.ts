@@ -25,7 +25,7 @@ const EXT_ACTION_INVOKE = "ext-action-invoke";
 
 export const INTERNAL_NAVIGATE = "faceavatar:navigate";
 
-const ACTION_GENERATE = "trellis2.generate";
+const ACTION_GENERATE = "faceavatar.generate";
 
 interface BridgeHandle {
   dispose: () => void;
