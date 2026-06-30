@@ -13,7 +13,6 @@ fn load() -> ExtensionManifest {
 }
 
 #[test]
-#[ignore = "TODO(P1): un-ignore once manifest.yaml lands"]
 fn manifest_passes_discovery_json_schema_gate() {
     let yaml = std::fs::read_to_string(manifest_path()).expect("read manifest");
     let value: serde_json::Value =
@@ -22,7 +21,6 @@ fn manifest_passes_discovery_json_schema_gate() {
 }
 
 #[test]
-#[ignore = "TODO(P1): un-ignore once manifest.yaml lands"]
 fn manifest_deserializes_against_host_schema() {
     let m = load();
     assert_eq!(m.spec_version, "0.1");
@@ -30,7 +28,6 @@ fn manifest_deserializes_against_host_schema() {
 }
 
 #[test]
-#[ignore = "TODO(P1): un-ignore once manifest.yaml lands"]
 fn manifest_has_dependency_steps_block() {
     let m = load();
     let deps = m.dependencies.expect("dependencies block present");
@@ -50,7 +47,6 @@ fn manifest_has_dependency_steps_block() {
 }
 
 #[test]
-#[ignore = "TODO(P1): un-ignore once manifest.yaml lands"]
 fn manifest_has_capabilities() {
     let m = load();
     let caps = m.capabilities.expect("capabilities present");
@@ -68,7 +64,6 @@ fn manifest_has_capabilities() {
 }
 
 #[test]
-#[ignore = "TODO(P1): un-ignore once manifest.yaml lands"]
 fn manifest_has_frozen_backend_runtimes() {
     let m = load();
     let ids: Vec<&str> = m
@@ -90,7 +85,6 @@ fn manifest_has_frozen_backend_runtimes() {
 }
 
 #[test]
-#[ignore = "TODO(P1): un-ignore once manifest.yaml lands"]
 fn manifest_has_storage_block_with_frozen_alias() {
     let m = load();
     let storage = m.storage.expect("storage contribution present");
