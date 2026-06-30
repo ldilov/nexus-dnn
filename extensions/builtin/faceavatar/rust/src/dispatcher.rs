@@ -12,8 +12,8 @@ use crate::host_contract::NotificationEnvelope;
 use crate::node_events::{StageTracker, Transition};
 use crate::storage::Store;
 
-pub const DONE_METHOD: &str = "trellis2.generate.done";
-pub const ERROR_METHOD: &str = "trellis2.generate.error";
+pub const DONE_METHOD: &str = "faceavatar.generate.done";
+pub const ERROR_METHOD: &str = "faceavatar.generate.error";
 
 /// Publish one node transition on the run's emitter.
 fn emit_transition(emitter: &RunNodeEmitter, transition: &Transition) {
@@ -194,10 +194,9 @@ async fn newest_glb(dir: &std::path::Path) -> Option<String> {
 
 pub struct GenerationTask {
     pub job_id: JobId,
-    /// Worker RPC fired for this job — `trellis2.generate.start` for a base
-    /// generation, `trellis2.refine.start` for a refine pass, or
-    /// `trellis2.project.start` for a texture projection. All emit the shared
-    /// `trellis2.generate.*` notifications, so the relay/terminal handling below
+    /// Worker RPC fired for this job — `generate_head` for a standalone bust or
+    /// `graft_head` for an identity graft onto a base mesh. Both emit the shared
+    /// `faceavatar.generate.*` notifications, so the relay/terminal handling below
     /// is identical regardless of which one ran.
     pub method: &'static str,
     pub params: JsonValue,
@@ -409,13 +408,13 @@ mod tests {
     #[test]
     fn started_transition_publishes_node_started_keyed_by_run() {
         let (bus, emitter) = fixture();
-        emit_transition(&emitter, &Transition::Started(node::SPARSE));
+        emit_transition(&emitter, &Transition::Started(node::ARCFIT));
         let published = bus.replay_after(None);
         assert_eq!(published.len(), 1);
         match &published[0].event {
             NexusEvent::NodeStarted { run_id, node_id } => {
                 assert_eq!(run_id, "run-x");
-                assert_eq!(node_id, "sparse_structure");
+                assert_eq!(node_id, "arc_fit");
             }
             other => panic!("expected NodeStarted, got {other:?}"),
         }
@@ -424,9 +423,9 @@ mod tests {
     #[test]
     fn progress_completed_failed_map_to_their_variants() {
         let (bus, emitter) = fixture();
-        emit_transition(&emitter, &Transition::Progress(node::SHAPE, 42));
+        emit_transition(&emitter, &Transition::Progress(node::FLAME, 42));
         emit_transition(&emitter, &Transition::Completed(node::EXPORT));
-        emit_transition(&emitter, &Transition::Failed(node::SPARSE));
+        emit_transition(&emitter, &Transition::Failed(node::ARCFIT));
         let ev = bus.replay_after(None);
         assert!(matches!(
             ev[0].event,
@@ -438,7 +437,7 @@ mod tests {
 
     #[test]
     fn stage_strings_match_node_events_module() {
-        assert_eq!(stage::SPARSE, "sparse");
+        assert_eq!(stage::ARCFIT, "arcfit");
         assert_eq!(stage::EXPORT, "export");
     }
 }
