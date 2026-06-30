@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures::stream::{self, BoxStream};
-use serde_json::{json, Value};
-use tokio::sync::broadcast;
 use faceavatar_extension::backend_client::LeaseFactory;
 use faceavatar_extension::domain::Result as ExtResult;
 use faceavatar_extension::host_contract::{
     BackendRuntimeLease, LeaseError, LeaseState, NotificationEnvelope, NotificationStream,
     SharedLease,
 };
+use futures::stream::{self, BoxStream};
+use serde_json::{json, Value};
+use tokio::sync::broadcast;
 
-/// A lease that emits the trellis2 generation notification sequence and returns
-/// a fake generate result. `generate.start` blocks (like the real worker) until
-/// it has emitted `trellis2.generate.done`, so the dispatcher's relay → SSE →
-/// terminal-persist path is exercised end to end.
+/// A lease that emits the faceavatar generation notification sequence and returns
+/// a fake result. `faceavatar.generate.start`/`faceavatar.graft.start` block (like
+/// the real worker) until they have emitted `faceavatar.generate.done`, so the
+/// dispatcher's relay → SSE → terminal-persist path is exercised end to end.
 pub struct MockGenerationLease {
     tx: broadcast::Sender<NotificationEnvelope>,
 }
@@ -42,22 +42,27 @@ impl BackendRuntimeLease for MockGenerationLease {
 
     async fn send_rpc(&self, method: &str, _params: Value) -> Result<Value, LeaseError> {
         match method {
-            "trellis2.runtime.health" => Ok(json!({
+            "faceavatar.runtime.health" => Ok(json!({
                 "protocol_version": "1.0",
                 "profile": "fake",
                 "gpu_supported": true,
                 "sm": [12, 1]
             })),
-            "trellis2.generate.cancel"
-            | "trellis2.refine.cancel"
-            | "trellis2.project.cancel" => Ok(json!({ "cancelled": true })),
+            "faceavatar.generate.cancel" | "faceavatar.graft.cancel" => {
+                Ok(json!({ "cancelled": true }))
+            }
             "runtime.release_memory" => Ok(json!({ "released": true })),
-            "trellis2.generate.start" | "trellis2.refine.start" | "trellis2.project.start" => {
-                for (stage, total) in [("sparse", 4u64), ("shape", 3u64), ("export", 1u64)] {
+            "faceavatar.generate.start" | "faceavatar.graft.start" => {
+                for (stage, total) in [
+                    ("arcfit", 4u64),
+                    ("flame", 3u64),
+                    ("graft", 2u64),
+                    ("export", 1u64),
+                ] {
                     for step in 0..total {
                         emit(
                             &self.tx,
-                            "trellis2.generate.progress",
+                            "faceavatar.generate.progress",
                             json!({ "stage": stage, "step": step + 1, "total": total }),
                         );
                         tokio::task::yield_now().await;
@@ -71,7 +76,7 @@ impl BackendRuntimeLease for MockGenerationLease {
                 });
                 emit(
                     &self.tx,
-                    "trellis2.generate.done",
+                    "faceavatar.generate.done",
                     json!({ "output_path": "out.glb", "metadata": metadata }),
                 );
                 Ok(json!({
@@ -127,7 +132,7 @@ impl BackendRuntimeLease for FailingLease {
         LeaseState::Ready
     }
     async fn send_rpc(&self, method: &str, _params: Value) -> Result<Value, LeaseError> {
-        if method == "trellis2.generate.start" {
+        if method == "faceavatar.generate.start" || method == "faceavatar.graft.start" {
             return Err(LeaseError::Rpc {
                 code: -32101,
                 message: "MODEL_MISSING: weights not found".into(),
@@ -162,7 +167,7 @@ impl BackendRuntimeLease for CrashingLease {
         LeaseState::Ready
     }
     async fn send_rpc(&self, method: &str, params: Value) -> Result<Value, LeaseError> {
-        if method == "trellis2.generate.start" {
+        if method == "faceavatar.generate.start" || method == "faceavatar.graft.start" {
             // Simulate the GB10 OOM signature: the GLB is fully written to the
             // host-chosen output_path, then the process dies before replying.
             if let Some(out) = params.get("output_path").and_then(Value::as_str) {

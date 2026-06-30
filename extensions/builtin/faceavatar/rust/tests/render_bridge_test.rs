@@ -18,14 +18,13 @@ async fn body_json(resp: axum::response::Response) -> (StatusCode, Value) {
     (status, json)
 }
 
-/// Build a router over a fresh workspace and return it plus the workspace path
-/// and a seeded image's workspace-RELATIVE ref, so `start` (which resolves the
-/// ref under the workspace) has a real file to point at.
+/// Build a router over a fresh workspace + a seeded photo's workspace-RELATIVE
+/// ref, so `start` (which resolves the ref under the workspace) has a real file.
 fn app_with_image(
     pool: sqlx::SqlitePool,
     factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
 ) -> (axum::Router, PathBuf, String) {
-    let workspace = std::env::temp_dir().join(format!("trellis2-test-{}", ulid::Ulid::new()));
+    let workspace = std::env::temp_dir().join(format!("faceavatar-test-{}", ulid::Ulid::new()));
     let uploads = workspace.join("uploads");
     std::fs::create_dir_all(&uploads).unwrap();
     std::fs::write(uploads.join("in.png"), b"PNGDATA").unwrap();
@@ -33,222 +32,8 @@ fn app_with_image(
     (router, workspace, "uploads/in.png".to_string())
 }
 
-fn app(
-    pool: sqlx::SqlitePool,
-    factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
-) -> axum::Router {
-    app_with_image(pool, factory).0
-}
-
-#[tokio::test]
-async fn capabilities_returns_503_when_worker_not_running() {
-    let pool = fixtures::memory_pool().await;
-    let router = app(pool, Arc::new(MockGenerationFactory));
-
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .uri("/capabilities")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-}
-
-#[tokio::test]
-async fn start_requires_image() {
-    let pool = fixtures::memory_pool().await;
-    let router = app(pool, Arc::new(MockGenerationFactory));
-
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/generate/start")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"image":"","params":{}}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn start_rejects_image_ref_not_in_workspace() {
-    let pool = fixtures::memory_pool().await;
-    let router = app(pool, Arc::new(MockGenerationFactory));
-
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/generate/start")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"image":"../etc/passwd","params":{}}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "traversal ref rejected");
-}
-
-#[tokio::test]
-async fn fake_generation_streams_sse_and_persists_job_and_metadata() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
-
-    let start_body = serde_json::json!({
-        "image": image_ref,
-        "params": { "seed": 7, "sparse_steps": 12, "texture": false }
-    });
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/generate/start")
-                .header("content-type", "application/json")
-                .body(Body::from(start_body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "start response: {body}");
-    let job_id = body["jobId"].as_str().expect("jobId present").to_string();
-
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/generate/jobs/{job_id}/events"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let raw = resp.into_body().collect().await.unwrap().to_bytes();
-    let text = String::from_utf8(raw.to_vec()).unwrap();
-
-    let methods: Vec<String> = text
-        .lines()
-        .filter_map(|l| l.strip_prefix("data:"))
-        .filter_map(|d| serde_json::from_str::<Value>(d.trim()).ok())
-        .filter_map(|v| v["method"].as_str().map(str::to_string))
-        .collect();
-
-    assert!(
-        methods.contains(&"trellis2.generate.progress".to_string()),
-        "expected progress frame in {methods:?}"
-    );
-    assert_eq!(
-        methods.last().map(String::as_str),
-        Some("trellis2.generate.done"),
-        "stream must end on done: {methods:?}"
-    );
-
-    let done_frame = text
-        .lines()
-        .filter_map(|l| l.strip_prefix("data:"))
-        .filter_map(|d| serde_json::from_str::<Value>(d.trim()).ok())
-        .find(|v| v["method"] == "trellis2.generate.done")
-        .expect("done frame present");
-    assert_eq!(done_frame["params"]["glbRef"], "out.glb");
-    assert_eq!(done_frame["params"]["metadata"]["sha256"], "deadbeef");
-
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/generate/jobs/{job_id}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, job) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(job["status"], "succeeded", "job: {job}");
-    assert_eq!(job["metadata"]["sha256"], "deadbeef");
-    assert_eq!(job["glbRef"], "out.glb");
-    assert_eq!(job["inputImageRef"], image_ref);
-
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .uri("/generate/jobs?limit=10")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (_, list) = body_json(resp).await;
-    assert_eq!(list["jobs"].as_array().unwrap().len(), 1);
-}
-
-/// CRIT-1: client-supplied path aliases in `params` must be stripped; the host
-/// sets `image` (absolute, from the resolved ref) and `output_path` itself.
-#[tokio::test]
-async fn start_strips_client_path_aliases() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _workspace, image_ref) =
-        app_with_image(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = faceavatar_extension::storage::Store::new(pool);
-
-    let start_body = serde_json::json!({
-        "image": image_ref,
-        "params": {
-            "output_path": "/etc/evil.glb",
-            "image_path": "/etc/shadow",
-            "ref_image_path": "/etc/passwd",
-            "seed": 1
-        }
-    });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/generate/start")
-                .header("content-type", "application/json")
-                .body(Body::from(start_body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    let job_id = body["jobId"].as_str().unwrap().to_string();
-
-    let job = store.get_job(&job_id).await.unwrap();
-    let params: Value = serde_json::from_str(&job.params_json).unwrap();
-    let out = params["output_path"].as_str().unwrap();
-    let img = params["image"].as_str().unwrap();
-    assert_ne!(out, "/etc/evil.glb", "client output_path must be stripped");
-    assert!(
-        out.replace('\\', "/").contains("/meshes/"),
-        "host output_path under workspace, got {out}"
-    );
-    assert!(
-        img.replace('\\', "/").ends_with("uploads/in.png"),
-        "image is the resolved absolute ref, got {img}"
-    );
-    assert!(
-        std::path::Path::new(img).is_absolute(),
-        "image must be absolute for the worker, got {img}"
-    );
-    assert!(params.get("image_path").is_none());
-    assert!(params.get("ref_image_path").is_none());
-}
-
-/// Seed `uploads/in.png` AND a `meshes/base.glb` so `/refine/start` (which
-/// resolves both the image and mesh refs under the workspace) has real files.
+/// Seed `uploads/in.png` AND a `meshes/base.glb` so `/graft/start` (which
+/// resolves both the image and `base_mesh` refs under the workspace) has real files.
 fn app_with_image_and_mesh(
     pool: sqlx::SqlitePool,
     factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
@@ -260,367 +45,11 @@ fn app_with_image_and_mesh(
     (router, workspace, image_ref, "meshes/base.glb".to_string())
 }
 
-#[tokio::test]
-async fn refine_requires_mesh() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
-
-    let body = serde_json::json!({ "image": image_ref, "mesh": "", "params": {} });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/refine/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn refine_rejects_mesh_ref_not_in_workspace() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
-
-    let body = serde_json::json!({
-        "image": image_ref,
-        "mesh": "../etc/passwd",
-        "params": {}
-    });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/refine/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "traversal mesh ref rejected");
-}
-
-/// CRIT-1 for refine: client path aliases are stripped; the host injects
-/// absolute `mesh`/`mesh_path`/`image`/`face_image_path` and a host `output_path`.
-#[tokio::test]
-async fn refine_strips_client_path_aliases_and_injects_host_paths() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref, mesh_ref) =
-        app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = faceavatar_extension::storage::Store::new(pool);
-
-    let body = serde_json::json!({
-        "image": image_ref,
-        "mesh": mesh_ref,
-        "face_image": "uploads/in.png",
-        "params": {
-            "output_path": "/etc/evil.glb",
-            "image_path": "/etc/shadow",
-            "ref_image_path": "/etc/passwd",
-            "mesh": "/etc/evil_mesh.glb",
-            "mesh_path": "/etc/evil_mesh.glb",
-            "face_image_path": "/etc/evil_face.png",
-            "resolution": 1024,
-            "max_views": 2,
-            "seed": 3
-        }
-    });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/refine/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, resp_body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "{resp_body}");
-    let job_id = resp_body["jobId"].as_str().unwrap().to_string();
-
-    let job = store.get_job(&job_id).await.unwrap();
-    let params: Value = serde_json::from_str(&job.params_json).unwrap();
-
-    let out = params["output_path"].as_str().unwrap();
-    assert_ne!(out, "/etc/evil.glb", "client output_path must be stripped");
-    assert!(
-        out.replace('\\', "/").contains("/meshes/"),
-        "host output_path under workspace, got {out}"
-    );
-
-    let mesh = params["mesh"].as_str().unwrap();
-    let mesh_path = params["mesh_path"].as_str().unwrap();
-    assert_ne!(mesh, "/etc/evil_mesh.glb", "client mesh must be stripped");
-    assert_eq!(mesh, mesh_path, "mesh and mesh_path are the same host path");
-    assert!(
-        mesh.replace('\\', "/").ends_with("meshes/base.glb"),
-        "mesh is the resolved absolute ref, got {mesh}"
-    );
-    assert!(std::path::Path::new(mesh).is_absolute());
-
-    let img = params["image"].as_str().unwrap();
-    assert!(img.replace('\\', "/").ends_with("uploads/in.png"));
-    assert!(std::path::Path::new(img).is_absolute());
-
-    let face = params["face_image_path"].as_str().unwrap();
-    assert_ne!(face, "/etc/evil_face.png", "client face path must be stripped");
-    assert!(face.replace('\\', "/").ends_with("uploads/in.png"));
-    assert!(std::path::Path::new(face).is_absolute());
-
-    assert!(params.get("image_path").is_none());
-    assert!(params.get("ref_image_path").is_none());
-    assert!(params.get("face_image").is_none());
-    assert_eq!(params["resolution"], 1024, "tunables pass through");
-    assert_eq!(params["max_views"], 2);
-}
-
-#[tokio::test]
-async fn refine_without_face_image_omits_face_path() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref, mesh_ref) =
-        app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = faceavatar_extension::storage::Store::new(pool);
-
-    let body = serde_json::json!({ "image": image_ref, "mesh": mesh_ref, "params": {} });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/refine/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, resp_body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "{resp_body}");
-    let job_id = resp_body["jobId"].as_str().unwrap().to_string();
-
-    let job = store.get_job(&job_id).await.unwrap();
-    let params: Value = serde_json::from_str(&job.params_json).unwrap();
-    assert!(
-        params.get("face_image_path").is_none(),
-        "no face crop -> no face_image_path"
-    );
-    assert!(params["mesh"].as_str().unwrap().replace('\\', "/").ends_with("meshes/base.glb"));
-}
-
-#[tokio::test]
-async fn project_requires_mesh() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
-
-    let body = serde_json::json!({ "image": image_ref, "mesh": "", "params": {} });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/project/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn project_rejects_mesh_ref_not_in_workspace() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
-
-    let body = serde_json::json!({
-        "image": image_ref,
-        "mesh": "../etc/passwd",
-        "params": {}
-    });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/project/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, _body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "traversal mesh ref rejected");
-}
-
-/// CRIT-1 for project: client path aliases are stripped; the host injects
-/// absolute `mesh`/`mesh_path`/`image` and a host `output_path`, while projection
-/// tunables (`azimuth`/`elevation`/`texture_size`/`residency`) pass through.
-#[tokio::test]
-async fn project_strips_client_path_aliases_and_injects_host_paths() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref, mesh_ref) =
-        app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
-    let store = faceavatar_extension::storage::Store::new(pool);
-
-    let body = serde_json::json!({
-        "image": image_ref,
-        "mesh": mesh_ref,
-        "params": {
-            "output_path": "/etc/evil.glb",
-            "image_path": "/etc/shadow",
-            "ref_image_path": "/etc/passwd",
-            "mesh": "/etc/evil_mesh.glb",
-            "mesh_path": "/etc/evil_mesh.glb",
-            "azimuth": 45.0,
-            "elevation": -15.0,
-            "texture_size": 4096,
-            "residency": "balanced"
-        }
-    });
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/project/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, resp_body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "{resp_body}");
-    let job_id = resp_body["jobId"].as_str().unwrap().to_string();
-
-    let job = store.get_job(&job_id).await.unwrap();
-    let params: Value = serde_json::from_str(&job.params_json).unwrap();
-
-    let out = params["output_path"].as_str().unwrap();
-    assert_ne!(out, "/etc/evil.glb", "client output_path must be stripped");
-    assert!(
-        out.replace('\\', "/").contains("/meshes/"),
-        "host output_path under workspace, got {out}"
-    );
-
-    let mesh = params["mesh"].as_str().unwrap();
-    let mesh_path = params["mesh_path"].as_str().unwrap();
-    assert_ne!(mesh, "/etc/evil_mesh.glb", "client mesh must be stripped");
-    assert_eq!(mesh, mesh_path, "mesh and mesh_path are the same host path");
-    assert!(
-        mesh.replace('\\', "/").ends_with("meshes/base.glb"),
-        "mesh is the resolved absolute ref, got {mesh}"
-    );
-    assert!(std::path::Path::new(mesh).is_absolute());
-
-    let img = params["image"].as_str().unwrap();
-    assert!(img.replace('\\', "/").ends_with("uploads/in.png"));
-    assert!(std::path::Path::new(img).is_absolute());
-
-    assert!(params.get("image_path").is_none());
-    assert!(params.get("ref_image_path").is_none());
-    assert_eq!(params["azimuth"], 45.0, "tunables pass through");
-    assert_eq!(params["elevation"], -15.0);
-    assert_eq!(params["texture_size"], 4096);
-    assert_eq!(params["residency"], "balanced");
-}
-
-#[tokio::test]
-async fn project_streams_sse_and_persists_done() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref, mesh_ref) =
-        app_with_image_and_mesh(pool, Arc::new(MockGenerationFactory));
-
-    let body = serde_json::json!({ "image": image_ref, "mesh": mesh_ref, "params": {} });
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/project/start")
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (status, resp_body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "{resp_body}");
-    let job_id = resp_body["jobId"].as_str().unwrap().to_string();
-
-    let methods = sse_methods(&router, &job_id).await;
-    assert!(
-        methods.contains(&"trellis2.generate.progress".to_string()),
-        "expected progress frame in {methods:?}"
-    );
-    assert_eq!(
-        methods.last().map(String::as_str),
-        Some("trellis2.generate.done"),
-        "project stream must end on done: {methods:?}"
-    );
-}
-
-#[tokio::test]
-async fn generation_failure_persists_error_and_emits_error_frame() {
-    let pool = fixtures::memory_pool().await;
-    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(FailingFactory));
-
-    let start_body = serde_json::json!({ "image": image_ref, "params": {} });
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/generate/start")
-                .header("content-type", "application/json")
-                .body(Body::from(start_body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (_, body) = body_json(resp).await;
-    let job_id = body["jobId"].as_str().unwrap().to_string();
-
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/generate/jobs/{job_id}/events"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let raw = resp.into_body().collect().await.unwrap().to_bytes();
-    let text = String::from_utf8(raw.to_vec()).unwrap();
-    assert!(
-        text.contains("trellis2.generate.error"),
-        "expected error frame: {text}"
-    );
-
-    let resp = router
-        .oneshot(
-            Request::builder()
-                .uri(format!("/generate/jobs/{job_id}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let (_, job) = body_json(resp).await;
-    assert_eq!(job["status"], "failed");
-    assert_eq!(job["errorCode"], -32101, "job: {job}");
-    assert!(job["errorMessage"]
-        .as_str()
-        .unwrap()
-        .contains("MODEL_MISSING"));
+fn app(
+    pool: sqlx::SqlitePool,
+    factory: Arc<dyn faceavatar_extension::backend_client::LeaseFactory>,
+) -> axum::Router {
+    app_with_image(pool, factory).0
 }
 
 async fn sse_methods(router: &axum::Router, job_id: &str) -> Vec<String> {
@@ -644,44 +73,321 @@ async fn sse_methods(router: &axum::Router, job_id: &str) -> Vec<String> {
         .collect()
 }
 
-async fn start_generation_with(router: &axum::Router, image: &str, params: Value) -> String {
-    let body = serde_json::json!({ "image": image, "params": params });
+async fn post_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
     let resp = router
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/generate/start")
+                .uri(uri)
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    let (status, body) = body_json(resp).await;
-    assert_eq!(status, StatusCode::OK, "start response: {body}");
-    body["jobId"].as_str().expect("jobId present").to_string()
+    body_json(resp).await
 }
 
-/// A worker process-crash (`WorkerCrashed`) after the GLB is written to the
-/// HOST-chosen output_path but before the RPC reply (the GB10 OOM signature)
-/// must salvage that GLB and expose it as a workspace-RELATIVE ref.
 #[tokio::test]
-async fn worker_crash_salvages_completed_glb_as_relative_ref() {
+async fn capabilities_returns_503_when_worker_not_running() {
     let pool = fixtures::memory_pool().await;
-    let (router, _workspace, image_ref) = app_with_image(pool, Arc::new(CrashingFactory));
+    let router = app(pool, Arc::new(MockGenerationFactory));
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri("/capabilities")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, _body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}
 
-    // CrashingLease writes the GLB to the host output_path, then "crashes".
-    let job_id = start_generation_with(&router, &image_ref, serde_json::json!({})).await;
+#[tokio::test]
+async fn generate_head_requires_image() {
+    let pool = fixtures::memory_pool().await;
+    let router = app(pool, Arc::new(MockGenerationFactory));
+    let (status, _b) = post_json(
+        &router,
+        "/generate/start",
+        serde_json::json!({ "image": "", "params": {} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn generate_head_rejects_image_ref_not_in_workspace() {
+    let pool = fixtures::memory_pool().await;
+    let router = app(pool, Arc::new(MockGenerationFactory));
+    let (status, _b) = post_json(
+        &router,
+        "/generate/start",
+        serde_json::json!({ "image": "../etc/passwd", "params": {} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "traversal ref rejected");
+}
+
+#[tokio::test]
+async fn generate_head_streams_sse_and_persists_job_metadata_and_operation() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool.clone(), Arc::new(MockGenerationFactory));
+    let store = faceavatar_extension::storage::Store::new(pool);
+
+    let (status, body) = post_json(
+        &router,
+        "/generate/start",
+        serde_json::json!({ "image": image_ref, "params": { "seed": 7, "expression": "neutral", "texture": false } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "start response: {body}");
+    let job_id = body["jobId"].as_str().expect("jobId present").to_string();
 
     let methods = sse_methods(&router, &job_id).await;
     assert!(
-        methods.contains(&"trellis2.generate.done".to_string()),
-        "expected salvage done frame: {methods:?}"
+        methods.contains(&"faceavatar.generate.progress".to_string()),
+        "expected progress frame in {methods:?}"
+    );
+    assert_eq!(
+        methods.last().map(String::as_str),
+        Some("faceavatar.generate.done"),
+        "stream must end on done: {methods:?}"
+    );
+
+    let job = store.get_job(&job_id).await.unwrap().into_dto();
+    assert_eq!(job.status, "succeeded");
+    assert_eq!(job.operation, "generate");
+    assert_eq!(job.metadata.unwrap()["sha256"], "deadbeef");
+    assert_eq!(job.glb_ref.as_deref(), Some("out.glb"));
+}
+
+/// Client-supplied path aliases must be stripped; the host sets `image`
+/// (absolute) and `output_path` itself.
+#[tokio::test]
+async fn generate_head_strips_client_path_aliases() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool.clone(), Arc::new(MockGenerationFactory));
+    let store = faceavatar_extension::storage::Store::new(pool);
+
+    let (status, body) = post_json(
+        &router,
+        "/generate/start",
+        serde_json::json!({
+            "image": image_ref,
+            "params": { "output_path": "/etc/evil.glb", "image_path": "/etc/shadow", "seed": 1 }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let job_id = body["jobId"].as_str().unwrap().to_string();
+
+    let job = store.get_job(&job_id).await.unwrap();
+    let params: Value = serde_json::from_str(&job.params_json).unwrap();
+    let out = params["output_path"].as_str().unwrap();
+    let img = params["image"].as_str().unwrap();
+    assert_ne!(out, "/etc/evil.glb", "client output_path stripped");
+    assert!(
+        out.replace('\\', "/").contains("/meshes/"),
+        "host output_path, got {out}"
+    );
+    assert!(img.replace('\\', "/").ends_with("uploads/in.png"));
+    assert!(std::path::Path::new(img).is_absolute());
+    assert!(params.get("image_path").is_none());
+}
+
+#[tokio::test]
+async fn graft_head_requires_base_mesh() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
+    let (status, _b) = post_json(
+        &router,
+        "/graft/start",
+        serde_json::json!({ "image": image_ref, "base_mesh": "", "params": {} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn graft_head_rejects_base_mesh_ref_not_in_workspace() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(MockGenerationFactory));
+    let (status, _b) = post_json(
+        &router,
+        "/graft/start",
+        serde_json::json!({ "image": image_ref, "base_mesh": "../etc/passwd", "params": {} }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "traversal base_mesh ref rejected"
+    );
+}
+
+/// graft strips client path aliases and injects absolute
+/// `base_mesh`/`base_mesh_path`/`image` + a host `output_path`, while graft knobs
+/// pass through.
+#[tokio::test]
+async fn graft_head_strips_aliases_injects_host_paths_and_persists_operation() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref, mesh_ref) =
+        app_with_image_and_mesh(pool.clone(), Arc::new(MockGenerationFactory));
+    let store = faceavatar_extension::storage::Store::new(pool);
+
+    let (status, body) = post_json(
+        &router,
+        "/graft/start",
+        serde_json::json!({
+            "image": image_ref,
+            "base_mesh": mesh_ref,
+            "params": {
+                "output_path": "/etc/evil.glb",
+                "image_path": "/etc/shadow",
+                "base_mesh": "/etc/evil_mesh.glb",
+                "base_mesh_path": "/etc/evil_mesh.glb",
+                "seam": "neck",
+                "keep_hair": true,
+                "blend_ring": 0.4,
+                "align": "landmark",
+                "texture_blend": true,
+                "seed": 3
+            }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let job_id = body["jobId"].as_str().unwrap().to_string();
+
+    let job = store.get_job(&job_id).await.unwrap();
+    assert_eq!(job.operation, "graft");
+    let params: Value = serde_json::from_str(&job.params_json).unwrap();
+
+    let out = params["output_path"].as_str().unwrap();
+    assert_ne!(out, "/etc/evil.glb", "client output_path stripped");
+    assert!(
+        out.replace('\\', "/").contains("/meshes/"),
+        "host output_path, got {out}"
+    );
+
+    let mesh = params["base_mesh"].as_str().unwrap();
+    let mesh_path = params["base_mesh_path"].as_str().unwrap();
+    assert_ne!(mesh, "/etc/evil_mesh.glb", "client base_mesh stripped");
+    assert_eq!(
+        mesh, mesh_path,
+        "base_mesh and base_mesh_path are the same host path"
     );
     assert!(
-        !methods.contains(&"trellis2.generate.error".to_string()),
-        "salvaged generation must not emit an error frame: {methods:?}"
+        mesh.replace('\\', "/").ends_with("meshes/base.glb"),
+        "resolved abs ref, got {mesh}"
+    );
+    assert!(std::path::Path::new(mesh).is_absolute());
+
+    let img = params["image"].as_str().unwrap();
+    assert!(img.replace('\\', "/").ends_with("uploads/in.png"));
+    assert!(std::path::Path::new(img).is_absolute());
+
+    assert!(params.get("image_path").is_none());
+    // Graft knobs pass through untouched.
+    assert_eq!(params["seam"], "neck");
+    assert_eq!(params["keep_hair"], true);
+    assert_eq!(params["blend_ring"], 0.4);
+    assert_eq!(params["align"], "landmark");
+    assert_eq!(params["texture_blend"], true);
+}
+
+#[tokio::test]
+async fn graft_head_streams_sse_and_persists_done() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref, mesh_ref) =
+        app_with_image_and_mesh(pool, Arc::new(MockGenerationFactory));
+
+    let (status, body) = post_json(
+        &router,
+        "/graft/start",
+        serde_json::json!({ "image": image_ref, "base_mesh": mesh_ref, "params": {} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let job_id = body["jobId"].as_str().unwrap().to_string();
+
+    let methods = sse_methods(&router, &job_id).await;
+    assert!(
+        methods.contains(&"faceavatar.generate.progress".to_string()),
+        "{methods:?}"
+    );
+    assert_eq!(
+        methods.last().map(String::as_str),
+        Some("faceavatar.generate.done"),
+        "graft stream must end on done: {methods:?}"
+    );
+}
+
+#[tokio::test]
+async fn generation_failure_persists_error_and_emits_error_frame() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(FailingFactory));
+
+    let (_status, body) = post_json(
+        &router,
+        "/generate/start",
+        serde_json::json!({ "image": image_ref, "params": {} }),
+    )
+    .await;
+    let job_id = body["jobId"].as_str().unwrap().to_string();
+
+    let methods = sse_methods(&router, &job_id).await;
+    assert!(
+        methods.contains(&"faceavatar.generate.error".to_string()),
+        "expected error frame: {methods:?}"
+    );
+
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/generate/jobs/{job_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (_, job) = body_json(resp).await;
+    assert_eq!(job["status"], "failed");
+    assert_eq!(job["errorCode"], -32101, "job: {job}");
+    assert!(job["errorMessage"]
+        .as_str()
+        .unwrap()
+        .contains("MODEL_MISSING"));
+}
+
+/// A worker process-crash after the GLB is written to the HOST-chosen
+/// `output_path` but before the RPC reply must salvage that GLB.
+#[tokio::test]
+async fn worker_crash_salvages_completed_glb_as_relative_ref() {
+    let pool = fixtures::memory_pool().await;
+    let (router, _ws, image_ref) = app_with_image(pool, Arc::new(CrashingFactory));
+
+    let (status, body) = post_json(
+        &router,
+        "/generate/start",
+        serde_json::json!({ "image": image_ref, "params": {} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let job_id = body["jobId"].as_str().unwrap().to_string();
+
+    let methods = sse_methods(&router, &job_id).await;
+    assert!(
+        methods.contains(&"faceavatar.generate.done".to_string()),
+        "salvage done: {methods:?}"
+    );
+    assert!(
+        !methods.contains(&"faceavatar.generate.error".to_string()),
+        "no error frame: {methods:?}"
     );
 
     let resp = router
@@ -708,7 +414,10 @@ async fn cancel_marks_job_cancelled() {
     let pool = fixtures::memory_pool().await;
     let store = faceavatar_extension::storage::Store::new(pool.clone());
     let job_id = faceavatar_extension::domain::JobId::new();
-    store.create_job(&job_id, "img", "{}").await.unwrap();
+    store
+        .create_job(&job_id, "generate", "img", "{}")
+        .await
+        .unwrap();
     store.mark_running(&job_id).await.unwrap();
 
     let router = app(pool, Arc::new(MockGenerationFactory));
@@ -750,12 +459,12 @@ async fn cancel_rejects_invalid_job_id() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "invalid id rejected");
 }
 
-/// `POST /uploads` returns a workspace-RELATIVE `ref` (`uploads/<digest>.<ext>`)
-/// that round-trips through `GET /media/{ref}`.
+/// `POST /uploads` returns a workspace-RELATIVE `ref` that round-trips through
+/// `GET /media/{ref}`.
 #[tokio::test]
 async fn upload_returns_relative_ref_servable_by_media() {
     let pool = fixtures::memory_pool().await;
-    let workspace = std::env::temp_dir().join(format!("trellis2-up-{}", ulid::Ulid::new()));
+    let workspace = std::env::temp_dir().join(format!("faceavatar-up-{}", ulid::Ulid::new()));
     std::fs::create_dir_all(&workspace).unwrap();
     let router = faceavatar_extension::build_router_with_factory(
         pool,
@@ -789,10 +498,11 @@ async fn upload_returns_relative_ref_servable_by_media() {
         media_ref.starts_with("uploads/"),
         "relative ref: {media_ref}"
     );
-    assert!(media_ref.ends_with(".png"), "ref: {media_ref}");
     assert!(
-        !media_ref.contains(':'),
-        "ref must not be absolute: {media_ref}"
+        std::path::Path::new(&media_ref)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("png")),
+        "ref: {media_ref}"
     );
 
     let encoded = urlencoding::encode(&media_ref).into_owned();

@@ -10,7 +10,12 @@ async fn create_then_complete_job_persists_dto() {
 
     let job_id = JobId::new();
     store
-        .create_job(&job_id, "artifact-image-1", r#"{"seed":42,"texture":false}"#)
+        .create_job(
+            &job_id,
+            "graft",
+            "artifact-image-1",
+            r#"{"seed":42,"texture":false}"#,
+        )
         .await
         .unwrap();
 
@@ -28,6 +33,7 @@ async fn create_then_complete_job_persists_dto() {
     let dto = row.into_dto();
 
     assert_eq!(dto.id, job_id.as_str());
+    assert_eq!(dto.operation, "graft");
     assert_eq!(dto.input_image_ref, "artifact-image-1");
     // storage `completed` surfaces to the frontend as `succeeded`
     assert_eq!(dto.status, "succeeded");
@@ -45,7 +51,7 @@ async fn failed_job_carries_error_message() {
 
     let job_id = JobId::new();
     store
-        .create_job(&job_id, "artifact-image-2", "{}")
+        .create_job(&job_id, "generate", "artifact-image-2", "{}")
         .await
         .unwrap();
     store
@@ -68,10 +74,13 @@ async fn list_jobs_orders_newest_first() {
     let store = Store::new(pool);
 
     let a = JobId::new();
-    store.create_job(&a, "img-a", "{}").await.unwrap();
+    store
+        .create_job(&a, "generate", "img-a", "{}")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let b = JobId::new();
-    store.create_job(&b, "img-b", "{}").await.unwrap();
+    store.create_job(&b, "graft", "img-b", "{}").await.unwrap();
 
     let jobs = store.list_jobs(25).await.unwrap();
     assert_eq!(jobs.len(), 2);
@@ -83,7 +92,10 @@ async fn cancel_only_affects_active_jobs() {
     let store = Store::new(pool);
 
     let job_id = JobId::new();
-    store.create_job(&job_id, "img", "{}").await.unwrap();
+    store
+        .create_job(&job_id, "generate", "img", "{}")
+        .await
+        .unwrap();
     store.mark_running(&job_id).await.unwrap();
     store.mark_cancelled(&job_id).await.unwrap();
 
@@ -97,7 +109,10 @@ async fn delete_job_removes_history_row() {
     let store = Store::new(pool);
 
     let job_id = JobId::new();
-    store.create_job(&job_id, "img", "{}").await.unwrap();
+    store
+        .create_job(&job_id, "generate", "img", "{}")
+        .await
+        .unwrap();
     assert!(store.delete_job(job_id.as_str()).await.unwrap());
     assert!(store.get_job_opt(job_id.as_str()).await.unwrap().is_none());
 }
