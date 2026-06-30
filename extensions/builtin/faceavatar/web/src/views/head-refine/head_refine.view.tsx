@@ -14,7 +14,7 @@ import { assembleGraftParams, useGraftForm } from "./use_graft_form";
 import * as styles from "./head_refine.css";
 
 export function HeadRefineView(): ReactElement {
-  const { imageRef, generate, startGraft, resetGenerate } = useGenerateRequest();
+  const { imageRef, generate, startGraft, cancelJob, resetGenerate } = useGenerateRequest();
   const graftForm = useGraftForm();
   const [baseMeshRef, setBaseMeshRef] = useState<string | null>(null);
   const [baseMeshLabel, setBaseMeshLabel] = useState<string | null>(null);
@@ -59,6 +59,14 @@ export function HeadRefineView(): ReactElement {
     }
   }, [baseMeshRef, imageRef, graftForm.form, startGraft]);
 
+  const cancel = useCallback(async () => {
+    try {
+      await cancelJob();
+    } catch {
+      toast.error("Could not cancel the head refine.");
+    }
+  }, [cancelJob]);
+
   return (
     <div className={styles.view}>
       <BeforeAfter baseMeshRef={baseMeshRef} state={generate} />
@@ -93,7 +101,7 @@ export function HeadRefineView(): ReactElement {
           <Panel elevation="raised" title="Progress" description="Live state mirrors the worker.">
             <GenerateProgress
               state={generate}
-              onCancel={() => void resetGenerate()}
+              onCancel={() => void cancel()}
               onReset={resetGenerate}
             />
           </Panel>
