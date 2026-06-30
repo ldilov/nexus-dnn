@@ -15,12 +15,10 @@ interface GenerateProgressProps {
 /** Friendly labels for the known worker vocab. Unknown stages are humanized
  * generically so a vocab change never blanks the readout. */
 const STAGE_LABELS: Record<string, string> = {
-  load: "Loading model…",
-  encode: "Encoding image (DINOv3)…",
-  sparse: "Building sparse structure…",
-  shape: "Decoding shape…",
-  texture: "Baking texture…",
-  decode: "Decoding mesh…",
+  fit: "Fitting identity (Arc2Avatar)…",
+  align: "Aligning to base mesh…",
+  weld: "Welding face shell…",
+  texture: "Projecting photo texture…",
   glb: "Exporting GLB…",
 };
 
@@ -136,7 +134,7 @@ function DoneResult({
     <output className={styles.resultCard}>
       <div className={styles.doneHead}>
         <span className={styles.doneDot} aria-hidden="true" />
-        <span className={styles.doneTitle}>Mesh ready</span>
+        <span className={styles.doneTitle}>Head ready</span>
       </div>
       <p className={styles.doneHint}>Preview, orbit and download the GLB from the stage above.</p>
       <MetadataView metadata={state.metadata} glbRef={state.glbRef} />
@@ -196,6 +194,8 @@ function MetadataView({
     if (typeof faces === "number") entries.push(["Faces", faces.toLocaleString()]);
     if (typeof metadata.textured === "boolean")
       entries.push(["Texture", metadata.textured ? "baked" : "none"]);
+    if (typeof metadata.identity_score === "number")
+      entries.push(["Identity", metadata.identity_score.toFixed(2)]);
     if (typeof metadata.attention_backend === "string")
       entries.push(["Attention", metadata.attention_backend]);
     if (typeof metadata.compute_cap === "string")

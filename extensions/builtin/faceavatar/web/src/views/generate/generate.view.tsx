@@ -42,9 +42,9 @@ export function GenerateView(): ReactElement {
       <div className={styles.layout}>
         <div className={styles.column}>
           <Panel
-            eyebrow="OPERATOR · TRELLIS2.GENERATE_3D"
-            title="New mesh"
-            description="One image in, one watertight GLB out."
+            eyebrow="OPERATOR · FACEAVATAR.GENERATE_HEAD"
+            title="New head"
+            description="One photo in, one identity head GLB out."
           >
             <GenerateForm />
             <div className={styles.submitRow}>

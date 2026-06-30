@@ -9,13 +9,12 @@ import {
 import { matchPreset, PRESETS } from "../../../domain/presets";
 import { useGenerateRequest } from "../../../store/generate_request_store";
 import type { GenerateParams } from "../../../services/types";
-import { GuidanceSection } from "./guidance_section";
 import { ImageUploader } from "./image_uploader";
 import { PresetMenu } from "./preset_menu";
 import * as styles from "./generate_form.css";
 
 /** Param keys whose value is a string enum rather than a number. */
-const STRING_KEYS = new Set<TunableFieldKey>(["pipeline_type", "residency"]);
+const STRING_KEYS = new Set<TunableFieldKey>(["expression", "crop", "residency"]);
 
 export function GenerateForm(): ReactElement {
   const { params, generate, updateParam, applyParams } = useGenerateRequest();
@@ -26,10 +25,10 @@ export function GenerateForm(): ReactElement {
 
   return (
     <div className={styles.form}>
-      <span className={styles.sectionLabel}>Input image</span>
+      <span className={styles.sectionLabel}>Input photo</span>
       <ImageUploader />
 
-      <span className={styles.sectionLabel}>Quality preset</span>
+      <span className={styles.sectionLabel}>Identity preset</span>
       <PresetMenu
         presets={PRESETS}
         activeId={activePreset}
@@ -52,37 +51,17 @@ export function GenerateForm(): ReactElement {
 
       <div className={styles.textureRow}>
         <div className={styles.textureCopy}>
-          <span className={styles.textureTitle}>Remove background</span>
+          <span className={styles.textureTitle}>Project photo as texture</span>
           <span className={styles.textureHint}>
-            On auto-cuts the subject so no ground/shadow becomes a platform. Turn off
-            only when the input is already a cut-out (transparent PNG).
-          </span>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={params.remove_background !== false}
-          aria-label="Remove background"
-          disabled={disabled}
-          className={styles.toggle}
-          onClick={() => updateParam("remove_background", params.remove_background === false)}
-        >
-          <span className={styles.toggleThumb} aria-hidden="true" />
-        </button>
-      </div>
-
-      <div className={styles.textureRow}>
-        <div className={styles.textureCopy}>
-          <span className={styles.textureTitle}>Bake texture</span>
-          <span className={styles.textureHint}>
-            Off exports a MeshOnly GLB. On runs the texture pass (slower, larger file).
+            On back-projects the real photo onto the head for likeness. Off exports an
+            untextured FLAME head.
           </span>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={Boolean(params.texture)}
-          aria-label="Bake texture"
+          aria-label="Project photo as texture"
           disabled={disabled}
           className={styles.toggle}
           onClick={() => updateParam("texture", !params.texture)}
@@ -117,7 +96,6 @@ export function GenerateForm(): ReactElement {
                 />
               ))}
             </div>
-            <GuidanceSection disabled={disabled} />
           </div>
         )}
       </section>

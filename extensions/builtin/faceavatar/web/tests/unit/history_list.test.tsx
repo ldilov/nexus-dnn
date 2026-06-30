@@ -6,8 +6,10 @@ import type { GenerationJob } from "../../src/services/types";
 function job(overrides: Partial<GenerationJob>): GenerationJob {
   return {
     id: "job-1",
+    kind: "generate",
     inputImageRef: "img-1",
-    params: { seed: 3, sparse_steps: 12, texture: false },
+    baseMeshRef: null,
+    params: { seed: 3, arc_iters: 600, texture: true },
     status: "succeeded",
     glbRef: "glb-1",
     metadata: { mesh: { vertices: 500, faces: 1000 } },
@@ -22,7 +24,7 @@ function job(overrides: Partial<GenerationJob>): GenerationJob {
 describe("HistoryList", () => {
   test("renders an empty state with no jobs", () => {
     render(<HistoryList jobs={[]} onOpen={vi.fn()} onDelete={vi.fn()} />);
-    expect(screen.getByText("No meshes yet")).toBeTruthy();
+    expect(screen.getByText("No heads yet")).toBeTruthy();
   });
 
   test("exposes a working GLB download link for finished jobs", () => {

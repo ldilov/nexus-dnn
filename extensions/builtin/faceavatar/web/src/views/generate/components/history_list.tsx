@@ -25,7 +25,7 @@ function HistoryListImpl({ jobs, onOpen, onDelete }: HistoryListProps): ReactEle
   if (jobs.length === 0) {
     return (
       <EmptyState
-        title="No meshes yet"
+        title="No heads yet"
         detail="Completed generations appear here with their preview, parameters and a GLB download."
       />
     );
@@ -109,10 +109,9 @@ export const HistoryList = memo(HistoryListImpl);
 
 function paramsSummary(job: GenerationJob): string {
   const p = job.params;
-  const parts: string[] = [];
+  const parts: string[] = [job.kind === "graft" ? "graft" : "generate"];
   if (typeof p.seed === "number") parts.push(`seed ${p.seed}`);
-  if (typeof p.sparse_steps === "number") parts.push(`${p.sparse_steps} sparse`);
-  if (p.texture) parts.push("textured");
+  if (typeof p.arc_iters === "number") parts.push(`${p.arc_iters} iters`);
   const faces = job.metadata?.mesh?.faces;
   if (typeof faces === "number") parts.push(`${faces.toLocaleString()} faces`);
   return parts.join(" · ") || "—";

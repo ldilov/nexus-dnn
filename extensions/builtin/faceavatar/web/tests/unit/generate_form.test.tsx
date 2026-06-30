@@ -58,7 +58,7 @@ function firstCall(): [StartBody] {
 function renderForm(withImage = false): void {
   render(
     <GenerateRequestProvider>
-      {withImage ? <SeedImage ref="img-ref-1" name="cube.png" /> : null}
+      {withImage ? <SeedImage ref="img-ref-1" name="face.png" /> : null}
       <GenerateForm />
       <StartButton />
     </GenerateRequestProvider>,
@@ -77,9 +77,10 @@ describe("GenerateForm", () => {
   test("renders primary controls and hides advanced fields by default", () => {
     renderForm();
     expect(screen.getByText("Seed")).toBeTruthy();
-    expect(screen.getByText("Sparse steps")).toBeTruthy();
-    expect(screen.queryByText("Detail preset")).toBeNull();
-    expect(screen.queryByText("Metallic")).toBeNull();
+    expect(screen.getByText("Expression")).toBeTruthy();
+    expect(screen.getByText("Crop")).toBeTruthy();
+    expect(screen.queryByText("Identity iters")).toBeNull();
+    expect(screen.queryByText("Residency")).toBeNull();
   });
 
   test("expands the Advanced / Quality section to reveal the new controls", () => {
@@ -90,11 +91,8 @@ describe("GenerateForm", () => {
     fireEvent.click(header);
 
     expect(header.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Detail preset")).toBeTruthy();
-    expect(screen.getByText("Texture steps")).toBeTruthy();
-    expect(screen.getByText("Texture resolution")).toBeTruthy();
-    expect(screen.getByText("Metallic")).toBeTruthy();
-    expect(screen.getByText("Max tokens")).toBeTruthy();
+    expect(screen.getByText("Identity iters")).toBeTruthy();
+    expect(screen.getByText("Residency")).toBeTruthy();
   });
 
   test("sends the full default param set when nothing is changed", async () => {
@@ -111,22 +109,26 @@ describe("GenerateForm", () => {
     renderForm(true);
     fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
 
-    const pipeline = screen.getByLabelText("Detail preset") as HTMLSelectElement;
-    fireEvent.change(pipeline, { target: { value: "1536_cascade" } });
-
-    const textureSize = screen.getByLabelText("Texture resolution") as HTMLSelectElement;
-    fireEvent.change(textureSize, { target: { value: "4096" } });
-
-    const metallic = screen.getByLabelText("Metallic") as HTMLInputElement;
-    fireEvent.change(metallic, { target: { value: "0.5" } });
+    const residency = screen.getByLabelText("Residency") as HTMLSelectElement;
+    fireEvent.change(residency, { target: { value: "low_vram" } });
 
     fireEvent.click(screen.getByRole("button", { name: "run" }));
     await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
 
     const [{ params }] = firstCall();
-    expect(params.pipeline_type).toBe("1536_cascade");
-    expect(params.texture_size).toBe(4096);
-    expect(params.metallic).toBe(0.5);
+    expect(params.residency).toBe("low_vram");
+  });
+
+  test("changed primary select fields flow into the payload", async () => {
+    renderForm(true);
+    const expression = screen.getByLabelText("Expression") as HTMLSelectElement;
+    fireEvent.change(expression, { target: { value: "source" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
+
+    const [{ params }] = firstCall();
+    expect(params.expression).toBe("source");
   });
 
   test("applies a quality preset to the whole param set", async () => {
@@ -138,75 +140,20 @@ describe("GenerateForm", () => {
     await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
 
     const [{ params }] = firstCall();
-    expect(params.pipeline_type).toBe("512");
-    expect(params.shape_steps).toBe(8);
-    expect(params.texture_size).toBe(1024);
-    expect(params.simplify_target).toBe(100_000);
+    expect(params.arc_iters).toBe(250);
+    expect(params.crop).toBe("bust");
+    expect(params.expression).toBe("neutral");
   });
 
-  test("omits guidance levers from the payload when their fields are left empty", async () => {
+  test("toggling the texture switch flows into the payload", async () => {
     renderForm(true);
-    fireEvent.click(screen.getByRole("button", { name: "run" }));
-    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
-
-    const [{ params }] = firstCall();
-    const guidanceKeys = Object.keys(params).filter(
-      (key) => key.includes("guidance") || key.endsWith("rescale_t"),
-    );
-    expect(guidanceKeys).toEqual([]);
-    expect(params).toEqual(DEFAULT_PARAMS);
-  });
-
-  test("includes only the guidance levers the user filled", async () => {
-    renderForm(true);
-    fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Guidance \(per-stage CFG\)/ }));
-
-    const strengthInputs = screen.getAllByLabelText("Strength", {
-      selector: "input",
-    }) as HTMLInputElement[];
-    const sparseStrength = strengthInputs[0];
-    if (!sparseStrength) throw new Error("no Strength input rendered");
-    fireEvent.change(sparseStrength, { target: { value: "9.5" } });
+    const toggle = screen.getByRole("switch", { name: "Project photo as texture" });
+    fireEvent.click(toggle);
 
     fireEvent.click(screen.getByRole("button", { name: "run" }));
     await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
 
     const [{ params }] = firstCall();
-    expect(params.sparse_guidance_strength).toBe(9.5);
-    expect(params).not.toHaveProperty("shape_guidance_strength");
-    expect(params).not.toHaveProperty("sparse_guidance_interval_start");
-  });
-
-  test("drops a lone interval bound entered through the form", async () => {
-    renderForm(true);
-    fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Guidance \(per-stage CFG\)/ }));
-
-    const startInputs = screen.getAllByLabelText("Interval start", {
-      selector: "input",
-    }) as HTMLInputElement[];
-    const firstStart = startInputs[0];
-    if (!firstStart) throw new Error("no Interval start input rendered");
-    fireEvent.change(firstStart, { target: { value: "0.3" } });
-
-    fireEvent.click(screen.getByRole("button", { name: "run" }));
-    await vi.waitFor(() => expect(startGenerate).toHaveBeenCalledTimes(1));
-
-    const [{ params }] = firstCall();
-    expect(params).not.toHaveProperty("sparse_guidance_interval_start");
-    expect(params).not.toHaveProperty("sparse_guidance_interval_end");
-  });
-
-  test("keeps Max tokens enabled across every pipeline type", () => {
-    renderForm();
-    fireEvent.click(screen.getByRole("button", { name: /Advanced \/ Quality/ }));
-
-    const maxTokens = screen.getByLabelText("Max tokens") as HTMLInputElement;
-    expect(maxTokens.disabled).toBe(false);
-
-    const pipeline = screen.getByLabelText("Detail preset") as HTMLSelectElement;
-    fireEvent.change(pipeline, { target: { value: "1536_cascade" } });
-    expect(maxTokens.disabled).toBe(false);
+    expect(params.texture).toBe(false);
   });
 });

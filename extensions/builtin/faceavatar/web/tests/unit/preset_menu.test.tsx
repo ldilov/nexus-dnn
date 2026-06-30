@@ -27,11 +27,11 @@ describe("PresetMenu", () => {
 
   test("marks the active preset checked and surfaces its label on the trigger", () => {
     render(<PresetMenu presets={PRESETS} activeId="max" disabled={false} onApply={() => {}} />);
-    expect(screen.getByRole("button", { name: /Presets/ }).textContent).toContain("Max detail");
+    expect(screen.getByRole("button", { name: /Presets/ }).textContent).toContain("Max identity");
 
     fireEvent.click(screen.getByRole("button", { name: /Presets/ }));
     expect(
-      screen.getByRole("menuitemradio", { name: /Max detail/ }).getAttribute("aria-checked"),
+      screen.getByRole("menuitemradio", { name: /Max identity/ }).getAttribute("aria-checked"),
     ).toBe("true");
   });
 
