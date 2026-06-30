@@ -1,0 +1,4 @@
+# Vendored Arc2Avatar method code lands during the GPU spike (spec §8); keep the
+# dir present but its contents out of git until then.
+worker/src/arc2avatar/*
+!worker/src/arc2avatar/.gitkeep
