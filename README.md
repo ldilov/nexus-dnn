@@ -12,6 +12,7 @@
   <img alt="LLM" src="https://img.shields.io/badge/🧠%20LLM-llama.cpp%20%2B%20MTP-8b5cf6.svg">
   <img alt="Voice" src="https://img.shields.io/badge/🎤%20Voice-IndexTTS--2-22c55e.svg">
   <img alt="3D" src="https://img.shields.io/badge/🧊%203D-TRELLIS%202%20(image%E2%86%923D)-ba9eff.svg">
+  <img alt="Identity" src="https://img.shields.io/badge/🧑%20Identity-Arc2Avatar%20(photo%E2%86%92head)-a78bfa.svg">
   <img alt="Image" src="https://img.shields.io/badge/🎨%20Image-SD%20%2B%20FLUX%20(soon)-f59e0b.svg">
 </p>
 
@@ -23,6 +24,7 @@
   - [🧠 LLM Inference](#-llm-inference) — llama.cpp + speculative decoding (MTP)
   - [🎤 Voice Generation (EmotionTTS)](#-voice-generation-emotiontts) — IndexTTS-2 emotion vectors + storyboard
   - [🧊 Image-to-3D](#-image-to-3d) — Microsoft TRELLIS.2, single image → watertight GLB mesh
+  - [🧑 Photo-to-Identity-Head](#-photo-to-identity-head) — Arc2Avatar, single photo → identity 3D head, graft onto a TRELLIS body
   - [🎨 Image Generation](#-image-generation) — Stable Diffusion · FLUX (coming soon)
 - [✨ What nexus-dnn Is For](#-what-nexus-dnn-is-for)
 - [🧭 System At A Glance](#-system-at-a-glance)
@@ -116,6 +118,7 @@ Today that means the repo can host:
 - Emotional TTS pipelines
 - Image-to-video and long-video generation flows
 - Image-to-3D mesh generation (single image → watertight GLB)
+- Single-photo identity 3D heads (Arc2Avatar), optionally grafted onto a generated body
 - Extension-owned UI surfaces mounted inside the host app
 
 ## 🧩 Supported Capabilities
@@ -128,6 +131,7 @@ Everything below runs **locally**, on a single consumer GPU, behind the same hos
 | 🧠 **[LLM Inference](#-llm-inference)** | llama.cpp | **Speculative decoding via MTP**, GGUF, host-managed runtime leases | 🟢 Stable |
 | 🎤 **[Voice Generation](#-voice-generation-emotiontts)** | IndexTTS-2 (EmotionTTS) | **8-axis emotion vectors**, **storyboard**, custom-voice upload | 🟢 Stable |
 | 🧊 **[Image-to-3D](#-image-to-3d)** | Microsoft TRELLIS.2 | Single image → **watertight GLB**, mesh-only or **textured**, triangle-budget decimation, in-browser **3D preview** | 🟢 Stable |
+| 🧑 **[Photo-to-Identity-Head](#-photo-to-identity-head)** | Arc2Avatar (FLAME + ArcFace) | Single photo → **identity-faithful 3D head**, **graft** onto a TRELLIS base mesh, GLB | 🟡 Experimental |
 | 🎨 **[Image Generation](#-image-generation)** | Stable Diffusion · FLUX | Text→Image | 🟠 Coming soon |
 
 ---
@@ -208,6 +212,31 @@ flow-matching model over an O-Voxel sparse structure), then orbit and download t
 Validated end-to-end on the **DGX Spark (GB10, aarch64 Blackwell `sm_121`)** with vendored native
 kernels. See [`extensions/builtin/trellis2/README.md`](extensions/builtin/trellis2/README.md), or
 open the standalone showcase: [`docs/showcase/trellis2-image-to-3d.html`](docs/showcase/trellis2-image-to-3d.html).
+
+---
+
+### 🧑 Photo-to-Identity-Head
+
+> `nexus.3d.faceavatar` · operators `faceavatar.generate_head` · `faceavatar.graft_head`
+
+Turn a **single photo of a real person** into an **identity-faithful 3D head** with **Arc2Avatar** —
+a FLAME-topology Gaussian avatar optimized toward the person's **ArcFace** recognition embedding —
+exported as a **GLB** for the same in-browser 3D viewer.
+
+- 🧑 **Photo → identity head** — insightface ArcFace embedding → Arc2Face SDS optimization →
+  Gaussian splat → FLAME-template mesh + color bake → GLB.
+- 🧬 **Head refinement (graft)** — feed a **TRELLIS body/character GLB** as an opaque base mesh and
+  refine its head with the person's identity: the body and hair come from TRELLIS, the face carries
+  the likeness. Two deploy-time recipes — standalone head, or head-refine.
+- 🎚️ **Identity-fit iterations** knob (quality vs latency) — the fit is optimization-based
+  (minutes per photo).
+- 🛡️ **Host-managed** — install, runtime lease, storage, and `/media` serving through the same
+  foundation as the 3D, video, and LLM stacks; results render in the in-app `<model-viewer>`.
+
+> **Non-commercial + honest ceiling:** Arc2Avatar builds on **FLAME** (Max Planck), which is
+> research/non-commercial only. Single-photo output is a recognizable **frontal-to-three-quarter**
+> head on a FLAME-shaped base — not scan-grade 360° (unseen sides/hair are approximated). Validated
+> end-to-end on the **DGX Spark (GB10, aarch64 Blackwell `sm_121`)**.
 
 ---
 
@@ -334,6 +363,7 @@ flowchart LR
 | `nexus.video.longcat` | 🟡 active extension, still evolving | LongCat-based long-video generation paths |
 | `nexus.video.svi2-pro` | 🟡 advanced / high-requirement path | SVI 2.0 Pro image-to-video for Blackwell-focused setups |
 | `nexus.3d.trellis2` | 🟢 active product surface | Image→3D mesh generation (Microsoft TRELLIS.2), GLB export, in-app 3D viewer |
+| `nexus.3d.faceavatar` | 🟡 experimental | Single photo → identity 3D head (Arc2Avatar), head-graft onto a TRELLIS base, GLB export |
 
 Several of these extensions ship more than operators:
 
