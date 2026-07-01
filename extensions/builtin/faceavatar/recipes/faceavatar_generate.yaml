@@ -36,7 +36,7 @@ fields:
     min: 300
     max: 5000
     step: 100
-    default: 1500
+    default: 2500
     bind: generate.arc_iters
   - id: texture
     type: boolean

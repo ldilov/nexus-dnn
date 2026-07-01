@@ -99,13 +99,15 @@ def splat_to_glb(splat_ply: Path, out_glb: Path) -> dict:
     """Convert an Arc2Avatar 3DGS point cloud to a vertex-colored mesh GLB using the
     FLAME template topology and nearest-gaussian color transfer (no open3d, which has
     no aarch64 wheel)."""
+    import scipy.sparse as sp
+
     g = PlyData.read(str(splat_ply))["vertex"]
     gxyz = np.stack([g["x"], g["y"], g["z"]], 1).astype(np.float64)
     grgb = np.clip(
         np.stack([g["f_dc_0"], g["f_dc_1"], g["f_dc_2"]], 1) * SH_C0 + 0.5, 0, 1
     )
     opacity = 1.0 / (1.0 + np.exp(-np.asarray(g["opacity"])))
-    keep = opacity > 0.15
+    keep = opacity > 0.3
     gxyz, grgb = gxyz[keep], grgb[keep]
 
     template = None
@@ -119,13 +121,26 @@ def splat_to_glb(splat_ply: Path, out_glb: Path) -> dict:
     if template is None:
         raise RuntimeError("FLAME template mesh not found in vendored scene/template")
 
+    # k-NN MEDIAN color transfer (median rejects outlier gaussians that otherwise
+    # paint rainbow speckle), then Laplacian-smooth over the mesh for clean skin.
     verts = np.asarray(template.vertices, np.float64)
-    _, idx = cKDTree(gxyz).query(verts, k=1)
-    vc = (grgb[idx] * 255.0).astype(np.uint8)
-    vc = np.concatenate([vc, np.full((len(vc), 1), 255, np.uint8)], 1)
-    mesh = trimesh.Trimesh(
-        vertices=verts, faces=np.asarray(template.faces), vertex_colors=vc, process=False
-    )
+    faces = np.asarray(template.faces)
+    nv = len(verts)
+    _, idx = cKDTree(gxyz).query(verts, k=16)
+    colors = np.median(grgb[idx], axis=1)
+    e = np.vstack([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+    adj = sp.coo_matrix(
+        (np.ones(len(e) * 2), (np.r_[e[:, 0], e[:, 1]], np.r_[e[:, 1], e[:, 0]])),
+        shape=(nv, nv),
+    ).tocsr()
+    deg = np.asarray(adj.sum(1)).ravel()
+    deg[deg == 0] = 1
+    for _ in range(12):
+        colors = 0.4 * colors + 0.6 * (adj @ colors) / deg[:, None]
+
+    vc = (np.clip(colors, 0, 1) * 255.0).astype(np.uint8)
+    vc = np.concatenate([vc, np.full((nv, 1), 255, np.uint8)], 1)
+    mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_colors=vc, process=False)
     out_glb = Path(out_glb)
     out_glb.parent.mkdir(parents=True, exist_ok=True)
     mesh.export(str(out_glb))
