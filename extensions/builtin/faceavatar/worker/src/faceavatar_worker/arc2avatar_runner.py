@@ -236,9 +236,13 @@ def run_graft(base_glb: str, image_path: str, out_glb: str, iters: int = 2000,
     except Exception:
         body = base
 
-    combined = trimesh.util.concatenate([body, head])
+    # Export as a Scene: concatenating a textured base with a vertex-colored head
+    # collapses both to a single flat grey material, so keep them as distinct meshes.
+    scene = trimesh.Scene()
+    scene.add_geometry(body, geom_name="base_body")
+    scene.add_geometry(head, geom_name="identity_head")
     out_glb = Path(out_glb)
-    combined.export(str(out_glb))
+    scene.export(str(out_glb))
     return {"mesh_glb": str(out_glb), "base_glb": base_glb, "seam": seam,
             "head_vertices": gen["vertices"], "bytes": out_glb.stat().st_size}
 

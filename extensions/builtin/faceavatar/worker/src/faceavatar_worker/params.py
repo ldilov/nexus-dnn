@@ -32,7 +32,7 @@ DEFAULT_TEXTURE_BLEND = True
 # shared
 VALID_RESIDENCY = ("low_vram", "balanced")
 DEFAULT_RESIDENCY = "balanced"
-DEFAULT_ARC_ITERS = 400  # Arc2Avatar per-image optimisation steps (latency knob)
+DEFAULT_ARC_ITERS = 1500  # Arc2Avatar per-image optimisation steps (latency knob)
 MAX_ARC_ITERS = 5000
 
 
