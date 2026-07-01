@@ -69,6 +69,32 @@ fn marker_path(ctx: &StepContext<'_>) -> PathBuf {
         .join(".synced.json")
 }
 
+/// Candidate paths for the venv's own Python interpreter — the symlinks `uv`
+/// writes inside `.venv`. `Path::exists()` follows symlinks, so a dangling link
+/// reports `false`.
+fn venv_python_candidates(venv: &Path) -> [PathBuf; 2] {
+    if cfg!(windows) {
+        [
+            venv.join("Scripts").join("python.exe"),
+            venv.join("Scripts").join("python3.exe"),
+        ]
+    } else {
+        [
+            venv.join("bin").join("python"),
+            venv.join("bin").join("python3"),
+        ]
+    }
+}
+
+/// True when the venv still has a resolvable Python interpreter. A `.venv`
+/// directory that survived a runtime swap on the data volume but whose managed
+/// base interpreter (living in the container image, not on `/data`) was wiped
+/// leaves the `python` symlink dangling — this returns `false` so the probe
+/// re-provisions instead of trusting a venv that can no longer spawn a worker.
+fn venv_python_present(venv: &Path) -> bool {
+    venv_python_candidates(venv).iter().any(|p| p.exists())
+}
+
 #[async_trait]
 impl StepHandler for PackageSetHandler {
     fn step_type(&self) -> &'static str {
@@ -124,7 +150,9 @@ impl StepHandler for PackageSetHandler {
         let parsed = parse(spec)?;
         let marker = marker_path(ctx);
         let venv = venv_dir(ctx);
-        if !venv.exists() || !marker.exists() {
+        // A bare `.venv` dir is not enough — a runtime swap can wipe its base
+        // interpreter, so require a resolvable venv python before trusting it.
+        if !venv.exists() || !venv_python_present(&venv) || !marker.exists() {
             return Ok(ProbeResult::NotSatisfied);
         }
         // Compare the marker's recorded manifest sha256 against the current manifest
@@ -189,6 +217,17 @@ impl StepHandler for PackageSetHandler {
         }
         let venv = venv_dir(ctx);
         tokio::fs::create_dir_all(venv.parent().expect("parent")).await?;
+
+        // A swap can leave the `.venv` dir with a dangling python symlink; `uv
+        // sync` into that is unreliable, so rebuild it clean (uv cache keeps it fast).
+        if venv.exists() && !venv_python_present(&venv) {
+            tracing::warn!(
+                target: "extension_install::package_set",
+                venv = %venv.display(),
+                "venv python missing (stale after runtime swap) — removing venv for a clean re-sync"
+            );
+            tokio::fs::remove_dir_all(&venv).await?;
+        }
 
         // Locate `uv` on disk (Python runtime first, then PATH fallback).
         let uv_bin = locate_uv(ctx);
@@ -829,6 +868,15 @@ mod tests {
         assert_eq!(default_target(), "extension_local");
     }
 
+    /// Write a stand-in venv Python so a fixture `.venv` looks interpreter-backed.
+    /// A post-swap dangling venv is simulated by simply not calling this.
+    fn write_fake_venv_python(packages: &std::path::Path) {
+        let venv = packages.join(".venv");
+        let py = venv_python_candidates(&venv).into_iter().next().unwrap();
+        std::fs::create_dir_all(py.parent().unwrap()).unwrap();
+        std::fs::write(&py, b"#!/bin/sh\n").unwrap();
+    }
+
     fn stub_services() -> (
         std::sync::Arc<dyn crate::ModelStoreClient>,
         std::sync::Arc<dyn crate::RuntimeBootstrapper>,
@@ -864,9 +912,11 @@ mod tests {
         )
         .unwrap();
 
-        // Both venv and marker must exist for the probe to reach the sha compare.
+        // Both venv (interpreter-backed) and marker must exist for the probe to
+        // reach the sha compare.
         let packages = ext_data.join("runtime").join("packages");
         std::fs::create_dir_all(packages.join(".venv")).unwrap();
+        write_fake_venv_python(&packages);
         std::fs::write(
             packages.join(".synced.json"),
             serde_json::json!({ "manifest_sha256": "stale-sha", "extras": [] }).to_string(),
@@ -914,6 +964,7 @@ mod tests {
 
         let packages = ext_data.join("runtime").join("packages");
         std::fs::create_dir_all(packages.join(".venv")).unwrap();
+        write_fake_venv_python(&packages);
         std::fs::write(
             packages.join(".synced.json"),
             serde_json::json!({ "manifest_sha256": sha, "extras": [] }).to_string(),
@@ -942,6 +993,56 @@ mod tests {
         assert!(
             matches!(result, ProbeResult::Satisfied { .. }),
             "matching sha + intact venv must probe satisfied"
+        );
+    }
+
+    /// A runtime swap can preserve the `.venv` directory on the data volume while
+    /// wiping the managed base interpreter that lived in the container image,
+    /// leaving the venv's `python` symlink dangling. Even with a matching marker
+    /// sha the probe MUST report `NotSatisfied` so the runner re-provisions —
+    /// otherwise the worker later fails to spawn ("venv python missing").
+    #[tokio::test]
+    async fn probe_not_satisfied_when_venv_python_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("ext");
+        let ext_data = tmp.path().join("data");
+        let worker = ext_dir.join("worker");
+        std::fs::create_dir_all(&worker).unwrap();
+        let manifest = worker.join("pyproject.toml");
+        std::fs::write(&manifest, "name = 'x'\n").unwrap();
+        let sha = file_sha256(&manifest).await.unwrap();
+
+        // `.venv` dir + a matching marker, but NO interpreter inside — the swap case.
+        let packages = ext_data.join("runtime").join("packages");
+        std::fs::create_dir_all(packages.join(".venv")).unwrap();
+        std::fs::write(
+            packages.join(".synced.json"),
+            serde_json::json!({ "manifest_sha256": sha, "extras": [] }).to_string(),
+        )
+        .unwrap();
+
+        let (ms, rb, wh, sink, fa) = stub_services();
+        let upstream = std::collections::HashMap::new();
+        let ctx = StepContext {
+            extension_id: "x",
+            extension_dir: &ext_dir,
+            extension_data_dir: &ext_data,
+            host_data_dir: &ext_data,
+            model_store: ms,
+            runtime_bootstrapper: rb,
+            worker_handshake: wh,
+            fetch_artifact: fa,
+            progress_sink: sink,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            force: false,
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({ "manager": "uv", "manifest_path": "worker/pyproject.toml" });
+        let result = PackageSetHandler::new().probe(&ctx, &spec).await.unwrap();
+        assert!(
+            matches!(result, ProbeResult::NotSatisfied),
+            "a venv whose interpreter was wiped by a swap must force a re-sync"
         );
     }
 
