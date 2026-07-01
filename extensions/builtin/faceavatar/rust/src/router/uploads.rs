@@ -8,9 +8,10 @@ use sha2::{Digest, Sha256};
 use crate::domain::{FaceAvatarError, Result};
 use crate::router::AppState;
 
-/// Max accepted upload size. Input images for image-to-3D are small (a few MB);
-/// 32 MiB leaves headroom for high-res PNGs while bounding memory per request.
-const MAX_UPLOAD_BYTES: usize = 32 * 1024 * 1024;
+/// Max accepted upload size. Covers both small identity photos AND head-refine
+/// base-mesh GLBs, which run tens of MB (a TRELLIS export is ~38 MB); 256 MiB
+/// leaves headroom while bounding memory per request.
+const MAX_UPLOAD_BYTES: usize = 256 * 1024 * 1024;
 
 pub fn router() -> Router<AppState> {
     Router::new()
