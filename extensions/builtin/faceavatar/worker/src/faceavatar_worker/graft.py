@@ -47,6 +47,7 @@ def graft_real(
         meta = run_graft(
             validated.base_mesh_path, validated.image_path, str(out_glb), iters=iters,
             seam=validated.seam, keep_hair=validated.keep_hair,
+            blend_ring=validated.blend_ring, texture_blend=validated.texture_blend,
             workdir=str(out_glb.parent / "_run"), models_dir=str(models_dir),
             progress=_progress_cb(emit_sync, cancel_event),
         )
